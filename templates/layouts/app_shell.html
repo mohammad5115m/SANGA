@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block shell %}
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand-lockup">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <div class="brand-name">سنگا</div>
+        {% if current_business %}
+          <div class="brand-sub">{{ current_business.name }}</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn btn-ghost btn-sm" href="{% url 'accounts:profile' %}">پروفایل</a>
+    </div>
+  </header>
+
+  <main class="app-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="bottom-nav" aria-label="ناوبری اصلی">
+    <a class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'businesses:dashboard' %}">
+      <span class="nav-label">خانه</span>
+    </a>
+    <a class="nav-item is-disabled" aria-disabled="true" title="به‌زودی">
+      <span class="nav-label">موجودی</span>
+    </a>
+    <a class="nav-item nav-item-primary is-disabled" aria-disabled="true" title="به‌زودی">
+      <span class="nav-label">افزودن</span>
+    </a>
+    <a class="nav-item is-disabled" aria-disabled="true" title="به‌زودی">
+      <span class="nav-label">پیگیری</span>
+    </a>
+    <a class="nav-item {% if request.resolver_match.url_name == 'settings' %}is-active{% endif %}" href="{% url 'businesses:settings' %}">
+      <span class="nav-label">بیشتر</span>
+    </a>
+  </nav>
+</div>
+{% endblock %}

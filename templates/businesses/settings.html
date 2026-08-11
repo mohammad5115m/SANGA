@@ -1,0 +1,30 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}تنظیمات | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">تنظیمات کسب‌وکار</h1>
+    <p class="page-lead">هویت و اطلاعات تماس</p>
+  </div>
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary" type="submit">ذخیره</button>
+  </form>
+  <div class="btn-row">
+    <a class="btn btn-secondary" href="{% url 'businesses:warehouses' %}">انبارها</a>
+    <a class="btn btn-ghost" href="{% url 'businesses:team' %}">تیم</a>
+  </div>
+</section>
+{% endblock %}

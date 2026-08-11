@@ -1,0 +1,27 @@
+{% extends "layouts/auth_shell.html" %}
+
+{% block title %}تأیید کد | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">کد تأیید را وارد کنید</h1>
+    <p class="page-lead">ارسال‌شده به <span dir="ltr">{{ phone }}</span></p>
+  </div>
+
+  <form method="post" class="stack-md" novalidate>
+    {% csrf_token %}
+    {{ form.phone }}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error" role="alert">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    <label class="field">
+      <span class="field-label">{{ form.code.label }}</span>
+      {{ form.code }}
+      {% if form.code.errors %}<span class="field-error">{{ form.code.errors|striptags }}</span>{% endif %}
+    </label>
+    <button type="submit" class="btn btn-primary btn-block">ورود</button>
+    <a class="btn btn-ghost btn-block" href="{% url 'accounts:login' %}">تغییر شماره</a>
+  </form>
+</section>
+{% endblock %}

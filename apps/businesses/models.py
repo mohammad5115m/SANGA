@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import uuid
+
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils.text import slugify
+
+from .permissions import defaults_for_role
+
+
+class Business(models.Model):
+    class VerificationStatus(models.TextChoices):
+        UNVERIFIED = "unverified", "تأییدنشده"
+        PENDING = "pending", "در انتظار بررسی"
+        VERIFIED = "verified", "تأییدشده"
+        REJECTED = "rejected", "ردشده"
+        SUSPENDED = "suspended", "معلق"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "فعال"
+        SUSPENDED = "suspended", "معلق"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField("نام کسب‌وکار", max_length=200)
+    slug = models.SlugField("نامک", max_length=220, unique=True, allow_unicode=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.UNVERIFIED,
+    )
+    phone = models.CharField(max_length=20, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    province = models.CharField(max_length=100, blank=True)
+    address = models.TextField(blank=True)
+    website = models.URLField(blank=True)
+    logo = models.ImageField(upload_to="business_logos/", blank=True, null=True)
+    onboarding_step = models.PositiveSmallIntegerField(default=1)
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
+    settings = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "کسب‌وکار"
+        verbose_name_plural = "کسب‌وکارها"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name, allow_unicode=True) or "business"
+            candidate = base
+            idx = 1
+            while Business.objects.filter(slug=candidate).exclude(pk=self.pk).exists():
+                idx += 1
+                candidate = f"{base}-{idx}"
+            self.slug = candidate
+        super().save(*args, **kwargs)
+
+    @property
+    def is_onboarded(self) -> bool:
+        return self.onboarding_completed_at is not None
+
+
+class BusinessMembership(models.Model):
+    class Role(models.TextChoices):
+        OWNER = "owner", "مالک"
+        MANAGER = "manager", "مدیر"
+        STAFF = "staff", "کارمند"
+        VIEWER = "viewer", "بازدیدکننده"
+
+    class Status(models.TextChoices):
+        INVITED = "invited", "دعوت‌شده"
+        ACTIVE = "active", "فعال"
+        SUSPENDED = "suspended", "معلق"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="memberships")
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.STAFF)
+    permissions = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "عضویت"
+        verbose_name_plural = "عضویت‌ها"
+        unique_together = ("user", "business")
+        indexes = [
+            models.Index(fields=["business", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} @ {self.business} ({self.role})"
+
+    def clean(self) -> None:
+        if not isinstance(self.permissions, list):
+            raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
+
+    def save(self, *args, **kwargs):
+        if not self.permissions:
+            self.permissions = defaults_for_role(self.role)
+        super().save(*args, **kwargs)
+
+    def has_capability(self, capability: str) -> bool:
+        if self.status != self.Status.ACTIVE:
+            return False
+        if self.role == self.Role.OWNER:
+            return True
+        return capability in (self.permissions or [])
+
+
+class Warehouse(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="warehouses")
+    name = models.CharField("نام انبار", max_length=150)
+    city = models.CharField(max_length=100, blank=True)
+    address = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "انبار"
+        verbose_name_plural = "انبارها"
+        ordering = ["-is_default", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "name"],
+                name="uniq_warehouse_name_per_business",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.business})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.is_default:
+            Warehouse.objects.filter(business=self.business, is_default=True).exclude(pk=self.pk).update(
+                is_default=False
+            )

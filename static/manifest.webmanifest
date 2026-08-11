@@ -1,0 +1,19 @@
+{
+  "name": "سنگا",
+  "short_name": "سنگا",
+  "description": "مدیریت موجودی سنگ، شبکه B2B و کاتالوگ B2C",
+  "start_url": "/",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "fa",
+  "background_color": "#f3efe6",
+  "theme_color": "#1f2a24",
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

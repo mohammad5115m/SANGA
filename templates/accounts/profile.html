@@ -1,0 +1,30 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}پروفایل | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">پروفایل</h1>
+    <p class="page-lead">اطلاعات شخصی حساب شما</p>
+  </div>
+
+  <form method="post" class="panel stack-md">
+    {% csrf_token %}
+    <label class="field">
+      <span class="field-label">نام کامل</span>
+      <input class="field-input" type="text" name="full_name" value="{{ request.user.full_name }}" autocomplete="name">
+    </label>
+    <label class="field">
+      <span class="field-label">شماره موبایل</span>
+      <input class="field-input" type="text" value="{{ request.user.phone }}" dir="ltr" disabled>
+    </label>
+    <button class="btn btn-primary" type="submit">ذخیره</button>
+  </form>
+
+  <form method="post" action="{% url 'accounts:logout' %}">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-block" type="submit">خروج از حساب</button>
+  </form>
+</section>
+{% endblock %}

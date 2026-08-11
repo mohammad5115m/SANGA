@@ -1,0 +1,28 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}تیم | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">تیم</h1>
+    <p class="page-lead">اعضا و نقش‌های دسترسی</p>
+  </div>
+  <div class="list-stack">
+    {% for member in members %}
+      <article class="list-item">
+        <div>
+          <div class="list-title">{{ member.user.display_name }}</div>
+          <div class="muted" dir="ltr">{{ member.user.phone }}</div>
+        </div>
+        <div class="badge-row">
+          <span class="badge">{{ member.get_role_display }}</span>
+          <span class="badge badge-muted">{{ member.get_status_display }}</span>
+        </div>
+      </article>
+    {% empty %}
+      <div class="empty-state">عضوی یافت نشد.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

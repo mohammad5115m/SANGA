@@ -1,0 +1,1 @@
+"""SANGA domain applications."""

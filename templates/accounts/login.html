@@ -1,0 +1,25 @@
+{% extends "layouts/auth_shell.html" %}
+
+{% block title %}ورود | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">ورود با موبایل</h1>
+    <p class="page-lead">کد تأیید برای شماره شما ارسال می‌شود.</p>
+  </div>
+
+  <form method="post" class="stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error" role="alert">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    <label class="field">
+      <span class="field-label">{{ form.phone.label }}</span>
+      {{ form.phone }}
+      {% if form.phone.errors %}<span class="field-error">{{ form.phone.errors|striptags }}</span>{% endif %}
+    </label>
+    <button type="submit" class="btn btn-primary btn-block">دریافت کد</button>
+  </form>
+</section>
+{% endblock %}

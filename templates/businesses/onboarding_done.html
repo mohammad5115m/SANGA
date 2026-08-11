@@ -1,0 +1,25 @@
+{% extends "layouts/onboarding_shell.html" %}
+
+{% block title %}آماده شدید | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{{ business.name }} آماده است</h1>
+    <p class="page-lead">{{ warehouse_count }} انبار ثبت شد. مرحله بعد: ثبت موجودی (فاز ۲).</p>
+  </div>
+  <div class="panel stack-md">
+    <ul class="checklist">
+      <li class="is-done">ایجاد حساب</li>
+      <li class="is-done">ایجاد کسب‌وکار</li>
+      <li class="is-done">ثبت انبار</li>
+      <li>ثبت اولین محموله (به‌زودی)</li>
+      <li>دعوت همکار / شریک (به‌زودی)</li>
+    </ul>
+    <form method="post">
+      {% csrf_token %}
+      <button class="btn btn-primary btn-block" type="submit">ورود به داشبورد</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

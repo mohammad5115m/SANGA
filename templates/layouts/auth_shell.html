@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block body_class %}auth-body{% endblock %}
+
+{% block shell %}
+<div class="auth-shell">
+  <div class="auth-hero" aria-hidden="true"></div>
+  <div class="auth-panel">
+    <div class="brand-lockup brand-lockup-lg">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <div class="brand-name">سنگا</div>
+        <div class="brand-sub">موجودی یک‌بار؛ فروش چندکاناله</div>
+      </div>
+    </div>
+    {% block content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

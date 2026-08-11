@@ -1,0 +1,60 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}خانه | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">سلام{% if request.user.full_name %} {{ request.user.full_name }}{% endif %}</h1>
+    <p class="page-lead">وضعیت عملیاتی کسب‌وکار شما</p>
+  </div>
+
+  <div class="metric-grid">
+    <article class="metric">
+      <div class="metric-label">انبارهای فعال</div>
+      <div class="metric-value">{{ warehouse_count }}</div>
+    </article>
+    <article class="metric">
+      <div class="metric-label">اعضای تیم</div>
+      <div class="metric-value">{{ team_count }}</div>
+    </article>
+    <article class="metric">
+      <div class="metric-label">موجودی فعال</div>
+      <div class="metric-value">—</div>
+      <div class="metric-hint">فاز ۲</div>
+    </article>
+    <article class="metric">
+      <div class="metric-label">استعلام‌های باز</div>
+      <div class="metric-value">—</div>
+      <div class="metric-hint">فاز ۳</div>
+    </article>
+  </div>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">اقدام بعدی</h2>
+    <p class="muted">ثبت سریع موجودی در فاز بعد فعال می‌شود. فعلاً انبار و تیم را آماده کنید.</p>
+    <div class="btn-row">
+      <a class="btn btn-secondary" href="{% url 'businesses:warehouses' %}">مدیریت انبارها</a>
+      <a class="btn btn-ghost" href="{% url 'businesses:team' %}">تیم</a>
+      <a class="btn btn-ghost" href="{% url 'businesses:settings' %}">تنظیمات</a>
+    </div>
+  </section>
+
+  {% if user_memberships|length > 1 %}
+  <section class="panel stack-md">
+    <h2 class="section-title">تغییر کسب‌وکار</h2>
+    <form method="post" action="{% url 'businesses:switch_business' %}" class="stack-sm">
+      {% csrf_token %}
+      <select class="field-input" name="business_id">
+        {% for m in user_memberships %}
+          <option value="{{ m.business_id }}" {% if current_business and m.business_id == current_business.id %}selected{% endif %}>
+            {{ m.business.name }}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-secondary" type="submit">اعمال</button>
+    </form>
+  </section>
+  {% endif %}
+</section>
+{% endblock %}

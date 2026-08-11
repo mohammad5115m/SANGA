@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block body_class %}onboarding-body{% endblock %}
+
+{% block shell %}
+<div class="onboarding-shell">
+  <header class="onboarding-header">
+    <div class="brand-name">سنگا</div>
+    {% if step and total_steps %}
+    <div class="stepper" aria-label="پیشرفت راه‌اندازی">
+      <div class="stepper-track">
+        <div class="stepper-fill" style="--progress: {% widthratio step total_steps 100 %}%"></div>
+      </div>
+      <div class="stepper-label">گام {{ step }} از {{ total_steps }}</div>
+    </div>
+    {% endif %}
+  </header>
+  <main class="onboarding-main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}
