@@ -12,7 +12,7 @@ from django.db import transaction
 from django.http import HttpRequest
 from django.utils import timezone
 
-from apps.core.persian import normalize_phone
+from apps.core.persian import normalize_digits, normalize_phone
 
 from .models import OTPChallenge, User
 from .sms import SmsMessage, get_sms_provider
@@ -117,7 +117,7 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
 
 def verify_login_otp(phone: str, code: str, *, request: HttpRequest) -> User:
     phone = normalize_phone(phone)
-    code = (code or "").strip()
+    code = normalize_digits((code or "").strip())
     if not code.isdigit():
         raise OTPValidationError("کد وارد شده معتبر نیست.")
 

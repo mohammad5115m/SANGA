@@ -51,7 +51,9 @@ def verify_view(request: HttpRequest) -> HttpResponse:
     form = OTPVerifyForm(request.POST or None, initial={"phone": phone})
     if request.method == "POST" and form.is_valid():
         try:
-            verify_login_otp(form.cleaned_data["phone"], form.cleaned_data["code"], request=request)
+            # The session phone is authoritative; the hidden form field is only
+            # a UX convenience and could be tampered with.
+            verify_login_otp(phone, form.cleaned_data["code"], request=request)
         except OTPError as exc:
             form.add_error(None, exc.message)
         except Exception:

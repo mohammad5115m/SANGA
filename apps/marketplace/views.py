@@ -5,6 +5,7 @@ import logging
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required
@@ -160,6 +161,9 @@ def follow_toggle(request: HttpRequest, supplier_id) -> HttpResponse:
     except PartnerError as exc:
         messages.error(request, exc.message)
     next_url = request.POST.get("next")
-    if next_url:
+    # Only follow same-host redirects; anything else could be an open redirect.
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
         return redirect(next_url)
     return redirect("partners:directory")

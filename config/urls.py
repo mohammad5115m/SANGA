@@ -15,6 +15,7 @@ urlpatterns = [
     path("app/catalogs/", include("apps.catalog.urls_manage")),
     path("app/marketplace/", include("apps.marketplace.urls")),
     path("app/partners/", include("apps.partners.urls")),
+    path("app/purchase-requests/", include("apps.purchase_requests.urls")),
 ]
 
 if settings.DEBUG:

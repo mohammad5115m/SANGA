@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django import forms
 
-from apps.core.persian import normalize_phone
+from apps.core.persian import normalize_digits, normalize_phone
 
 
 class PhoneLoginForm(forms.Form):
@@ -16,6 +16,7 @@ class PhoneLoginForm(forms.Form):
                 "autocomplete": "tel",
                 "placeholder": "۰۹۱۲۳۴۵۶۷۸۹",
                 "dir": "ltr",
+                "autofocus": True,
             }
         ),
     )
@@ -39,6 +40,7 @@ class OTPVerifyForm(forms.Form):
                 "autocomplete": "one-time-code",
                 "placeholder": "------",
                 "dir": "ltr",
+                "autofocus": True,
             }
         ),
     )
@@ -47,7 +49,7 @@ class OTPVerifyForm(forms.Form):
         return normalize_phone(self.cleaned_data["phone"])
 
     def clean_code(self) -> str:
-        code = self.cleaned_data["code"].strip()
+        code = normalize_digits(self.cleaned_data["code"].strip())
         if not code.isdigit():
             raise forms.ValidationError("کد باید عددی باشد.")
         return code

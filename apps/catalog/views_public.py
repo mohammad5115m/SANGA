@@ -4,6 +4,7 @@ import logging
 
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from apps.businesses.models import Business
@@ -183,7 +184,10 @@ def compare_toggle(request: HttpRequest, business_slug: str, lot_id) -> HttpResp
     request.session[COMPARE_SESSION_KEY] = ids
     request.session.modified = True
     next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
-    if next_url:
+    # Only follow same-host redirects; anything else could be an open redirect.
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
         return redirect(next_url)
     return redirect("catalog:compare", business_slug=business_slug)
 

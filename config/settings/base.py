@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     "apps.partners",
     "apps.marketplace",
     "apps.notifications",
+    "apps.purchase_requests",
+    "apps.matching",
 ]
 
 MIDDLEWARE = [
@@ -115,14 +117,21 @@ LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "Asia/Tehran"
 USE_I18N = True
 USE_TZ = True
+USE_THOUSAND_SEPARATOR = True
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# Django 5.1 removed STATICFILES_STORAGE / DEFAULT_FILE_STORAGE; STORAGES is
+# the only supported way to configure storage backends.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 FORMS_URLFIELD_ASSUME_HTTPS = True
@@ -148,6 +157,16 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "evaluate-inventory-freshness": {
+        "task": "apps.inventory.tasks.evaluate_inventory_freshness",
+        "schedule": 60 * 60,  # hourly
+    },
+    "match-saved-searches": {
+        "task": "apps.partners.tasks.match_saved_searches",
+        "schedule": 60 * 30,  # every 30 minutes
+    },
+}
 
 SMS_PROVIDER = env("SMS_PROVIDER", default="console")
 OTP_EXPIRY_SECONDS = env.int("OTP_EXPIRY_SECONDS", default=300)
@@ -197,4 +216,4 @@ if USE_S3:
     AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
     AWS_DEFAULT_ACL = None
     AWS_QUERYSTRING_AUTH = True
-    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+    STORAGES["default"] = {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"}

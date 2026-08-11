@@ -13,6 +13,7 @@ from apps.businesses.permissions import (
     INVENTORY_CONFIRM,
     INVENTORY_CREATE,
     INVENTORY_EDIT,
+    INVENTORY_PUBLISH,
     INVENTORY_VIEW,
     PRICES_EDIT,
     PRICES_VIEW,
@@ -160,8 +161,15 @@ def lot_edit(request: HttpRequest, lot_id) -> HttpResponse:
                 membership=request.membership,
                 visibility=form.cleaned_data["visibility"],
             )
-            lot.status = form.cleaned_data["status"]
-            lot.save(update_fields=["status", "updated_at"])
+            new_status = form.cleaned_data["status"]
+            if new_status != lot.status:
+                # Status controls what is publicly visible, so it needs the
+                # publish capability just like visibility changes.
+                if request.membership.has_capability(INVENTORY_PUBLISH):
+                    lot.status = new_status
+                    lot.save(update_fields=["status", "updated_at"])
+                else:
+                    messages.warning(request, "تغییر وضعیت نیاز به دسترسی انتشار دارد و اعمال نشد.")
             if request.membership.has_capability(PRICES_EDIT) and price_form.is_valid():
                 update_lot_prices(
                     lot=lot,
@@ -508,6 +516,11 @@ def quick_add_review(request: HttpRequest) -> HttpResponse:
             return redirect("inventory:lot_detail", lot_id=lot.id)
 
     can_view_prices = request.membership.has_capability(PRICES_VIEW)
+    visibility_value = data.get("visibility") or InventoryLot.Visibility.PRIVATE
+    try:
+        visibility_label = InventoryLot.Visibility(visibility_value).label
+    except ValueError:
+        visibility_label = visibility_value
     return render(
         request,
         "inventory/wizard/review.html",
@@ -515,7 +528,8 @@ def quick_add_review(request: HttpRequest) -> HttpResponse:
             "lot": lot,
             "prices": resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices),
             "freshness": evaluate_freshness(lot),
-            "visibility": data.get("visibility"),
+            "visibility": visibility_value,
+            "visibility_label": visibility_label,
             "step": 7,
             "total_steps": 7,
         },

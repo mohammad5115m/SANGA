@@ -1,0 +1,45 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}{{ pr.title }} | تابلوی تقاضا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{{ pr.title }}</h1>
+    <p class="page-lead">{{ pr.business.name }} · {{ pr.required_qty_sqm }} m² مورد نیاز</p>
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="kv"><span>نوع سنگ</span><strong>{{ pr.stone_type|default:"—" }}</strong></div>
+    <div class="kv"><span>رنگ</span><strong>{{ pr.color|default:"—" }}</strong></div>
+    <div class="kv"><span>سورت</span><strong>{{ pr.acceptable_grade|default:"—" }}</strong></div>
+    <div class="kv"><span>ضخامت</span><strong>{{ pr.thickness_mm|default:"—" }}</strong></div>
+    <div class="kv"><span>بودجه تقریبی</span><strong>{% if pr.budget_amount %}{{ pr.budget_amount }}{% else %}—{% endif %}</strong></div>
+    <div class="kv"><span>مقصد</span><strong>{{ pr.destination_city|default:"—" }}</strong></div>
+    {% if pr.notes %}<p>{{ pr.notes }}</p>{% endif %}
+  </section>
+
+  {% if my_offer %}
+  <section class="panel stack-sm">
+    <h2 class="section-title">پیشنهاد شما (خصوصی)</h2>
+    <div class="muted">{{ my_offer.unit_price }} / m² · {{ my_offer.offered_qty_sqm }} m² · {{ my_offer.get_status_display }}</div>
+    <p class="muted">فقط شما و درخواست‌کننده این پیشنهاد را می‌بینید.</p>
+  </section>
+  {% endif %}
+
+  <section class="panel stack-md">
+    <h2 class="section-title">{% if my_offer %}به‌روزرسانی پیشنهاد خصوصی{% else %}ارسال پیشنهاد خصوصی{% endif %}</h2>
+    <form method="post" class="stack-md" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+      {% for field in form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+        </label>
+      {% endfor %}
+      <button class="btn btn-primary" type="submit">ارسال خصوصی</button>
+    </form>
+  </section>
+</section>
+{% endblock %}

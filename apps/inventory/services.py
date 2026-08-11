@@ -142,6 +142,10 @@ def update_lot_fields(
     if quantity_keys.intersection(fields) and not membership.has_capability(INVENTORY_QUANTITY):
         raise InventoryError("اجازه تغییر مقدار موجودی را ندارید.")
 
+    new_warehouse = fields.get("warehouse")
+    if new_warehouse is not None and new_warehouse.business_id != lot.business_id:
+        raise InventoryError("انبار متعلق به این کسب‌وکار نیست.")
+
     allowed = {
         "grade",
         "processing_type",

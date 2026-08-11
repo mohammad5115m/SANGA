@@ -1,5 +1,5 @@
 /* SANGA service worker: offline shell only. Never cache inventory/pricing. */
-const SHELL_CACHE = "sanga-shell-v1";
+const SHELL_CACHE = "sanga-shell-v2";
 const SHELL_URLS = ["/", "/offline/", "/static/css/app.css", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

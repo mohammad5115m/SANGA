@@ -5,7 +5,6 @@ from decimal import Decimal
 from typing import Literal
 
 from django.db import transaction
-from django.db.models import QuerySet
 
 from .models import LotPrice, PriceTier
 
@@ -47,13 +46,21 @@ def resolve_visible_prices(lot, audience: Audience, *, can_view_prices: bool = T
     if audience == "owner_staff" and not can_view_prices:
         return {}
 
-    allowed = allowed_tiers_for_audience(audience)
-    prices: QuerySet[LotPrice] = lot.prices.select_related("tier").filter(
-        tier__code__in=allowed,
-        tier__is_active=True,
-    )
+    allowed = set(allowed_tiers_for_audience(audience))
+    prefetched = getattr(lot, "_prefetched_objects_cache", {})
+    if "prices" in prefetched:
+        # Use the prefetch cache (list pages prefetch tier-filtered prices);
+        # calling .filter() here would bypass it and fire one query per lot.
+        candidates = [p for p in lot.prices.all() if p.tier.code in allowed and p.tier.is_active]
+    else:
+        candidates = list(
+            lot.prices.select_related("tier").filter(
+                tier__code__in=allowed,
+                tier__is_active=True,
+            )
+        )
     result: dict[str, PriceView] = {}
-    for price in prices:
+    for price in candidates:
         result[price.tier.code] = PriceView(
             tier_code=price.tier.code,
             amount=None if price.unit == LotPrice.Unit.INQUIRY_ONLY else price.amount,

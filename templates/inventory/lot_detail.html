@@ -50,8 +50,8 @@
   {% if can_view_prices %}
   <section class="panel stack-sm">
     <h2 class="section-title">قیمت‌ها</h2>
-    <div class="kv"><span>همکار (B2B)</span><strong>{% if prices.b2b %}{{ prices.b2b.amount }} {{ prices.b2b.currency }}{% else %}—{% endif %}</strong></div>
-    <div class="kv"><span>مشتری (B2C)</span><strong>{% if prices.b2c %}{{ prices.b2c.amount }} {{ prices.b2c.currency }}{% else %}—{% endif %}</strong></div>
+    <div class="kv"><span>همکار (B2B)</span><strong dir="ltr">{% if prices.b2b %}{{ prices.b2b.amount|floatformat:"0g" }} {{ prices.b2b.currency }}{% else %}—{% endif %}</strong></div>
+    <div class="kv"><span>مشتری (B2C)</span><strong dir="ltr">{% if prices.b2c %}{{ prices.b2c.amount|floatformat:"0g" }} {{ prices.b2c.currency }}{% else %}—{% endif %}</strong></div>
   </section>
   {% endif %}
 

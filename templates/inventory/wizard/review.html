@@ -13,9 +13,9 @@
     <div class="muted" dir="ltr">{{ lot.lot_code }}</div>
     <div class="kv"><span>متراژ</span><strong>{{ lot.available_sqm }} m²</strong></div>
     <div class="kv"><span>انبار</span><strong>{{ lot.warehouse.name }}</strong></div>
-    <div class="kv"><span>نمایش</span><strong>{{ visibility }}</strong></div>
-    {% if prices.b2b %}<div class="kv"><span>B2B</span><strong>{{ prices.b2b.amount }}</strong></div>{% endif %}
-    {% if prices.b2c %}<div class="kv"><span>B2C</span><strong>{{ prices.b2c.amount }}</strong></div>{% endif %}
+    <div class="kv"><span>نمایش</span><strong>{{ visibility_label }}</strong></div>
+    {% if prices.b2b %}<div class="kv"><span>قیمت همکار</span><strong dir="ltr">{{ prices.b2b.amount|floatformat:"0g" }} {{ prices.b2b.currency }}</strong></div>{% endif %}
+    {% if prices.b2c %}<div class="kv"><span>قیمت مشتری</span><strong dir="ltr">{{ prices.b2c.amount|floatformat:"0g" }} {{ prices.b2c.currency }}</strong></div>{% endif %}
   </section>
 
   <form method="post" class="stack-md">

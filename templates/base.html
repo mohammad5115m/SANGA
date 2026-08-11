@@ -20,7 +20,10 @@
   {% if messages %}
   <div class="toast-region" aria-live="polite">
     {% for message in messages %}
-      <div class="toast toast-{{ message.tags|default:'info' }}">{{ message }}</div>
+      <div class="toast toast-{{ message.tags|default:'info' }}">
+        <span class="toast-text">{{ message }}</span>
+        <button type="button" class="toast-close" aria-label="بستن" onclick="this.parentElement.remove()">&times;</button>
+      </div>
     {% endfor %}
   </div>
   {% endif %}
@@ -31,9 +34,19 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('{% static "js/sw.js" %}').catch(() => {});
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
       });
     }
+    // Auto-dismiss toasts after 6s; keep them while hovered so users can read/copy.
+    document.querySelectorAll('.toast').forEach((toast) => {
+      let timer = setTimeout(() => dismiss(toast), 6000);
+      toast.addEventListener('mouseenter', () => clearTimeout(timer));
+      toast.addEventListener('mouseleave', () => { timer = setTimeout(() => dismiss(toast), 3000); });
+      function dismiss(el) {
+        el.classList.add('toast-leaving');
+        setTimeout(() => el.remove(), 250);
+      }
+    });
   </script>
   {% block extra_js %}{% endblock %}
 </body>

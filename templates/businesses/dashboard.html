@@ -10,22 +10,22 @@
   </div>
 
   <div class="metric-grid">
-    <article class="metric">
+    <a class="metric metric-link" href="{% url 'inventory:lot_list' %}">
       <div class="metric-label">موجودی فعال</div>
       <div class="metric-value">{{ active_lots }}</div>
-    </article>
-    <article class="metric">
+    </a>
+    <a class="metric metric-link {% if needs_confirmation %}metric-warn{% endif %}" href="{% url 'inventory:lot_list' %}?freshness=needs_confirmation">
       <div class="metric-label">نیاز به تأیید</div>
       <div class="metric-value">{{ needs_confirmation }}</div>
-    </article>
-    <article class="metric">
+    </a>
+    <a class="metric metric-link {% if open_inquiries %}metric-warn{% endif %}" href="{% url 'catalog_manage:inquiries' %}">
+      <div class="metric-label">استعلام‌های باز</div>
+      <div class="metric-value">{{ open_inquiries }}</div>
+    </a>
+    <a class="metric metric-link" href="{% url 'businesses:warehouses' %}">
       <div class="metric-label">انبارهای فعال</div>
       <div class="metric-value">{{ warehouse_count }}</div>
-    </article>
-    <article class="metric">
-      <div class="metric-label">اعضای تیم</div>
-      <div class="metric-value">{{ team_count }}</div>
-    </article>
+    </a>
   </div>
 
   <section class="panel stack-md">
@@ -35,6 +35,7 @@
       <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن موجودی</a>
       <a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">مشاهده موجودی</a>
       <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
+      <a class="btn btn-ghost" href="{% url 'catalog_manage:inquiries' %}">استعلام‌ها</a>
       {% if current_business %}
         <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین</a>
       {% endif %}

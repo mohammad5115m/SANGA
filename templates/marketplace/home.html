@@ -8,7 +8,10 @@
       <h1 class="page-title">بازار همکاران</h1>
       <p class="page-lead">موجودی شبکه B2B با قیمت همکار</p>
     </div>
-    <a class="btn btn-secondary" href="{% url 'partners:directory' %}">تأمین‌کنندگان</a>
+    <div class="btn-row">
+      <a class="btn btn-secondary" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
+      <a class="btn btn-ghost" href="{% url 'partners:directory' %}">تأمین‌کنندگان</a>
+    </div>
   </div>
 
   <form method="get" class="panel filter-bar">

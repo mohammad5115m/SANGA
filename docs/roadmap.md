@@ -69,9 +69,9 @@ Exit criteria: register a lot in ~90s; both prices stored; public serializers ca
 
 ## Phase 5 — Demand Network
 
-- Purchase requests  
-- Private offers  
-- Rule-based matching service  
+- [x] Purchase requests  
+- [x] Private offers (not public reverse auction)  
+- [x] Rule-based matching service + persisted MatchResult  
 
 ## Phase 6 — Reservations
 

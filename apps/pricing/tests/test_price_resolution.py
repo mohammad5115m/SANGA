@@ -57,3 +57,21 @@ def test_resolve_visible_prices_never_leaks_disallowed_tiers(audience, expected)
     assert "b2b" not in visible or audience in {"owner_staff", "b2b_partner", "platform_admin"}
     if audience == "b2c_public":
         assert "b2b" not in visible
+
+
+def test_resolve_uses_prefetch_cache_and_still_filters_tiers():
+    class FakePrefetchedManager(list):
+        def all(self):
+            return list(self)
+
+    lot = SimpleNamespace(
+        prices=FakePrefetchedManager(
+            [
+                FakePrice("b2b", "1000000"),
+                FakePrice("b2c", "1600000"),
+            ]
+        ),
+        _prefetched_objects_cache={"prices": True},
+    )
+    visible = resolve_visible_prices(lot, "b2c_public")
+    assert set(visible.keys()) == {"b2c"}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}خطای سرور | سنگا{% endblock %}
+
+{% block shell %}
+<main class="error-page">
+  <div class="error-card stack-md">
+    <div class="error-code" dir="ltr">500</div>
+    <h1 class="page-title">خطایی رخ داد</h1>
+    <p class="muted">مشکلی در سرور پیش آمده است. لطفاً چند لحظه دیگر دوباره تلاش کنید.</p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="/">بازگشت به خانه</a>
+    </div>
+  </div>
+</main>
+{% endblock %}

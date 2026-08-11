@@ -9,6 +9,14 @@ _PERSIAN_KE = "ک"
 _ZWNJ = "\u200c"
 _NBSP = "\u00a0"
 
+# Persian (۰-۹) and Arabic-Indic (٠-٩) digits to ASCII
+_DIGIT_TRANSLATION = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def normalize_digits(value: str) -> str:
+    """Convert Persian/Arabic-Indic digits to ASCII digits."""
+    return (value or "").translate(_DIGIT_TRANSLATION)
+
 
 def normalize_persian_text(value: str) -> str:
     """Normalize common Persian/Arabic orthography differences for search."""
@@ -21,8 +29,11 @@ def normalize_persian_text(value: str) -> str:
 
 
 def normalize_phone(phone: str) -> str:
-    """Normalize Iranian mobile numbers to 09xxxxxxxxx when possible."""
-    digits = re.sub(r"\D", "", phone or "")
+    """Normalize Iranian mobile numbers to 09xxxxxxxxx when possible.
+
+    Accepts Persian/Arabic-Indic digits (common on mobile keyboards).
+    """
+    digits = re.sub(r"[^0-9]", "", normalize_digits(phone or ""))
     if digits.startswith("98") and len(digits) == 12:
         digits = "0" + digits[2:]
     if digits.startswith("9") and len(digits) == 10:

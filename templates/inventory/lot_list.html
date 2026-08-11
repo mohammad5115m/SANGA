@@ -52,8 +52,8 @@
           </div>
           {% if can_view_prices %}
           <div class="price-inline muted">
-            {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount }}{% endif %}
-            {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount }}{% endif %}
+            {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount|floatformat:"0g" }}{% endif %}
+            {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount|floatformat:"0g" }}{% endif %}
           </div>
           {% endif %}
         </div>

@@ -11,10 +11,11 @@ from .models import CustomCatalog, CustomCatalogItem
 
 
 def _b2c_price_prefetch() -> Prefetch:
+    # No to_attr: this populates lot.prices.all() with ONLY B2C rows, so B2B
+    # prices are never even loaded on public pages (defense in depth).
     return Prefetch(
         "prices",
         queryset=LotPrice.objects.select_related("tier").filter(tier__code="b2c", tier__is_active=True),
-        to_attr="b2c_price_rows",
     )
 
 
@@ -94,7 +95,6 @@ def get_shareable_catalog(token: str) -> CustomCatalog | None:
             Prefetch(
                 "lot__prices",
                 queryset=LotPrice.objects.select_related("tier").filter(tier__code="b2c", tier__is_active=True),
-                to_attr="b2c_price_rows",
             ),
             "lot__media",
         )

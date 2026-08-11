@@ -19,6 +19,18 @@
             {% if inquiry.custom_catalog %} · {{ inquiry.custom_catalog.title }}{% endif %}
           </div>
           {% if inquiry.message %}<p>{{ inquiry.message }}</p>{% endif %}
+          <div class="btn-row inquiry-actions">
+            <a class="btn btn-ghost btn-sm" href="tel:{{ inquiry.phone }}">تماس</a>
+            <form method="post" action="{% url 'catalog_manage:inquiry_update_status' inquiry.id %}" class="inline-form">
+              {% csrf_token %}
+              <select class="field-input field-input-sm" name="status">
+                {% for value, label in status_choices %}
+                  <option value="{{ value }}" {% if inquiry.status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-secondary btn-sm" type="submit">ثبت وضعیت</button>
+            </form>
+          </div>
         </div>
         <span class="badge">{{ inquiry.get_status_display }}</span>
       </article>

@@ -54,7 +54,9 @@ def marketplace_lots_for(viewer_business: Business) -> QuerySet[InventoryLot]:
         .filter(visibility_q)
         .select_related("product", "warehouse", "business")
         .prefetch_related(
-            Prefetch("prices", queryset=b2b_prices, to_attr="b2b_price_rows"),
+            # No to_attr: populates lot.prices.all() with ONLY B2B rows so B2C
+            # prices are never loaded in marketplace views.
+            Prefetch("prices", queryset=b2b_prices),
             "media",
         )
         .order_by("-is_urgent_sale", "-inventory_confirmed_at", "-updated_at")

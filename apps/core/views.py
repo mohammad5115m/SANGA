@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.cache import cache_control
 
 logger = logging.getLogger(__name__)
 
@@ -31,3 +33,19 @@ def health(request: HttpRequest) -> JsonResponse:
 
 def offline(request: HttpRequest) -> HttpResponse:
     return render(request, "core/offline.html", status=503)
+
+
+@cache_control(max_age=0, must_revalidate=True)
+def service_worker(request: HttpRequest) -> HttpResponse:
+    """Serve the service worker from the site root so its scope covers all pages.
+
+    Registering it from /static/js/ would restrict its scope to that path and
+    it could never intercept navigations for offline support.
+    """
+    sw_path = settings.BASE_DIR / "static" / "js" / "sw.js"
+    try:
+        source = sw_path.read_text(encoding="utf-8")
+    except OSError:
+        logger.exception("Service worker file missing at %s", sw_path)
+        return HttpResponse(status=404)
+    return HttpResponse(source, content_type="application/javascript")

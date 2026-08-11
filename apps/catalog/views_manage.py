@@ -5,10 +5,11 @@ import logging
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_http_methods
+from django.utils import timezone
+from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import CATALOG_MANAGE, INQUIRIES_VIEW
+from apps.businesses.permissions import CATALOG_MANAGE, INQUIRIES_RESPOND, INQUIRIES_VIEW
 from apps.inquiries.models import Inquiry
 
 from .forms import CustomCatalogForm
@@ -111,4 +112,29 @@ def inquiry_inbox(request: HttpRequest) -> HttpResponse:
         .select_related("lot", "lot__product", "custom_catalog")
         .order_by("-created_at")[:100]
     )
-    return render(request, "catalog/inquiry_inbox.html", {"inquiries": inquiries})
+    return render(
+        request,
+        "catalog/inquiry_inbox.html",
+        {"inquiries": inquiries, "status_choices": Inquiry.Status.choices},
+    )
+
+
+@business_login_required
+@require_capability(INQUIRIES_RESPOND)
+@require_POST
+def inquiry_update_status(request: HttpRequest, inquiry_id) -> HttpResponse:
+    inquiry = get_object_or_404(Inquiry, pk=inquiry_id, business=request.business)
+    new_status = request.POST.get("status", "")
+    if new_status not in Inquiry.Status.values:
+        messages.error(request, "وضعیت انتخاب‌شده معتبر نیست.")
+        return redirect("catalog_manage:inquiries")
+
+    inquiry.status = new_status
+    now = timezone.now()
+    if inquiry.viewed_at is None:
+        inquiry.viewed_at = now
+    if new_status == Inquiry.Status.CONTACTED and inquiry.contacted_at is None:
+        inquiry.contacted_at = now
+    inquiry.save(update_fields=["status", "viewed_at", "contacted_at", "updated_at"])
+    messages.success(request, "وضعیت استعلام به‌روزرسانی شد.")
+    return redirect("catalog_manage:inquiries")
