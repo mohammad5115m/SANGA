@@ -1,0 +1,36 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}{{ catalog.title }} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">{{ catalog.title }}</h1>
+      <p class="page-lead">{% if catalog.customer_name %}برای {{ catalog.customer_name }} · {% endif %}{{ catalog.view_count }} بازدید</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'catalog_manage:edit' catalog.id %}">ویرایش</a>
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="kv"><span>لینک اشتراک</span><strong dir="ltr">{{ share_url }}</strong></div>
+    <div class="kv"><span>ویترین عمومی</span><strong dir="ltr">{{ storefront_url }}</strong></div>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{{ share_url }}" target="_blank" rel="noopener">باز کردن لینک</a>
+      <button class="btn btn-ghost" type="button" data-share-url="{{ share_url }}" onclick="navigator.clipboard.writeText(this.dataset.shareUrl); this.textContent='کپی شد';">کپی لینک</button>
+    </div>
+  </section>
+
+  <div class="list-stack">
+    {% for item in catalog.items.all %}
+      <article class="list-item">
+        <div>
+          <div class="list-title">{{ item.lot.product.commercial_name }}</div>
+          <div class="muted" dir="ltr">{{ item.lot.lot_code }}</div>
+        </div>
+      </article>
+    {% empty %}
+      <div class="empty-state">محموله‌ای انتخاب نشده است.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

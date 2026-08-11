@@ -1,0 +1,10 @@
+{% extends "layouts/storefront_shell.html" %}
+{% block title %}درخواست ثبت شد | {{ business.name }}{% endblock %}
+
+{% block content %}
+<section class="panel stack-md">
+  <h1 class="page-title">درخواست شما ثبت شد</h1>
+  <p class="page-lead">تیم {{ business.name }} به‌زودی با شما تماس می‌گیرد.</p>
+  <a class="btn btn-primary" href="{% url 'catalog:storefront' business.slug %}">بازگشت به کاتالوگ</a>
+</section>
+{% endblock %}

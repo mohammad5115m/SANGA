@@ -34,7 +34,10 @@
     <div class="btn-row">
       <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن موجودی</a>
       <a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">مشاهده موجودی</a>
-      <a class="btn btn-ghost" href="{% url 'businesses:warehouses' %}">انبارها</a>
+      <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
+      {% if current_business %}
+        <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین</a>
+      {% endif %}
     </div>
   </section>
 

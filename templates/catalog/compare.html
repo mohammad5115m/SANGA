@@ -1,0 +1,25 @@
+{% extends "layouts/storefront_shell.html" %}
+{% block title %}مقایسه سنگ‌ها | {{ business.name }}{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <h1 class="page-title">مقایسه</h1>
+  {% if cards %}
+  <div class="compare-grid">
+    {% for card in cards %}
+      <article class="panel stack-sm">
+        <div class="list-title">{{ card.product.commercial_name }}</div>
+        <div class="catalog-price">{{ card.price.label }}</div>
+        <div class="kv"><span>نوع</span><strong>{{ card.product.stone_type|default:"—" }}</strong></div>
+        <div class="kv"><span>رنگ</span><strong>{{ card.product.primary_color|default:"—" }}</strong></div>
+        <div class="kv"><span>متراژ</span><strong>{{ card.lot.available_sqm }}</strong></div>
+        <div class="kv"><span>ضخامت</span><strong>{{ card.lot.thickness_mm|default:"—" }}</strong></div>
+        <a class="btn btn-secondary btn-block" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">مشاهده</a>
+      </article>
+    {% endfor %}
+  </div>
+  {% else %}
+    <div class="empty-state">هنوز سنگی برای مقایسه انتخاب نشده است.</div>
+  {% endif %}
+</section>
+{% endblock %}

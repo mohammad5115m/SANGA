@@ -1,0 +1,32 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}کاتالوگ‌ها | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">کاتالوگ‌های اختصاصی</h1>
+      <p class="page-lead">برای مشتری لینک انتخاب‌شده بسازید</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'catalog_manage:create' %}">کاتالوگ جدید</a>
+  </div>
+
+  <div class="list-stack">
+    {% for catalog in catalogs %}
+      <a class="list-item" href="{% url 'catalog_manage:detail' catalog.id %}">
+        <div>
+          <div class="list-title">{{ catalog.title }}</div>
+          <div class="muted">{% if catalog.customer_name %}{{ catalog.customer_name }} · {% endif %}{{ catalog.items.count }} قلم · {{ catalog.view_count }} بازدید</div>
+        </div>
+        <span class="badge {% if catalog.is_active %}badge-accent{% else %}badge-muted{% endif %}">
+          {% if catalog.is_active %}فعال{% else %}غیرفعال{% endif %}
+        </span>
+      </a>
+    {% empty %}
+      <div class="empty-state">هنوز کاتالوگی نساخته‌اید.</div>
+    {% endfor %}
+  </div>
+
+  <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}">مشاهده ویترین عمومی</a>
+</section>
+{% endblock %}

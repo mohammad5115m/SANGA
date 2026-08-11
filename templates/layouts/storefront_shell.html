@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block body_class %}storefront-body{% endblock %}
+
+{% block shell %}
+<div class="storefront-shell">
+  <header class="storefront-top">
+    <a class="brand-lockup" href="{% url 'catalog:storefront' business.slug %}">
+      {% if business.logo %}
+        <img class="business-logo" src="{{ business.logo.url }}" alt="{{ business.name }}">
+      {% else %}
+        <span class="brand-mark" aria-hidden="true"></span>
+      {% endif %}
+      <div>
+        <div class="brand-name">{{ business.name }}</div>
+        <div class="brand-sub">{% if business.city %}{{ business.city }} · {% endif %}کاتالوگ سنگا</div>
+      </div>
+    </a>
+    {% block storefront_actions %}{% endblock %}
+  </header>
+  <main class="storefront-main">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="storefront-footer">
+    <div>قدرت‌گرفته از <strong>سنگا</strong></div>
+  </footer>
+</div>
+{% endblock %}

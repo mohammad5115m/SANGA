@@ -1,0 +1,58 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}{{ catalog.title }} | {{ business.name }}{% endblock %}
+
+{% block extra_head %}
+<meta property="og:title" content="{{ catalog.title }} — {{ business.name }}">
+<meta property="og:description" content="{{ catalog.custom_message|default:'کاتالوگ اختصاصی سنگ' }}">
+{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{{ catalog.title }}</h1>
+    {% if catalog.customer_name %}<p class="page-lead">برای {{ catalog.customer_name }}</p>{% endif %}
+    {% if catalog.custom_message %}<p>{{ catalog.custom_message }}</p>{% endif %}
+  </div>
+
+  <div class="catalog-grid">
+    {% for card in cards %}
+      <a class="catalog-card" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">
+        <div class="catalog-card-media">
+          {% if card.primary_media %}
+            <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
+          {% else %}
+            <div class="lot-thumb-fallback"></div>
+          {% endif %}
+        </div>
+        <div class="catalog-card-body">
+          <div class="list-title">{{ card.product.commercial_name }}</div>
+          <div class="catalog-price">{{ card.price.label }}</div>
+          {% if card.note %}<div class="muted">{{ card.note }}</div>{% endif %}
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state">موردی برای نمایش نیست.</div>
+    {% endfor %}
+  </div>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">درخواست مشاوره برای این کاتالوگ</h2>
+    <form method="post" class="stack-md" novalidate>
+      {% csrf_token %}
+      {% if inquiry_form.non_field_errors %}
+        <div class="alert alert-error">{{ inquiry_form.non_field_errors|striptags }}</div>
+      {% endif %}
+      {% for field in inquiry_form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+        </label>
+      {% endfor %}
+      <button class="btn btn-primary" type="submit">ارسال</button>
+    </form>
+  </section>
+
+  <button class="btn btn-ghost" type="button" data-share-url="{{ share_url }}" onclick="navigator.clipboard.writeText(this.dataset.shareUrl); this.textContent='لینک کپی شد';">کپی لینک اشتراک</button>
+</section>
+{% endblock %}

@@ -52,12 +52,12 @@ Exit criteria: register a lot in ~90s; both prices stored; public serializers ca
 
 ## Phase 3 — B2C Catalog
 
-- Branded storefront  
-- Search/filter  
-- Lot detail (consumer copy)  
-- Inquiries from catalog  
-- Custom catalogs + share tokens  
-- Social share cards (B2C-safe)  
+- [x] Branded storefront (`/s/{slug}/`)  
+- [x] Search/filter  
+- [x] Lot detail (consumer copy, B2C price only)  
+- [x] Inquiries from catalog + inbox  
+- [x] Custom catalogs + share tokens (`/c/{token}/`)  
+- [x] Social share meta + compare (B2C-safe)  
 
 ## Phase 4 — B2B Partner Network
 

@@ -1,0 +1,26 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}{% if mode == 'create' %}کاتالوگ جدید{% else %}ویرایش کاتالوگ{% endif %} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <h1 class="page-title">{% if mode == 'create' %}کاتالوگ جدید{% else %}ویرایش کاتالوگ{% endif %}</h1>
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    {% for field in form %}
+      {% if field.name != 'lots' %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+      {% endif %}
+    {% endfor %}
+    <fieldset class="stack-sm">
+      <legend class="section-title">انتخاب محموله‌ها</legend>
+      <div class="lot-pick-list">{{ form.lots }}</div>
+    </fieldset>
+    <button class="btn btn-primary" type="submit">ذخیره</button>
+  </form>
+</section>
+{% endblock %}

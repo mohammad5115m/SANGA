@@ -371,6 +371,103 @@ button, input, select, textarea { font: inherit; }
   }
 }
 
+.storefront-shell { min-height: 100vh; }
+.storefront-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+  background: rgba(255, 253, 248, 0.92);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+}
+.storefront-main {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-7);
+}
+.storefront-footer {
+  text-align: center;
+  color: var(--color-ink-muted);
+  padding: var(--space-5);
+  font-size: 0.85rem;
+}
+.business-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+.storefront-hero { margin-bottom: var(--space-2); }
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+}
+.catalog-card-media {
+  position: relative;
+  aspect-ratio: 1;
+  background: rgba(28, 36, 32, 0.04);
+}
+.catalog-card-media img,
+.catalog-card-media .lot-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.catalog-card-body { padding: var(--space-3); display: grid; gap: 4px; }
+.catalog-price {
+  color: var(--color-brand);
+  font-weight: 700;
+}
+.catalog-price-lg { font-size: 1.35rem; margin-top: var(--space-2); }
+.card-flag {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 8px;
+  background: #8f2d2d;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+}
+.gallery-lg img { aspect-ratio: 4/3; }
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: 1.4rem;
+}
+.lot-pick-list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.lot-pick-list label { display: flex; gap: 0.5rem; align-items: flex-start; }
+
 @media (max-width: 860px) {
   .auth-shell { grid-template-columns: 1fr; }
   .auth-hero { display: none; }
