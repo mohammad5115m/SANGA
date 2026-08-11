@@ -40,6 +40,7 @@
       {% endif %}
     </form>
     <a class="btn btn-ghost" href="{% url 'partners:request' supplier.id %}">درخواست همکاری</a>
+    <a class="btn btn-secondary" href="{% url 'reservations:request_create' lot.id %}">درخواست رزرو</a>
   </div>
 
   <section class="panel stack-md">

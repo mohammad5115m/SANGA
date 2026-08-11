@@ -1,0 +1,36 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}درخواست رزرو | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">درخواست رزرو</h1>
+    <p class="page-lead" dir="ltr">{{ lot.lot_code }} — {{ lot.product.commercial_name }}</p>
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="kv"><span>تأمین‌کننده</span><strong>{{ lot.business.name }}</strong></div>
+    <div class="kv"><span>موجودی قابل دسترس</span><strong>{{ lot.available_sqm }} m²</strong></div>
+    <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
+  </section>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">جزئیات درخواست</h2>
+    <form method="post" class="stack-md" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+      {% for field in form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+        </label>
+      {% endfor %}
+      <div class="btn-row">
+        <button class="btn btn-primary" type="submit">ارسال درخواست رزرو</button>
+        <a class="btn btn-ghost" href="{% url 'marketplace:lot_detail' lot.id %}">انصراف</a>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

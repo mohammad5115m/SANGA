@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.purchase_requests",
     "apps.matching",
+    "apps.reservations",
 ]
 
 MIDDLEWARE = [
@@ -165,6 +166,10 @@ CELERY_BEAT_SCHEDULE = {
     "match-saved-searches": {
         "task": "apps.partners.tasks.match_saved_searches",
         "schedule": 60 * 30,  # every 30 minutes
+    },
+    "expire-reservations": {
+        "task": "apps.reservations.tasks.expire_reservations",
+        "schedule": 60 * 15,  # every 15 minutes
     },
 }
 

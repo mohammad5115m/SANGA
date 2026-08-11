@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
+from apps.businesses.permissions import RESERVATIONS_MANAGE
 from apps.inventory.models import InventoryLot
 from apps.matching.services import persist_matches
 from apps.notifications.models import Notification
@@ -69,11 +70,10 @@ def create_purchase_request(
 def _notify_potential_sellers(pr: PurchaseRequest) -> None:
     from apps.matching.models import MatchResult
 
-    seller_ids = (
-        MatchResult.objects.filter(purchase_request=pr)
-        .values_list("lot__business_id", flat=True)
-        .distinct()[:20]
-    )
+    # Only notify for matches that have not been announced yet so re-running the
+    # matcher (rematch) never sends duplicate notifications to the same sellers.
+    pending = MatchResult.objects.filter(purchase_request=pr, notified=False)
+    seller_ids = list(pending.values_list("lot__business_id", flat=True).distinct()[:20])
     for business_id in seller_ids:
         owners = BusinessMembership.objects.filter(
             business_id=business_id,
@@ -89,6 +89,7 @@ def _notify_potential_sellers(pr: PurchaseRequest) -> None:
                 body=f"درخواست «{pr.title}» با موجودی شما هم‌خوانی دارد.",
                 link=f"/app/purchase-requests/network/{pr.id}/",
             )
+    pending.update(notified=True)
 
 
 @transaction.atomic
@@ -166,6 +167,10 @@ def decide_offer(
     pr = offer.purchase_request
     if membership.business_id != pr.business_id:
         raise PurchaseRequestError("فقط صاحب درخواست می‌تواند تصمیم بگیرد.")
+    # Accepting an offer commits the buyer to a reservation, so it is a
+    # reservation-management action and requires the capability.
+    if accept and not membership.has_capability(RESERVATIONS_MANAGE):
+        raise PurchaseRequestError("دسترسی لازم برای پذیرش پیشنهاد را ندارید.")
     if offer.status != PurchaseOffer.Status.SUBMITTED:
         raise PurchaseRequestError("این پیشنهاد قابل تصمیم‌گیری نیست.")
 
@@ -179,6 +184,13 @@ def decide_offer(
             purchase_request=pr,
             status=PurchaseOffer.Status.SUBMITTED,
         ).exclude(pk=offer.pk).update(status=PurchaseOffer.Status.REJECTED, updated_at=timezone.now())
+        # Turn the accepted offer into an active reservation hold when it points
+        # at a concrete lot. Runs in this same atomic block: if the lot lacks
+        # quantity the whole acceptance rolls back.
+        if offer.lot_id is not None:
+            from apps.reservations.services import create_reservation_from_offer
+
+            create_reservation_from_offer(offer=offer, membership=membership)
     return offer
 
 

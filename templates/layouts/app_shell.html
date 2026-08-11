@@ -16,6 +16,7 @@
       <a class="topbar-link {% if request.resolver_match.app_name == 'businesses' and request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'businesses:dashboard' %}">خانه</a>
       <a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}" href="{% url 'inventory:lot_list' %}">موجودی</a>
       <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}" href="{% url 'marketplace:home' %}">بازار</a>
+      <a class="topbar-link {% if request.resolver_match.app_name == 'reservations' %}is-active{% endif %}" href="{% url 'reservations:inbox' %}">رزروها</a>
       <a class="topbar-link {% if request.resolver_match.app_name == 'catalog_manage' %}is-active{% endif %}" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
       <a class="topbar-link {% if request.resolver_match.url_name == 'settings' %}is-active{% endif %}" href="{% url 'businesses:settings' %}">تنظیمات</a>
     </nav>

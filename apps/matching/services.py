@@ -148,6 +148,7 @@ def persist_matches(purchase_request: PurchaseRequest, *, limit: int = 20) -> li
     service = get_matching_service()
     matches = service.find_matches(purchase_request, limit=limit)
     saved: list[MatchResult] = []
+    current_lot_ids: list = []
     for match in matches:
         obj, _created = MatchResult.objects.update_or_create(
             purchase_request=purchase_request,
@@ -155,6 +156,12 @@ def persist_matches(purchase_request: PurchaseRequest, *, limit: int = 20) -> li
             defaults={"score": match.score, "reasons": match.reasons},
         )
         saved.append(obj)
+        current_lot_ids.append(match.lot.id)
+    # Prune stale matches so rematching cannot leave results for lots that no
+    # longer qualify (e.g. sold, reduced quantity, changed visibility).
+    MatchResult.objects.filter(purchase_request=purchase_request).exclude(
+        lot_id__in=current_lot_ids
+    ).delete()
     if matches and purchase_request.status == PurchaseRequest.Status.OPEN:
         purchase_request.status = PurchaseRequest.Status.MATCHING
         purchase_request.save(update_fields=["status", "updated_at"])

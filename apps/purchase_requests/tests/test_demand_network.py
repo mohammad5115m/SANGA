@@ -151,3 +151,50 @@ def test_insufficient_qty_does_not_match(demand_setup):
     )
     matches = persist_matches(pr)
     assert matches == []
+
+
+@pytest.mark.django_db
+def test_rematch_prunes_stale_matches(demand_setup):
+    from apps.matching.models import MatchResult
+
+    pr = create_purchase_request(
+        business=demand_setup["buyer"],
+        membership=demand_setup["buyer_m"],
+        title="نیاز تراورتن",
+        stone_type="تراورتن",
+        color="سفید",
+        required_qty_sqm=Decimal("100"),
+        similar_accepted=True,
+    )
+    assert MatchResult.objects.filter(purchase_request=pr, lot=demand_setup["lot"]).exists()
+
+    # Lot no longer qualifies (too little quantity); rematch must remove it.
+    lot = demand_setup["lot"]
+    lot.available_sqm = Decimal("5")
+    lot.save(update_fields=["available_sqm"])
+    persist_matches(pr)
+    assert not MatchResult.objects.filter(purchase_request=pr, lot=lot).exists()
+
+
+@pytest.mark.django_db
+def test_seller_notifications_not_duplicated_on_rematch(demand_setup):
+    from apps.matching.models import MatchResult
+    from apps.notifications.models import Notification
+    from apps.purchase_requests.services import _notify_potential_sellers
+
+    pr = create_purchase_request(
+        business=demand_setup["buyer"],
+        membership=demand_setup["buyer_m"],
+        title="نیاز تراورتن",
+        stone_type="تراورتن",
+        color="سفید",
+        required_qty_sqm=Decimal("100"),
+        similar_accepted=True,
+    )
+    count_after_create = Notification.objects.filter(user=demand_setup["seller_user"]).count()
+    assert count_after_create >= 1
+    assert not MatchResult.objects.filter(purchase_request=pr, notified=False).exists()
+
+    # Re-running notification must not resend for already-notified matches.
+    _notify_potential_sellers(pr)
+    assert Notification.objects.filter(user=demand_setup["seller_user"]).count() == count_after_create
