@@ -61,11 +61,11 @@ Exit criteria: register a lot in ~90s; both prices stored; public serializers ca
 
 ## Phase 4 — B2B Partner Network
 
-- Partner approval relations  
-- Marketplace browse  
-- B2B price visibility  
-- Follow suppliers  
-- Saved searches + match notifications  
+- [x] Partner approval relations  
+- [x] Marketplace browse  
+- [x] B2B price visibility (B2B-only payloads)  
+- [x] Follow suppliers  
+- [x] Saved searches + match notification task  
 
 ## Phase 5 — Demand Network
 

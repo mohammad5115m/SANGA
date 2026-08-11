@@ -1,0 +1,21 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}اعلان‌ها | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <h1 class="page-title">اعلان‌ها</h1>
+  <div class="list-stack">
+    {% for note in notifications %}
+      <article class="list-item">
+        <div>
+          <div class="list-title">{{ note.title }}</div>
+          <div class="muted">{{ note.body }}</div>
+        </div>
+        {% if note.link %}<a class="btn btn-ghost btn-sm" href="{{ note.link }}">مشاهده</a>{% endif %}
+      </article>
+    {% empty %}
+      <div class="empty-state">اعلانی نیست.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

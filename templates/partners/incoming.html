@@ -1,0 +1,42 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}درخواست‌های همکاری | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <h1 class="page-title">درخواست‌های ورودی</h1>
+
+  <div class="list-stack">
+    {% for relation in relations %}
+      <article class="list-item">
+        <div>
+          <div class="list-title">{{ relation.partner_business.name }}</div>
+          <div class="muted">{{ relation.message|default:"بدون پیام" }}</div>
+        </div>
+        <div class="btn-row">
+          <form method="post" action="{% url 'partners:decide' relation.id %}">
+            {% csrf_token %}
+            <button class="btn btn-primary btn-sm" name="decision" value="approve" type="submit">تأیید</button>
+            <button class="btn btn-danger btn-sm" name="decision" value="reject" type="submit">رد</button>
+          </form>
+        </div>
+      </article>
+    {% empty %}
+      <div class="empty-state">درخواست معلقی نیست.</div>
+    {% endfor %}
+  </div>
+
+  <section class="stack-md">
+    <h2 class="section-title">شرکای تأییدشده</h2>
+    <div class="list-stack">
+      {% for relation in approved %}
+        <article class="list-item">
+          <div class="list-title">{{ relation.partner_business.name }}</div>
+          <span class="badge badge-accent">تأییدشده</span>
+        </article>
+      {% empty %}
+        <div class="empty-state">هنوز شریکی تأیید نشده است.</div>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}

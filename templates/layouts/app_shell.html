@@ -31,10 +31,10 @@
     <a class="nav-item nav-item-primary {% if request.resolver_match.app_name == 'inventory' and 'quick_add' in request.resolver_match.url_name %}is-active{% endif %}" href="{% url 'inventory:quick_add_start' %}">
       <span class="nav-label">افزودن</span>
     </a>
-    <a class="nav-item {% if request.resolver_match.app_name == 'catalog_manage' and request.resolver_match.url_name == 'inquiries' %}is-active{% endif %}" href="{% url 'catalog_manage:inquiries' %}">
-      <span class="nav-label">پیگیری</span>
+    <a class="nav-item {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}" href="{% url 'marketplace:home' %}">
+      <span class="nav-label">بازار</span>
     </a>
-    <a class="nav-item {% if request.resolver_match.url_name == 'settings' or request.resolver_match.app_name == 'catalog_manage' and request.resolver_match.url_name != 'inquiries' %}is-active{% endif %}" href="{% url 'businesses:settings' %}">
+    <a class="nav-item {% if request.resolver_match.url_name == 'settings' or request.resolver_match.app_name == 'catalog_manage' or request.resolver_match.app_name == 'partners' %}is-active{% endif %}" href="{% url 'businesses:settings' %}">
       <span class="nav-label">بیشتر</span>
     </a>
   </nav>

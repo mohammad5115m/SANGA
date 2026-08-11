@@ -10,6 +10,8 @@ from apps.accounts.models import User
 from apps.businesses.models import BusinessMembership
 from apps.businesses.services import add_warehouse, complete_onboarding, create_business_for_owner
 from apps.inventory.models import InventoryLot, Product
+from apps.partners.models import PartnerRelation
+from apps.partners.services import decide_partnership, request_partnership
 from apps.pricing.services import ensure_default_tiers, set_lot_prices
 
 
@@ -86,7 +88,48 @@ class Command(BaseCommand):
                     b2c_amount=Decimal(b2c),
                     currency="IRR",
                 )
+            # Publish first demo lot also into B2B network for marketplace testing.
+            if code == "DEMO-001" and lot.visibility != InventoryLot.Visibility.PUBLIC:
+                lot.visibility = InventoryLot.Visibility.ALL_PARTNERS
+                lot.save(update_fields=["visibility", "updated_at"])
+
+        partner_owner, _ = User.objects.get_or_create(
+            phone="09122222222",
+            defaults={"full_name": "شریک دمو (فرضی)"},
+        )
+        partner_membership = BusinessMembership.objects.filter(
+            user=partner_owner,
+            role=BusinessMembership.Role.OWNER,
+        ).first()
+        if partner_membership:
+            partner_business = partner_membership.business
+        else:
+            partner_business = create_business_for_owner(
+                owner=partner_owner,
+                name="بازرگانی سنگ پارس (دمو ـ فرضی)",
+                city="تهران",
+                province="تهران",
+                phone="09122222222",
+            )
+            add_warehouse(business=partner_business, name="انبار تهران", city="تهران", is_default=True)
+            complete_onboarding(partner_business)
+            partner_membership = BusinessMembership.objects.get(user=partner_owner, business=partner_business)
+
+        relation = PartnerRelation.objects.filter(
+            supplier_business=business,
+            partner_business=partner_business,
+        ).first()
+        if relation is None:
+            relation = request_partnership(
+                partner_business=partner_business,
+                supplier_business=business,
+                membership=partner_membership,
+                message="درخواست همکاری دمو",
+            )
+        if relation.status != PartnerRelation.Status.APPROVED:
+            decide_partnership(relation=relation, membership=membership, approve=True)
 
         self.stdout.write(self.style.SUCCESS("Demo seed complete (fictional SANGA data)."))
-        self.stdout.write(f"Login phone: {owner.phone}")
-        self.stdout.write("Business id: " + str(business.id))
+        self.stdout.write(f"Supplier login phone: {owner.phone}")
+        self.stdout.write(f"Partner login phone: {partner_owner.phone}")
+

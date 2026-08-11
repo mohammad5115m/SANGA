@@ -13,6 +13,8 @@ urlpatterns = [
     path("app/", include("apps.businesses.urls")),
     path("app/inventory/", include("apps.inventory.urls")),
     path("app/catalogs/", include("apps.catalog.urls_manage")),
+    path("app/marketplace/", include("apps.marketplace.urls")),
+    path("app/partners/", include("apps.partners.urls")),
 ]
 
 if settings.DEBUG:

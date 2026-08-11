@@ -21,6 +21,7 @@ class Inquiry(models.Model):
         LOT_DETAIL = "lot_detail", "صفحه محموله"
         CUSTOM_CATALOG = "custom_catalog", "کاتالوگ اختصاصی"
         SHARE = "share", "اشتراک‌گذاری"
+        MARKETPLACE = "marketplace", "بازار همکاران"
         OTHER = "other", "سایر"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

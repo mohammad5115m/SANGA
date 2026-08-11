@@ -1,0 +1,62 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}{{ product.commercial_name }} | بازار همکاران{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="gallery gallery-lg">
+    {% for media in media_items %}
+      <img src="{{ media.file.url }}" alt="{{ product.commercial_name }}" loading="lazy">
+    {% empty %}
+      <div class="empty-state">تصویر ندارد</div>
+    {% endfor %}
+  </div>
+
+  <div>
+    <h1 class="page-title">{{ product.commercial_name }}</h1>
+    <p class="page-lead">{{ supplier.name }}{% if supplier.city %} · {{ supplier.city }}{% endif %}</p>
+    <div class="catalog-price catalog-price-lg">{{ price.label }}</div>
+    <div class="muted">قیمت همکار (B2B) · موجودی {{ lot.available_sqm }} m²</div>
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="kv"><span>کد محموله</span><strong dir="ltr">{{ lot.lot_code }}</strong></div>
+    <div class="kv"><span>نوع</span><strong>{{ product.stone_type|default:"—" }}</strong></div>
+    <div class="kv"><span>رنگ</span><strong>{{ product.primary_color|default:"—" }}</strong></div>
+    <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
+    <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
+    <div class="kv"><span>تازگی موجودی</span><strong>{% if lot.inventory_confirmed_at %}{{ lot.inventory_confirmed_at }}{% else %}—{% endif %}</strong></div>
+  </section>
+
+  <div class="btn-row">
+    <form method="post" action="{% url 'marketplace:follow_toggle' supplier.id %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.path }}">
+      {% if is_following %}
+        <input type="hidden" name="action" value="unfollow">
+        <button class="btn btn-ghost" type="submit">لغو دنبال‌کردن</button>
+      {% else %}
+        <input type="hidden" name="action" value="follow">
+        <button class="btn btn-secondary" type="submit">دنبال‌کردن تأمین‌کننده</button>
+      {% endif %}
+    </form>
+    <a class="btn btn-ghost" href="{% url 'partners:request' supplier.id %}">درخواست همکاری</a>
+  </div>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">استعلام از تأمین‌کننده</h2>
+    <form method="post" class="stack-md" novalidate>
+      {% csrf_token %}
+      {% if inquiry_form.non_field_errors %}
+        <div class="alert alert-error">{{ inquiry_form.non_field_errors|striptags }}</div>
+      {% endif %}
+      {% for field in inquiry_form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+        </label>
+      {% endfor %}
+      <button class="btn btn-primary" type="submit">ارسال استعلام</button>
+    </form>
+  </section>
+</section>
+{% endblock %}
