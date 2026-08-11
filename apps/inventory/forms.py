@@ -3,6 +3,9 @@ from __future__ import annotations
 from django import forms
 
 from apps.businesses.models import Warehouse
+from apps.contacts.models import Contact
+from apps.contacts.selectors import contacts_for_business
+from apps.pricing.models import LotPrice
 
 from .models import InventoryLot, Product
 
@@ -150,10 +153,73 @@ class LotPricesForm(forms.Form):
     )
 
 
+class ContactPriceForm(forms.Form):
+    """One partner-specific price: pick one of your own contacts and a number."""
+
+    contact = forms.ModelChoiceField(
+        label="مخاطب",
+        queryset=Contact.objects.none(),
+        empty_label="— انتخاب مخاطب —",
+        widget=forms.Select(attrs={"class": "field-input"}),
+    )
+    amount = forms.DecimalField(
+        label="قیمت اختصاصی",
+        required=False,
+        min_value=0,
+        decimal_places=0,
+        max_digits=14,
+        widget=forms.NumberInput(attrs={"class": "field-input", "inputmode": "numeric"}),
+    )
+    unit = forms.ChoiceField(
+        label="واحد",
+        choices=LotPrice.Unit.choices,
+        initial=LotPrice.Unit.PER_SQM,
+        widget=forms.Select(attrs={"class": "field-input"}),
+    )
+    currency = forms.CharField(
+        label="ارز",
+        initial="IRR",
+        max_length=3,
+        widget=forms.TextInput(attrs={"class": "field-input", "dir": "ltr"}),
+    )
+
+    def __init__(self, *args, business=None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if business is not None:
+            self.fields["contact"].queryset = contacts_for_business(business)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("unit") == LotPrice.Unit.INQUIRY_ONLY:
+            return cleaned
+        amount = cleaned.get("amount")
+        if amount is None:
+            self.add_error("amount", "مبلغ را وارد کنید یا واحد «فقط استعلام» را انتخاب کنید.")
+        elif amount <= 0:
+            self.add_error("amount", "مبلغ قیمت اختصاصی باید بزرگ‌تر از صفر باشد.")
+        return cleaned
+
+
+def editable_visibility_choices(current: str = "") -> list[tuple[str, str]]:
+    """
+    Choices offered when creating/editing a lot.
+
+    `selected_partners` behaves exactly like `all_partners` (approved partners
+    only), so it is hidden to avoid implying a per-lot allowlist. Lots already
+    stored with it keep the option so editing them does not silently change
+    their visibility.
+    """
+    legacy = InventoryLot.Visibility.SELECTED_PARTNERS
+    choices = [choice for choice in InventoryLot.Visibility.choices if choice[0] != legacy]
+    if current == legacy:
+        choices.insert(1, (legacy.value, legacy.label))
+    return choices
+
+
 class LotVisibilityForm(forms.Form):
     visibility = forms.ChoiceField(
         label="نمایش",
-        choices=InventoryLot.Visibility.choices,
+        choices=editable_visibility_choices(),
         widget=forms.Select(attrs={"class": "field-input"}),
     )
     is_urgent_sale = forms.BooleanField(
@@ -222,6 +288,9 @@ class LotEditForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if business is not None:
             self.fields["warehouse"].queryset = Warehouse.objects.filter(business=business, is_active=True)
+        self.fields["visibility"].choices = editable_visibility_choices(
+            getattr(self.instance, "visibility", "")
+        )
 
 
 class InventoryFilterForm(forms.Form):

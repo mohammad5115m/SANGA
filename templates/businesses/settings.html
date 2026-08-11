@@ -23,14 +23,29 @@
     <button class="btn btn-primary" type="submit">ذخیره</button>
   </form>
   <div class="btn-row">
-    <a class="btn btn-secondary" href="{% url 'businesses:warehouses' %}">انبارها</a>
+    {% if 'customers.manage' in capabilities %}
+      <a class="btn btn-secondary" href="{% url 'contacts:list' %}">مخاطبین</a>
+    {% endif %}
+    {% if 'ledger.view' in capabilities %}
+      <a class="btn btn-secondary" href="{% url 'accounting:index' %}">دفتر حساب</a>
+    {% endif %}
+    <a class="btn btn-ghost" href="{% url 'businesses:warehouses' %}">انبارها</a>
     <a class="btn btn-ghost" href="{% url 'businesses:team' %}">تیم</a>
-    <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
-    <a class="btn btn-ghost" href="{% url 'catalog_manage:inquiries' %}">استعلام‌ها</a>
+    {% if 'catalog.manage' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
+    {% endif %}
+    {% if 'inquiries.view' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'catalog_manage:inquiries' %}">استعلام‌ها</a>
+    {% endif %}
     <a class="btn btn-ghost" href="{% url 'marketplace:home' %}">بازار همکاران</a>
-    <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
-    <a class="btn btn-ghost" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
+    {% if 'inquiries.view' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
+      <a class="btn btn-ghost" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
+    {% endif %}
     <a class="btn btn-ghost" href="{% url 'partners:directory' %}">تأمین‌کنندگان</a>
+    {% if 'partners.manage' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'partners:incoming' %}">درخواست‌های همکاری</a>
+    {% endif %}
     <a class="btn btn-ghost" href="{% url 'partners:notifications' %}">اعلان‌ها</a>
     {% if current_business %}
       <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین عمومی</a>

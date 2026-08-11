@@ -1,0 +1,36 @@
+{% extends "layouts/app_shell.html" %}
+{% load humanize %}
+{% block title %}دفتر حساب | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">دفتر حساب</h1>
+      <p class="page-lead">مانده حساب مخاطبین شما</p>
+    </div>
+    {% if 'customers.manage' in capabilities %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'contacts:list' %}">مخاطبین</a>
+    {% endif %}
+  </div>
+
+  <div class="list-stack">
+    {% for row in rows %}
+      <a class="list-item" href="{% url 'accounting:statement' row.contact.id %}">
+        <div>
+          <div class="list-title">{{ row.contact.display_name }}</div>
+          <div class="muted">
+            {{ row.balance.label }}
+            {% if row.contact.entry_count == 0 %} · بدون سند{% endif %}
+          </div>
+        </div>
+        <strong class="ledger-delta {% if row.balance.state == 'they_owe' %}is-debit{% elif row.balance.state == 'we_owe' %}is-credit{% endif %}">
+          {{ row.balance.amount|intcomma }} ریال
+        </strong>
+      </a>
+    {% empty %}
+      <div class="empty-state">هنوز مخاطبی ثبت نشده است.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

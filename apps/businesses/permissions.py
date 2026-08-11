@@ -23,6 +23,8 @@ TEAM_MANAGE: Final = "team.manage"
 BUSINESS_SETTINGS: Final = "business.settings"
 ANALYTICS_VIEW: Final = "analytics.view"
 AUDIT_VIEW: Final = "audit.view"
+LEDGER_VIEW: Final = "ledger.view"
+LEDGER_MANAGE: Final = "ledger.manage"
 
 ALL_CAPABILITIES: Final[tuple[str, ...]] = (
     INVENTORY_VIEW,
@@ -45,6 +47,8 @@ ALL_CAPABILITIES: Final[tuple[str, ...]] = (
     BUSINESS_SETTINGS,
     ANALYTICS_VIEW,
     AUDIT_VIEW,
+    LEDGER_VIEW,
+    LEDGER_MANAGE,
 )
 
 ROLE_DEFAULTS: Final[dict[str, tuple[str, ...]]] = {
@@ -65,6 +69,7 @@ ROLE_DEFAULTS: Final[dict[str, tuple[str, ...]]] = {
         RESERVATIONS_MANAGE,
         CUSTOMERS_MANAGE,
         CATALOG_MANAGE,
+        LEDGER_VIEW,
     ),
     "viewer": (
         INVENTORY_VIEW,

@@ -41,7 +41,7 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
             followed_supplier_ids=followed_ids,
             min_qty=form.cleaned_data.get("min_qty", ""),
         )
-    cards = [marketplace_lot_card(lot) for lot in qs[:80]]
+    cards = [marketplace_lot_card(lot, request.business) for lot in qs[:80]]
     save_form = SaveSearchForm()
     return render(
         request,
@@ -96,7 +96,7 @@ def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             "lot": lot,
             "product": lot.product,
             "supplier": lot.business,
-            "price": b2b_price_context(lot),
+            "price": b2b_price_context(lot, request.business),
             "media_items": [m for m in lot.media.all() if m.kind == "image"],
             "inquiry_form": form,
             "is_following": is_following,

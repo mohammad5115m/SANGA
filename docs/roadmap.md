@@ -79,12 +79,58 @@ Exit criteria: register a lot in ~90s; both prices stored; public serializers ca
 - Quantity locking  
 - Expiration jobs  
 
-## Phase 7 — CRM & Analytics
+## Phase 7 — Contacts, Accounting & Analytics
 
-- Customer profiles  
-- Inquiry pipeline UX  
-- Business dashboard analytics  
-- Platform metrics scaffolding  
+Reframed toward the traditional stone trade: private contacts + a practical
+per-contact balance ledger, delivered in small slices.
+
+- [x] **Contacts (CRM-lite)** — private per-business contacts (customer/supplier/trader,
+  multi-type), notes, optional link to an *approved* partner business, search/filter,
+  detail, CRUD with archive confirmation. Gated by the `customers.manage` capability;
+  tenant isolation + partner-link privacy enforced in selectors/services.
+- [x] **Accounting ledger** — immutable `LedgerEntry` per contact, running balance
+  (`balance_after` computed under a per-contact row lock), signed `balance_delta`
+  as the single source of truth, reversal entries for corrections (no edits/deletes),
+  manual debit/credit with a required reason, date/type filters, and a
+  print-to-PDF statement. Gated by `ledger.view` / `ledger.manage`; tenant isolation
+  enforced in selectors/services. See [accounting.md](./accounting.md).
+- [x] **Connect trades → ledger** — seller-side only: converting a reservation stays
+  non-financial, and a separate confirmation screen (balance effect shown in plain
+  Persian) posts one `SALE` entry. At most one trade entry per reservation per
+  business, enforced by a conditional unique constraint plus a re-check under the
+  contact row lock, so retries and double submits are reported, not duplicated.
+  Gated by `ledger.manage` in the service layer. Buyer-side `PURCHASE` mirror
+  postponed. See [accounting.md](./accounting.md).
+- [x] **Re-recording a corrected trade** — reversing a trade entry stamps
+  `LedgerEntry.reversed_at` and frees the idempotency slot, so a wrong amount can be
+  reversed and re-recorded with the reservation link intact. A second *un-reversed*
+  trade entry is still refused. See [accounting.md](./accounting.md).
+- [x] **Contact/partner-specific price override** — `pricing.ContactPrice`, one
+  amount per (contact, lot). Fallback: partner-specific → B2B/B2C tier →
+  «استعلام بگیرید». Applies only in the B2B marketplace and only to the business the
+  contact is linked to; the public catalog and anonymous viewers never see one.
+  Managed from the lot's partner-price screen under `prices.edit`, shown read-only on
+  the contact page. See [pricing.md](./pricing.md).
+- [ ] Inquiry pipeline UX  
+- [ ] Business dashboard analytics  
+- [ ] Platform metrics scaffolding  
+
+Also closed in this slice (authorization/navigation debt, not new product):
+purchase requests and offers are gated by `inquiries.view` / `inquiries.respond`
+instead of being open to any logged-in member; buyer-side offer acceptance no
+longer borrows the seller-side `reservations.manage`; attaching a lot to a catalog
+or an offer rejects a crafted lot id instead of dropping it; and the ledger has a
+real entry point at `/app/accounting/`.
+
+### Balance convention (documented, used everywhere)
+
+Balance is stored/computed from the **owning business's perspective**:
+
+- `balance > 0` ⇒ «طرف‌حساب به ما بدهکار است» (they owe us)
+- `balance < 0` ⇒ «ما به طرف‌حساب بدهکاریم» (we owe them)
+- `balance == 0` ⇒ تسویه
+
+A bare signed number is never shown without this label. Money is always `Decimal`.
 
 ## Phase 8 — Trust & Administration
 

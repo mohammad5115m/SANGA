@@ -10,7 +10,12 @@ from django.utils import timezone
 from apps.businesses.models import BusinessMembership
 from apps.businesses.services import add_warehouse, create_business_for_owner
 from apps.catalog.models import CustomCatalog
-from apps.catalog.services import b2c_price_context, create_custom_catalog
+from apps.catalog.services import (
+    CatalogError,
+    b2c_price_context,
+    create_custom_catalog,
+    set_catalog_lots,
+)
 from apps.inventory.models import InventoryLot, Product
 from apps.inquiries.models import Inquiry
 from apps.pricing.services import ensure_default_tiers, set_lot_prices
@@ -152,3 +157,77 @@ def test_shared_catalog_is_b2c_safe(client, seller_setup):
     assert "1111111" not in content.replace(",", "")
     catalog.refresh_from_db()
     assert catalog.view_count == 1
+
+
+@pytest.mark.django_db
+def test_catalog_refuses_a_lot_belonging_to_another_business(seller_setup):
+    intruder_owner = User.objects.create_user(phone="09125550002", full_name="مزاحم")
+    intruder = create_business_for_owner(owner=intruder_owner, name="سنگ مزاحم", city="تهران")
+    intruder_lot = InventoryLot.objects.create(
+        business=intruder,
+        product=Product.objects.create(
+            business=intruder, commercial_name="گرانیت مزاحم", stone_type="گرانیت"
+        ),
+        warehouse=add_warehouse(business=intruder, name="انبار مزاحم", is_default=True),
+        lot_code="INT-1",
+        status=InventoryLot.Status.AVAILABLE,
+        available_sqm=Decimal("10"),
+        original_sqm=Decimal("10"),
+    )
+    catalog = create_custom_catalog(
+        business=seller_setup["business"],
+        membership=seller_setup["membership"],
+        title="کاتالوگ سالم",
+        lot_ids=[seller_setup["public_lot"].id],
+    )
+
+    # A crafted lot id must be refused outright, not quietly dropped.
+    with pytest.raises(CatalogError):
+        set_catalog_lots(
+            catalog=catalog,
+            membership=seller_setup["membership"],
+            lot_ids=[seller_setup["public_lot"].id, intruder_lot.id],
+        )
+    assert list(catalog.items.values_list("lot_id", flat=True)) == [seller_setup["public_lot"].id]
+
+
+@pytest.mark.django_db
+def test_catalog_refuses_a_malformed_lot_id(seller_setup):
+    catalog = create_custom_catalog(
+        business=seller_setup["business"],
+        membership=seller_setup["membership"],
+        title="کاتالوگ سالم",
+        lot_ids=[seller_setup["public_lot"].id],
+    )
+    with pytest.raises(CatalogError):
+        set_catalog_lots(
+            catalog=catalog,
+            membership=seller_setup["membership"],
+            lot_ids=["not-a-uuid"],
+        )
+    assert catalog.items.count() == 1
+
+
+@pytest.mark.django_db
+def test_creating_a_catalog_with_a_foreign_lot_is_refused(seller_setup):
+    intruder_owner = User.objects.create_user(phone="09125550003", full_name="مزاحم دوم")
+    intruder = create_business_for_owner(owner=intruder_owner, name="سنگ مزاحم ۲", city="تهران")
+    intruder_lot = InventoryLot.objects.create(
+        business=intruder,
+        product=Product.objects.create(
+            business=intruder, commercial_name="گرانیت مزاحم", stone_type="گرانیت"
+        ),
+        warehouse=add_warehouse(business=intruder, name="انبار مزاحم ۲", is_default=True),
+        lot_code="INT-2",
+        status=InventoryLot.Status.AVAILABLE,
+        available_sqm=Decimal("10"),
+        original_sqm=Decimal("10"),
+    )
+    with pytest.raises(CatalogError):
+        create_custom_catalog(
+            business=seller_setup["business"],
+            membership=seller_setup["membership"],
+            title="کاتالوگ آلوده",
+            lot_ids=[intruder_lot.id],
+        )
+    assert not CustomCatalog.objects.filter(title="کاتالوگ آلوده").exists()

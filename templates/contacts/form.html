@@ -1,0 +1,64 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}{% if mode == 'edit' %}ویرایش مخاطب{% else %}افزودن مخاطب{% endif %} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{% if mode == 'edit' %}ویرایش مخاطب{% else %}افزودن مخاطب{% endif %}</h1>
+    <p class="page-lead">فقط اطلاعات کاربردی را وارد کنید. این مخاطب خصوصی کسب‌وکار شماست.</p>
+  </div>
+
+  <section class="panel stack-md">
+    <form method="post" class="stack-md" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+
+      <label class="field">
+        <span class="field-label">{{ form.display_name.label }}</span>
+        {{ form.display_name }}
+        {% if form.display_name.errors %}<span class="field-error">{{ form.display_name.errors|striptags }}</span>{% endif %}
+      </label>
+
+      <label class="field">
+        <span class="field-label">{{ form.phone.label }}</span>
+        {{ form.phone }}
+        {% if form.phone.errors %}<span class="field-error">{{ form.phone.errors|striptags }}</span>{% endif %}
+      </label>
+
+      <fieldset class="field">
+        <span class="field-label">نوع ارتباط</span>
+        <div class="badge-row">
+          <label class="checkbox-inline">{{ form.is_customer }} <span>مشتری</span></label>
+          <label class="checkbox-inline">{{ form.is_supplier }} <span>تأمین‌کننده</span></label>
+          <label class="checkbox-inline">{{ form.is_trader }} <span>واسطه</span></label>
+        </div>
+      </fieldset>
+
+      <label class="field">
+        <span class="field-label">{{ form.address.label }}</span>
+        {{ form.address }}
+      </label>
+
+      <label class="field">
+        <span class="field-label">{{ form.notes.label }}</span>
+        {{ form.notes }}
+      </label>
+
+      <label class="field">
+        <span class="field-label">{{ form.linked_business.label }}</span>
+        {{ form.linked_business }}
+        {% if form.linked_business.errors %}<span class="field-error">{{ form.linked_business.errors|striptags }}</span>{% endif %}
+      </label>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" type="submit">ذخیره</button>
+        {% if mode == 'edit' %}
+          <a class="btn btn-ghost" href="{% url 'contacts:detail' contact.id %}">انصراف</a>
+        {% else %}
+          <a class="btn btn-ghost" href="{% url 'contacts:list' %}">انصراف</a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

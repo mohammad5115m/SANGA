@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from django.db import transaction
 from django.utils import timezone
@@ -14,6 +15,9 @@ from apps.notifications.models import Notification
 from apps.notifications.services import notify_user
 
 from .models import Reservation
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from apps.accounting.services import TradeEntryRequest
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +272,20 @@ def cancel_reservation(
 
 
 @transaction.atomic
-def convert_reservation(*, reservation: Reservation, membership: BusinessMembership) -> Reservation:
+def convert_reservation(
+    *,
+    reservation: Reservation,
+    membership: BusinessMembership,
+    trade_entry: TradeEntryRequest | None = None,
+) -> Reservation:
+    """Mark an approved reservation as sold.
+
+    Conversion is **not** a financial event: with ``trade_entry`` omitted nothing
+    is written to any ledger. Callers that want the sale recorded in the same
+    transaction pass an ``accounting.services.TradeEntryRequest``; the entry is
+    then posted with the seller's ``ledger.manage`` capability and a
+    ``LedgerError`` rolls the whole conversion back.
+    """
     _require_manage(membership)
     if membership.business_id != reservation.seller_business_id:
         raise ReservationError("فقط فروشنده می‌تواند رزرو را نهایی کند.")
@@ -286,6 +303,23 @@ def convert_reservation(*, reservation: Reservation, membership: BusinessMembers
     reservation.decided_by = membership.user
     reservation.decided_at = timezone.now()
     reservation.save(update_fields=["status", "decided_by", "decided_at", "updated_at"])
+
+    if trade_entry is not None:
+        # Deferred import: accounting reads reservations.models, so importing its
+        # services at module level would couple the two service modules.
+        from apps.accounting.services import post_trade_entry
+
+        post_trade_entry(
+            reservation=reservation,
+            business=reservation.seller_business,
+            contact=trade_entry.contact,
+            membership=membership,
+            amount=trade_entry.amount,
+            description=trade_entry.description,
+            reference=trade_entry.reference,
+            occurred_on=trade_entry.occurred_on,
+        )
+
     _notify_business_managers(
         reservation.requester_business,
         kind=Notification.Kind.RESERVATION_DECISION,
@@ -303,8 +337,8 @@ def create_reservation_from_offer(
     """Create an auto-approved hold from an accepted private offer.
 
     Called inside ``decide_offer``'s atomic block. The buyer (PR owner) has
-    already passed the reservation-management check; acceptance is a mutual
-    agreement, so the seller's lot is locked immediately.
+    already passed the purchase-request capability check there; acceptance is a
+    mutual agreement, so the seller's lot is locked immediately.
     """
     lot = offer.lot
     if lot is None:

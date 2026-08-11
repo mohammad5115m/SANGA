@@ -7,11 +7,17 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
+from apps.accounting.selectors import trade_entry_for_reservation
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import RESERVATIONS_MANAGE, RESERVATIONS_VIEW
+from apps.businesses.permissions import (
+    LEDGER_MANAGE,
+    RESERVATIONS_MANAGE,
+    RESERVATIONS_VIEW,
+)
 from apps.marketplace.selectors import get_marketplace_lot
 
 from .forms import ExtendReservationForm, ReservationRequestForm
+from .models import Reservation
 from .selectors import (
     get_reservation_for_business,
     incoming_reservations,
@@ -52,6 +58,15 @@ def detail(request: HttpRequest, reservation_id) -> HttpResponse:
         messages.error(request, "رزرو یافت نشد.")
         return redirect("reservations:inbox")
     is_seller = reservation.seller_business_id == request.business.id
+    # The financial step is the seller's, is separate from conversion, and is
+    # offered only while it can still be done exactly once.
+    trade_entry = trade_entry_for_reservation(request.business, reservation) if is_seller else None
+    can_record_trade = (
+        is_seller
+        and trade_entry is None
+        and reservation.status == Reservation.Status.CONVERTED
+        and request.membership.has_capability(LEDGER_MANAGE)
+    )
     return render(
         request,
         "reservations/detail.html",
@@ -59,6 +74,8 @@ def detail(request: HttpRequest, reservation_id) -> HttpResponse:
             "reservation": reservation,
             "is_seller": is_seller,
             "extend_form": ExtendReservationForm(),
+            "trade_entry": trade_entry,
+            "can_record_trade": can_record_trade,
         },
     )
 

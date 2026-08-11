@@ -71,8 +71,11 @@ class InventoryLot(models.Model):
 
     class Visibility(models.TextChoices):
         PRIVATE = "private", "داخلی"
-        SELECTED_PARTNERS = "selected_partners", "شرکای انتخابی"
-        ALL_PARTNERS = "all_partners", "همه شرکای تأییدشده"
+        # There is no per-lot allowlist: SELECTED_PARTNERS is a legacy alias of
+        # ALL_PARTNERS and both mean "approved partners only". The value is kept
+        # so existing rows stay readable; new lots should use ALL_PARTNERS.
+        SELECTED_PARTNERS = "selected_partners", "شرکای تأییدشده (قدیمی)"
+        ALL_PARTNERS = "all_partners", "شرکای تأییدشده"
         CUSTOMER_CATALOG = "customer_catalog", "کاتالوگ مشتری"
         PUBLIC = "public", "عمومی"
 

@@ -1,45 +1,52 @@
 from __future__ import annotations
 
-from django.db.models import Prefetch, Q, QuerySet
+from django.db.models import Exists, OuterRef, Prefetch, Q, QuerySet
 
 from apps.businesses.models import Business
 from apps.core.persian import normalize_persian_text
 from apps.inventory.models import InventoryLot
 from apps.partners.models import PartnerRelation
-from apps.pricing.models import LotPrice
+from apps.pricing.models import ContactPrice, LotPrice
 
 
-def approved_supplier_ids(viewer_business: Business) -> list:
-    return list(
+def approved_partnership_exists(viewer_business: Business) -> Exists:
+    """
+    Correlated EXISTS on the outer lot's owning business, so the partnership gate
+    costs one subquery for the whole queryset instead of a lookup per lot.
+    """
+    return Exists(
         PartnerRelation.objects.filter(
+            supplier_business_id=OuterRef("business_id"),
             partner_business=viewer_business,
             status=PartnerRelation.Status.APPROVED,
-        ).values_list("supplier_business_id", flat=True)
+        )
     )
 
 
 def marketplace_lots_for(viewer_business: Business) -> QuerySet[InventoryLot]:
     """
     B2B marketplace visibility rules:
-    - public / all_partners: visible to any marketplace member (active business)
-    - selected_partners: only if approved PartnerRelation with supplier
+    - public: visible to any marketplace member (active business)
+    - all_partners / selected_partners: only if an approved PartnerRelation exists
+      between the viewer and the lot's supplier
     - never private
     - exclude viewer's own lots
     """
-    approved_ids = approved_supplier_ids(viewer_business)
     b2b_prices = LotPrice.objects.select_related("tier").filter(tier__code="b2b", tier__is_active=True)
-
-    visibility_q = Q(
-        visibility__in=[
-            InventoryLot.Visibility.PUBLIC,
-            InventoryLot.Visibility.ALL_PARTNERS,
-        ]
+    # Only this viewer's own overrides, so the prefetch can never carry another
+    # partner's negotiated price into the page.
+    viewer_contact_prices = ContactPrice.objects.select_related("contact").filter(
+        contact__linked_business=viewer_business,
+        contact__is_active=True,
     )
-    if approved_ids:
-        visibility_q |= Q(
-            visibility=InventoryLot.Visibility.SELECTED_PARTNERS,
-            business_id__in=approved_ids,
-        )
+
+    visibility_q = Q(visibility=InventoryLot.Visibility.PUBLIC) | Q(
+        approved_partnership_exists(viewer_business),
+        visibility__in=[
+            InventoryLot.Visibility.ALL_PARTNERS,
+            InventoryLot.Visibility.SELECTED_PARTNERS,
+        ],
+    )
 
     return (
         InventoryLot.objects.filter(
@@ -57,6 +64,7 @@ def marketplace_lots_for(viewer_business: Business) -> QuerySet[InventoryLot]:
             # No to_attr: populates lot.prices.all() with ONLY B2B rows so B2C
             # prices are never loaded in marketplace views.
             Prefetch("prices", queryset=b2b_prices),
+            Prefetch("contact_prices", queryset=viewer_contact_prices),
             "media",
         )
         .order_by("-is_urgent_sale", "-inventory_confirmed_at", "-updated_at")

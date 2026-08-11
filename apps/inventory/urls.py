@@ -18,6 +18,11 @@ urlpatterns = [
     path("quick-add/review/", views.quick_add_review, name="quick_add_review"),
     path("lots/<uuid:lot_id>/", views.lot_detail, name="lot_detail"),
     path("lots/<uuid:lot_id>/edit/", views.lot_edit, name="lot_edit"),
+    path(
+        "lots/<uuid:lot_id>/partner-prices/",
+        views.lot_partner_prices,
+        name="lot_partner_prices",
+    ),
     path("lots/<uuid:lot_id>/confirm/", views.lot_confirm, name="lot_confirm"),
     path("lots/<uuid:lot_id>/duplicate/", views.lot_duplicate, name="lot_duplicate"),
     path("lots/<uuid:lot_id>/sold/", views.lot_mark_sold, name="lot_mark_sold"),

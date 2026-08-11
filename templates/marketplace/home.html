@@ -60,7 +60,8 @@
           <div class="list-title">{{ card.product.commercial_name }}</div>
           <div class="muted">{{ card.supplier.name }}</div>
           <div class="catalog-price">{{ card.price.label }}</div>
-          <div class="muted">{{ card.lot.available_sqm }} m² · {{ card.lot.get_visibility_display }}</div>
+          {# The lot's visibility is the supplier's internal distribution choice: never shown to other businesses. #}
+          <div class="muted">{{ card.lot.available_sqm }} m²</div>
         </div>
       </a>
     {% empty %}

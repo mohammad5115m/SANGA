@@ -1,0 +1,84 @@
+{% extends "layouts/app_shell.html" %}
+{% load humanize %}
+{% block title %}دفتر حساب {{ contact.display_name }} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">دفتر حساب</h1>
+      <p class="page-lead">{{ contact.display_name }}</p>
+    </div>
+    <div class="btn-row">
+      {% if can_manage %}
+        <a class="btn btn-primary btn-sm" href="{% url 'accounting:add_entry' contact.id %}">ثبت سند</a>
+      {% endif %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:print' contact.id %}" target="_blank" rel="noopener">چاپ صورت‌حساب</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'contacts:detail' contact.id %}">بازگشت</a>
+    </div>
+  </div>
+
+  <section class="panel balance-card balance-{{ balance.state }}">
+    <div class="balance-label">{{ balance.label }}</div>
+    <div class="balance-amount">{{ balance.amount|intcomma }} <span class="balance-unit">ریال</span></div>
+    {% if balance.state == 'settled' %}
+      <div class="muted">حساب این مخاطب تسویه است.</div>
+    {% endif %}
+  </section>
+
+  <form method="get" class="filter-bar stack-sm">
+    <div class="field-grid">
+      <label class="field">
+        <span class="field-label">از تاریخ</span>
+        <input class="field-input" type="date" name="from" value="{{ filters.from }}">
+      </label>
+      <label class="field">
+        <span class="field-label">تا تاریخ</span>
+        <input class="field-input" type="date" name="to" value="{{ filters.to }}">
+      </label>
+      <label class="field">
+        <span class="field-label">نوع سند</span>
+        <select class="field-input" name="type">
+          <option value="">همه</option>
+          {% for value, label in type_choices %}
+            <option value="{{ value }}" {% if filters.type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary btn-sm" type="submit">اعمال فیلتر</button>
+      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:statement' contact.id %}">حذف فیلتر</a>
+    </div>
+  </form>
+
+  <div class="list-stack">
+    {% for entry in entries %}
+      <article class="list-item ledger-row">
+        <div>
+          <div class="list-title">{{ entry.get_entry_type_display }}</div>
+          <div class="muted">
+            {{ entry.occurred_on }}
+            {% if entry.reference %} · مرجع: {{ entry.reference }}{% endif %}
+          </div>
+          {% if entry.description %}<div class="muted">{{ entry.description }}</div>{% endif %}
+          {% if entry.related_lot %}<div class="muted" dir="ltr">{{ entry.related_lot.lot_code }}</div>{% endif %}
+        </div>
+        <div class="ledger-amounts">
+          <div class="ledger-delta {% if entry.is_debit %}is-debit{% else %}is-credit{% endif %}">
+            {% if entry.is_debit %}+{% else %}−{% endif %}{{ entry.amount|intcomma }}
+          </div>
+          <div class="muted">مانده: {{ entry.balance_after|intcomma }}</div>
+          {% if can_manage and entry.entry_type != 'reversal' and entry.id not in reversed_ids %}
+            <a class="btn btn-ghost btn-sm" href="{% url 'accounting:reverse' entry.id %}">برگشت</a>
+          {% elif entry.id in reversed_ids %}
+            <span class="badge badge-muted">برگشت‌خورده</span>
+          {% endif %}
+        </div>
+      </article>
+    {% empty %}
+      <div class="empty-state">هنوز سندی برای این مخاطب ثبت نشده است.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

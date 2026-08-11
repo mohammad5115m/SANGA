@@ -7,8 +7,9 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
-from apps.businesses.decorators import business_login_required
-from apps.matching.models import MatchResult
+from apps.businesses.decorators import business_login_required, require_capability
+from apps.businesses.permissions import INQUIRIES_RESPOND, INQUIRIES_VIEW
+from apps.matching.selectors import visible_matches_for
 from apps.matching.services import persist_matches
 
 from .forms import PurchaseOfferForm, PurchaseRequestForm
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 @business_login_required
+@require_capability(INQUIRIES_VIEW)
 def my_list(request: HttpRequest) -> HttpResponse:
     if not request.business:
         return redirect("businesses:onboarding_start")
@@ -41,6 +43,7 @@ def my_list(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
+@require_capability(INQUIRIES_VIEW)
 def network_list(request: HttpRequest) -> HttpResponse:
     if not request.business:
         return redirect("businesses:onboarding_start")
@@ -49,6 +52,7 @@ def network_list(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
+@require_capability(INQUIRIES_RESPOND)
 @require_http_methods(["GET", "POST"])
 def create(request: HttpRequest) -> HttpResponse:
     if not request.business:
@@ -73,6 +77,7 @@ def create(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
+@require_capability(INQUIRIES_VIEW)
 def detail(request: HttpRequest, pr_id) -> HttpResponse:
     if not request.business:
         return redirect("businesses:onboarding_start")
@@ -81,11 +86,9 @@ def detail(request: HttpRequest, pr_id) -> HttpResponse:
         messages.error(request, "درخواست یافت نشد.")
         return redirect("purchase_requests:my_list")
     offers = offers_for_requester(pr)
-    matches = (
-        MatchResult.objects.filter(purchase_request=pr)
-        .select_related("lot", "lot__product", "lot__business")
-        .order_by("-score")[:30]
-    )
+    # Persisted matches are re-checked against current marketplace visibility, so a
+    # revoked partnership hides them immediately instead of at the next rematch.
+    matches = visible_matches_for(pr, request.business)[:30]
     return render(
         request,
         "purchase_requests/detail.html",
@@ -94,6 +97,7 @@ def detail(request: HttpRequest, pr_id) -> HttpResponse:
 
 
 @business_login_required
+@require_capability(INQUIRIES_RESPOND)
 @require_POST
 def rematch(request: HttpRequest, pr_id) -> HttpResponse:
     pr = get_own_request(request.business, pr_id) if request.business else None
@@ -106,6 +110,7 @@ def rematch(request: HttpRequest, pr_id) -> HttpResponse:
 
 
 @business_login_required
+@require_capability(INQUIRIES_RESPOND)
 @require_POST
 def close(request: HttpRequest, pr_id) -> HttpResponse:
     pr = get_own_request(request.business, pr_id) if request.business else None
@@ -122,6 +127,7 @@ def close(request: HttpRequest, pr_id) -> HttpResponse:
 
 
 @business_login_required
+@require_capability(INQUIRIES_VIEW)
 @require_http_methods(["GET", "POST"])
 def network_detail(request: HttpRequest, pr_id) -> HttpResponse:
     if not request.business:
@@ -131,7 +137,14 @@ def network_detail(request: HttpRequest, pr_id) -> HttpResponse:
         messages.error(request, "این درخواست در شبکه قابل مشاهده نیست.")
         return redirect("purchase_requests:network_list")
 
+    # Browsing the demand board only needs inquiries.view; quoting on it needs
+    # inquiries.respond, which the service enforces again.
+    can_offer = request.membership.has_capability(INQUIRIES_RESPOND)
     my_offer = my_offer_for(pr, request.business)
+    if request.method == "POST" and not can_offer:
+        messages.error(request, "دسترسی لازم برای ارسال پیشنهاد را ندارید.")
+        return redirect("purchase_requests:network_detail", pr_id=pr.id)
+
     form = PurchaseOfferForm(request.POST or None, business=request.business)
     if request.method == "POST" and form.is_valid():
         try:
@@ -154,11 +167,12 @@ def network_detail(request: HttpRequest, pr_id) -> HttpResponse:
     return render(
         request,
         "purchase_requests/network_detail.html",
-        {"pr": pr, "form": form, "my_offer": my_offer},
+        {"pr": pr, "form": form, "my_offer": my_offer, "can_offer": can_offer},
     )
 
 
 @business_login_required
+@require_capability(INQUIRIES_RESPOND)
 @require_POST
 def offer_decide(request: HttpRequest, offer_id) -> HttpResponse:
     offer = get_object_or_404(

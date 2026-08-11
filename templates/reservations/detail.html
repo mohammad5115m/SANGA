@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+{% load humanize %}
 {% block title %}رزرو {{ reservation.lot.lot_code }} | سنگا{% endblock %}
 
 {% block content %}
@@ -55,6 +56,27 @@
       <form method="post" action="{% url 'reservations:cancel' reservation.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit">لغو درخواست</button></form>
     </section>
     {% endif %}
+  {% endif %}
+
+  {% if is_seller and reservation.status == 'converted' %}
+  <section class="panel stack-sm">
+    <h2 class="section-title">سند مالی این معامله</h2>
+    {% if trade_entry %}
+      <div class="kv"><span>طرف حساب</span><strong>{{ trade_entry.contact.display_name }}</strong></div>
+      <div class="kv"><span>مبلغ</span><strong>{{ trade_entry.amount|intcomma }} ریال</strong></div>
+      <div class="kv"><span>تاریخ سند</span><strong>{{ trade_entry.occurred_on }}</strong></div>
+      <div class="btn-row">
+        <a class="btn btn-ghost btn-sm" href="{% url 'accounting:statement' trade_entry.contact_id %}">مشاهده دفتر حساب</a>
+      </div>
+    {% elif can_record_trade %}
+      <p class="muted">تبدیل رزرو به فروش به‌خودی‌خود سند مالی ایجاد نمی‌کند. اگر می‌خواهید این معامله در دفتر حساب ثبت شود، مرحله زیر را انجام دهید.</p>
+      <div class="btn-row">
+        <a class="btn btn-primary btn-sm" href="{% url 'accounting:record_trade' reservation.id %}">ثبت سند مالی</a>
+      </div>
+    {% else %}
+      <p class="muted">سند مالی برای این معامله ثبت نشده است؛ ثبت آن به دسترسی «مدیریت دفتر حساب» نیاز دارد.</p>
+    {% endif %}
+  </section>
   {% endif %}
 </section>
 {% endblock %}

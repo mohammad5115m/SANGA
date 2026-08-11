@@ -11,6 +11,9 @@
 
 ## 2. Entity Relationship Overview
 
+The diagram below lists **only models that exist in code today**. Anything planned
+but unbuilt lives in §11, never here.
+
 ```mermaid
 erDiagram
   User ||--o{ BusinessMembership : has
@@ -24,17 +27,25 @@ erDiagram
   InventoryLot ||--o{ LotPrice : priced_as
   PriceTier ||--o{ LotPrice : tier
   Business ||--o{ PartnerRelation : supplier_or_partner
+  Business ||--o{ SupplierFollow : follows
+  Business ||--o{ SavedSearch : saves
   InventoryLot ||--o{ Inquiry : about
   InventoryLot ||--o{ Reservation : reserved_as
   Business ||--o{ PurchaseRequest : creates
   PurchaseRequest ||--o{ PurchaseOffer : receives
+  PurchaseRequest ||--o{ MatchResult : matched_to
+  InventoryLot ||--o{ MatchResult : matched_lot
   Business ||--o{ CustomCatalog : publishes
   CustomCatalog ||--o{ CustomCatalogItem : contains
   InventoryLot ||--o{ CustomCatalogItem : included
   User ||--o{ Notification : receives
-  Business ||--o{ AuditEvent : scoped
-  User ||--o{ CustomerProfile : "may link"
-  Business ||--o{ CustomerProfile : owns
+  Business ||--o{ Contact : owns
+  Business |o--o{ Contact : "linked as partner"
+  Contact ||--o{ ContactPrice : "quoted at"
+  InventoryLot ||--o{ ContactPrice : "overridden for"
+  Business ||--o{ LedgerEntry : scoped
+  Contact ||--o{ LedgerEntry : "statement of"
+  LedgerEntry |o--o| LedgerEntry : reverses
 ```
 
 ## 3. Core Entities
@@ -50,7 +61,8 @@ erDiagram
 | is_active / is_staff / is_superuser | Django auth |
 | date_joined / last_login | Standard |
 
-Related: `OTPChallenge`, `UserSessionDevice` (optional Phase 1.5).
+Related: `OTPChallenge`. (There is no `UserSessionDevice` model; per-device session
+tracking is not built.)
 
 ### businesses.Business
 
@@ -124,7 +136,7 @@ Physical batch.
 | warehouse | FK |
 | lot_code | Unique per business |
 | status | draft/available/reservation_pending/reserved/partially_sold/sold/expired/hidden/needs_confirmation |
-| visibility | private/selected_partners/all_partners/customer_catalog/public |
+| visibility | private/selected_partners/all_partners/customer_catalog/public (`selected_partners` is a legacy alias of `all_partners`; both require an approved partnership) |
 | available_sqm / original_sqm | Decimal |
 | slab_count / bundle_count | optional ints |
 | length_cm / width_cm / thickness_mm | dimensions |
@@ -157,11 +169,29 @@ Check constraints: quantities ≥ 0; available ≤ original (+ reservation accou
 |-------|-------|
 | lot | FK |
 | tier | FK |
-| amount | Decimal(12,2) |
+| amount | Decimal(14,2) |
 | currency | default IRR (or explicit) |
 | unit | per_sqm / per_slab / inquiry_only |
 
 Unique: `(lot, tier)`.
+
+### pricing.ContactPrice
+
+Partner-specific price: one number, one contact, one lot.
+
+| Field | Notes |
+|-------|-------|
+| contact | FK `contacts.Contact` (tenant scoping rides on `contact.business`) |
+| lot | FK `inventory.InventoryLot` |
+| amount | Decimal(14,2) |
+| currency | default IRR |
+| unit | per_sqm / per_slab / inquiry_only |
+| created_by / created_at / updated_at | audit trail for a commercial decision |
+
+Unique: `(contact, lot)`. The service refuses unless
+`contact.business_id == lot.business_id`. Visible only to the business named by
+`contact.linked_business`, and only through the `b2b_partner` audience — see
+[pricing.md](./pricing.md).
 
 ### inventory.LotMedia
 
@@ -184,8 +214,13 @@ Unique: `(lot, tier)`.
 | supplier_business | |
 | partner_business | |
 | status | requested/approved/rejected/blocked |
-| can_see_selected_lots | for selected_partners visibility |
+| message | optional note sent with the request |
 | created_at / decided_at | |
+
+`status == approved` is the single gate for partner-only lot visibility. There is
+no per-lot allowlist field and no `can_see_selected_lots` flag: an approved
+relation grants access to every `selected_partners` / `all_partners` lot of the
+supplier.
 
 ### partners.SupplierFollow
 
@@ -224,9 +259,44 @@ Links: business, requester (user/customer), optional lot/catalog/PR, status pipe
 
 Quantity locking via transactions + `select_for_update`.
 
-### customers.CustomerProfile
+### contacts.Contact
 
-Lightweight CRM per business: name, phone, company, city, notes, source, linked user optional.
+The CRM-lite record; there is **no** `customers.CustomerProfile` model (the
+`customers.manage` capability code predates this app and still governs it).
+
+| Field | Notes |
+|-------|-------|
+| business | FK — owning tenant; a contact is never visible to another business |
+| display_name / phone / address / notes | |
+| is_customer / is_supplier / is_trader | multi-type; at least one required |
+| linked_business | Optional FK to an **approved partner** business |
+| is_active | archive instead of delete |
+| created_by / created_at / updated_at | |
+
+Unique: `(business, linked_business)` where `linked_business` is not null
+(`uniq_linked_business_per_business`) — one partner maps to at most one contact,
+so a partner's balance can never split across two ledgers.
+
+### accounting.LedgerEntry
+
+Immutable per-contact ledger entry. Full semantics in
+[accounting.md](./accounting.md).
+
+| Field | Notes |
+|-------|-------|
+| business / contact | tenant + statement scope |
+| entry_type | sale / purchase / payment_received / payment_made / adjust_debit / adjust_credit / reversal |
+| amount | Decimal(14,2), positive magnitude, check constraint `> 0` |
+| balance_delta | Decimal(14,2) signed — single source of truth for balance math |
+| balance_after | Decimal(18,2) running balance, computed under a contact row lock |
+| currency / description / reference / occurred_on | |
+| related_lot / related_reservation / reverses | optional links |
+| reversed_at | set on the original when a reversal is posted (bookkeeping flag) |
+| created_by / created_at | |
+
+Constraints: `ledger_amount_positive`; `uniq_trade_entry_per_reservation` on
+`(business, related_reservation)` for trade types with a non-null reservation and
+`reversed_at IS NULL`. `save()` blocks updates and `delete()` raises.
 
 ## 6. Catalog & Sharing
 
@@ -242,20 +312,21 @@ Public share URLs must use B2C-safe serializers only.
 
 ## 7. Platform Cross-Cutting
 
-### notifications.Notification / NotificationPreference
+### notifications.Notification
 
-### audit.AuditEvent
+user, business, kind, title, body, link, read state, timestamps. This is the only
+model in the app — there is no `NotificationPreference` table; per-channel
+preferences are not built.
 
-actor, business, entity_type, entity_id, action, old_values, new_values, ip/user_agent, created_at.  
-Normal users cannot edit/delete.
+### Not built (do not document as if they exist)
 
-### businesses.BusinessVerificationDocument (lightweight)
-
-For pending verification workflow — keep minimal.
-
-### analytics events
-
-Start with derived queries + sparse event table; avoid heavy warehouse prematurely.
+- **`audit.AuditEvent`** — there is no audit app or model. The `audit.view`
+  capability code exists but currently gates nothing. Writes are traced through
+  server-side logging only (`logger.info` in each service).
+- **`businesses.BusinessVerificationDocument`** — `Business.verification_status`
+  exists as a field; the document workflow does not.
+- **analytics event tables** — the `analytics.view` capability code exists but is
+  not checked anywhere yet; there are no dashboards and no event table.
 
 ## 8. Indexing Strategy (Initial)
 
@@ -287,5 +358,8 @@ Prefer TextChoices on models for:
 
 - Shared global stone taxonomy marketplace-wide (can normalize later)
 - Invoice/Order/Payment tables
-- Complex KYC document graph
+- Complex KYC document graph (incl. `BusinessVerificationDocument`)
 - Star ratings / reviews
+- Audit event table (`AuditEvent`) and per-device session tracking
+- A separate customer-profile table; `contacts.Contact` covers CRM-lite
+- Buyer-side `PURCHASE` mirror of a trade ledger entry

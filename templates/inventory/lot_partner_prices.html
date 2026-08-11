@@ -1,0 +1,76 @@
+{% extends "layouts/app_shell.html" %}
+{% load humanize %}
+
+{% block title %}قیمت‌های اختصاصی {{ lot.lot_code }} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">قیمت اختصاصی همکاران</h1>
+      <p class="page-lead">{{ lot.product.commercial_name }} · <span dir="ltr">{{ lot.lot_code }}</span></p>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="{% url 'inventory:lot_detail' lot.id %}">بازگشت به محموله</a>
+  </div>
+
+  <p class="muted">
+    برای هر مخاطبِ متصل به یک همکار می‌توانید قیمت جداگانه بگذارید. آن همکار در بازار
+    همین قیمت را می‌بیند؛ بقیه همکاران قیمت همکار (B2B) را می‌بینند و ویترین عمومی
+    هیچ‌وقت این قیمت را نشان نمی‌دهد.
+  </p>
+
+  <section class="panel stack-sm">
+    <h2 class="section-title">قیمت‌های ثبت‌شده</h2>
+    <div class="list-stack">
+      {% for override in overrides %}
+        <article class="list-item">
+          <div>
+            <div class="list-title">{{ override.contact.display_name }}</div>
+            <div class="muted">
+              {% if override.contact.linked_business %}
+                همکار متصل: {{ override.contact.linked_business.name }}
+              {% else %}
+                این مخاطب به هیچ همکاری متصل نیست، پس این قیمت در بازار دیده نمی‌شود.
+              {% endif %}
+            </div>
+          </div>
+          <div class="btn-row">
+            <strong dir="ltr">
+              {% if override.unit == 'inquiry_only' %}
+                استعلامی
+              {% else %}
+                {{ override.amount|intcomma }} {{ override.currency }}
+              {% endif %}
+            </strong>
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="remove">
+              <input type="hidden" name="contact" value="{{ override.contact_id }}">
+              <button class="btn btn-ghost btn-sm" type="submit">حذف</button>
+            </form>
+          </div>
+        </article>
+      {% empty %}
+        <div class="empty-state">هنوز قیمت اختصاصی‌ای برای این محموله ثبت نشده است.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save">
+    <h2 class="section-title">افزودن یا تغییر قیمت</h2>
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary" type="submit">ذخیره قیمت اختصاصی</button>
+  </form>
+</section>
+{% endblock %}

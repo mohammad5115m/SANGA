@@ -4,23 +4,26 @@
 
 ### A) Business App (authenticated owner/staff)
 
-Mobile bottom nav (core):
+Mobile bottom nav as built (`templates/layouts/app_shell.html`):
 
 1. **خانه** — Dashboard  
 2. **موجودی** — Inventory  
 3. **افزودن** — Quick Add (center action)  
-4. **پیگیری** — Inquiries & Reservations hub  
-5. **بیشتر** — Partners, catalogs, customers, team, settings  
+4. **بازار** — Partner marketplace  
+5. **بیشتر** — Settings hub: contacts, ledger, catalogs, partners, inquiries, purchase requests, demand board, team  
 
-Desktop sidebar mirrors the same IA with grouped sections.
+The desktop top bar carries the same destinations plus **رزروها**, **مخاطبین**,
+**دفتر حساب**, and **کاتالوگ‌ها** directly. The last three are hidden unless the
+membership holds `customers.manage`, `ledger.view`, or `catalog.manage` respectively
+— see [permissions.md](./permissions.md) §10. Hiding a link is a courtesy, never the
+access control.
 
-### B) B2B Partner App
+### B) B2B Partner surface
 
-1. **بازار** — Partner marketplace  
-2. **جستجو** — Advanced search / saved searches  
-3. **درخواست خرید** — Purchase requests  
-4. **پیگیری** — My inquiries/reservations  
-5. **تأمین‌کنندگان** — Followed/approved suppliers  
+There is **no separate partner app**: a partner is just a business, so it uses the
+same shell. Its partner-facing destinations are **بازار** (marketplace, with saved
+searches and supplier follows), **درخواست‌های خرید** and **تابلوی تقاضا** (both
+reached from the settings hub), and **رزروها**.
 
 ### C) B2C Public Catalog
 
@@ -94,7 +97,8 @@ Approved partner browses recent/urgent lots → sees B2B price → inquire or re
 New → Viewed → Contacted → Negotiating → Converted / Closed / Lost
 ```
 
-Assignable to staff; linked to lot/catalog/PR/customer.
+Linked to a lot or a custom catalog. Assignment to a specific staff member is not
+built — `Inquiry` has no assignee field.
 
 ## 9. Reservation Flow
 

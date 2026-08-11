@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import RESERVATIONS_MANAGE
+from apps.businesses.permissions import INQUIRIES_RESPOND
 from apps.inventory.models import InventoryLot
 from apps.matching.services import persist_matches
 from apps.notifications.models import Notification
@@ -24,6 +24,16 @@ class PurchaseRequestError(Exception):
         super().__init__(message)
 
 
+def _require_respond(membership: BusinessMembership | None, message: str) -> None:
+    """Posting demand, quoting on it, and accepting a quote are all the same
+    kind of act — committing the business to a counterparty — so they share the
+    existing ``inquiries.respond`` capability. Viewers, who may browse the demand
+    board, are excluded.
+    """
+    if membership is None or not membership.has_capability(INQUIRIES_RESPOND):
+        raise PurchaseRequestError(message)
+
+
 @transaction.atomic
 def create_purchase_request(
     *,
@@ -33,6 +43,7 @@ def create_purchase_request(
 ) -> PurchaseRequest:
     if membership.business_id != business.id:
         raise PurchaseRequestError("دسترسی نامعتبر است.")
+    _require_respond(membership, "اجازه ثبت درخواست خرید را ندارید.")
     title = (fields.get("title") or "").strip()
     if len(title) < 3:
         raise PurchaseRequestError("عنوان درخواست خیلی کوتاه است.")
@@ -105,6 +116,7 @@ def submit_private_offer(
 ) -> PurchaseOffer:
     if membership.business_id != seller_business.id:
         raise PurchaseRequestError("دسترسی نامعتبر است.")
+    _require_respond(membership, "اجازه ارسال پیشنهاد را ندارید.")
     if seller_business.id == purchase_request.business_id:
         raise PurchaseRequestError("نمی‌توانید روی درخواست خودتان پیشنهاد بدهید.")
     if purchase_request.status in {PurchaseRequest.Status.CLOSED, PurchaseRequest.Status.CANCELLED}:
@@ -167,10 +179,12 @@ def decide_offer(
     pr = offer.purchase_request
     if membership.business_id != pr.business_id:
         raise PurchaseRequestError("فقط صاحب درخواست می‌تواند تصمیم بگیرد.")
-    # Accepting an offer commits the buyer to a reservation, so it is a
-    # reservation-management action and requires the capability.
-    if accept and not membership.has_capability(RESERVATIONS_MANAGE):
-        raise PurchaseRequestError("دسترسی لازم برای پذیرش پیشنهاد را ندارید.")
+    # Deciding on an offer is part of running your own purchase request, so it
+    # takes the same capability as creating one. ``reservations.manage`` used to
+    # be required here, but that is the seller-side name for handing out holds on
+    # your own stock — surprising for a buyer, and it let a member create demand
+    # they could never act on.
+    _require_respond(membership, "اجازه تصمیم‌گیری درباره پیشنهاد را ندارید.")
     if offer.status != PurchaseOffer.Status.SUBMITTED:
         raise PurchaseRequestError("این پیشنهاد قابل تصمیم‌گیری نیست.")
 
@@ -198,6 +212,7 @@ def decide_offer(
 def close_purchase_request(*, purchase_request: PurchaseRequest, membership: BusinessMembership) -> PurchaseRequest:
     if membership.business_id != purchase_request.business_id:
         raise PurchaseRequestError("دسترسی ندارید.")
+    _require_respond(membership, "اجازه لغو درخواست خرید را ندارید.")
     purchase_request.status = PurchaseRequest.Status.CANCELLED
     purchase_request.closed_at = timezone.now()
     purchase_request.save(update_fields=["status", "closed_at", "updated_at"])

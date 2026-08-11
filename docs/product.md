@@ -32,13 +32,19 @@ SANGA solves this by making **inventory the source of truth**, with audience-awa
 
 Do **not** build in early phases:
 
-- payment gateway / escrow / accounting;
+- payment gateway / escrow / invoicing;
 - full logistics / delivery management;
 - public reverse auctions;
 - star-rating reputation systems;
 - AI / image classification / AR;
 - native mobile apps (PWA is enough initially);
 - microservices / Kubernetes / Elasticsearch-first search.
+
+What *did* get built, and where the line sits: `apps/accounting` is a **ledger of
+record** — the seller writes down what a contact owes or is owed («دفتر حساب»),
+including a trade recorded from a converted reservation. It moves no money, issues
+no invoice, and settles nothing. Payments are recorded after the fact, as the trader
+already does on paper. See [accounting.md](./accounting.md).
 
 ## 4. Target Personas
 
@@ -63,8 +69,14 @@ Never collapse these into one model.
 
 - **B2B price**: only for authorized/approved partners (and owner/staff with price permission).  
 - **B2C price**: for public catalog visitors and retail buyers.
+- **Partner-specific price**: one negotiated number for one contact on one lot,
+  visible only to the business that contact is linked to. It overrides the B2B tier
+  for that partner and nobody else.
 
-B2B prices must never leak into public HTML, APIs, JS payloads, metadata, logs visible to users, or caches. This is a **security requirement**.
+Resolution order for any viewer: partner-specific price → the tier their audience is
+allowed to see → «استعلام بگیرید». A missing price is never rendered as zero or blank.
+
+B2B prices must never leak into public HTML, APIs, JS payloads, metadata, logs visible to users, or caches. This is a **security requirement**. A partner-specific price is stricter still: it is dropped for every audience except that one partner.
 
 ## 6. Product Pillars (Priority Order)
 
@@ -118,24 +130,24 @@ Each lot can appear in:
 | Visibility | Audience |
 |-----------|----------|
 | Private / internal | Owner business only |
-| Selected partners | Explicit partner allowlist |
-| All approved B2B partners | Partner marketplace |
+| Approved B2B partners | Partner marketplace, businesses with an approved partnership only |
 | Customer catalog | Business public storefront |
 | Public | Broader public discovery (later / optional) |
 
 Enforcement must be at query/service level, not only UI.
 
+There is no per-lot partner allowlist. The legacy `selected_partners` value is kept
+for existing rows and behaves identically to `all_partners`; a business with no
+approved partnership sees neither, in the list or by direct UUID.
+
 ## 11. Trust & Verification
 
 Business states: `unverified` → `pending` → `verified` / `rejected` / `suspended`
 
-Prefer objective signals:
-
-- Verified Business  
-- Recently Confirmed Inventory  
-- Average Response Time  
-- Successful Reservations  
-- Inventory Accuracy  
+Prefer objective signals. Built today: **Verified Business**
+(`Business.verification_status`) and **Recently Confirmed Inventory**
+(`InventoryLot.freshness`). Still intended but not built: average response time,
+successful-reservation count, inventory-accuracy score.
 
 ## 12. Open Product Risks (Tracked)
 
@@ -143,7 +155,9 @@ Prefer objective signals:
 |------|------------|
 | B2B price leakage | Dedicated pricing service + audience serializers + authz tests |
 | Stale inventory damages trust | Freshness engine + reminders + auto-hide |
-| Overbuilding CRM/accounting | Keep CRM lightweight; no finance module in v1 |
+| Overbuilding CRM/accounting | CRM stays a flat contact list; the ledger stays a record of debts, with no payments, invoices, or double-entry |
+| One partner's balance splitting across two contacts | A partner can be linked to at most one contact per business, enforced by a DB constraint |
+| A wrong ledger amount becoming permanent | Entries are immutable; a reversal frees the trade slot so the correct amount can be re-recorded |
 | Complex permissions confuse staff | Sensible role defaults + clear Persian labels |
 | Public caching of prices/stock | No aggressive PWA cache for inventory/pricing |
 
@@ -154,4 +168,5 @@ Prefer objective signals:
 - [permissions.md](./permissions.md)  
 - [user-flows.md](./user-flows.md)  
 - [roadmap.md](./roadmap.md)  
-- [pricing.md](./pricing.md) (created in Phase 1 foundation)  
+- [pricing.md](./pricing.md)  
+- [accounting.md](./accounting.md)  

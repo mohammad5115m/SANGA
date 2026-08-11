@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}صورت‌حساب {{ contact.display_name }}{% endblock %}
+
+{% block shell %}
+<main class="print-sheet">
+  <div class="print-actions no-print">
+    <button class="btn btn-primary btn-sm" type="button" onclick="window.print()">چاپ / ذخیره PDF</button>
+  </div>
+
+  <header class="print-head">
+    <div>
+      <h1>صورت‌حساب</h1>
+      <div class="muted">{{ business.name }}</div>
+    </div>
+    <div class="print-meta">
+      <div>مخاطب: <strong>{{ contact.display_name }}</strong></div>
+      {% if contact.phone %}<div dir="ltr">{{ contact.phone }}</div>{% endif %}
+    </div>
+  </header>
+
+  <div class="print-balance balance-{{ balance.state }}">
+    {{ balance.label }}: <strong>{{ balance.amount|intcomma }} ریال</strong>
+  </div>
+
+  <table class="print-table">
+    <thead>
+      <tr>
+        <th>تاریخ</th>
+        <th>شرح</th>
+        <th>مرجع</th>
+        <th>بدهکار</th>
+        <th>بستانکار</th>
+        <th>مانده</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+        <tr>
+          <td>{{ entry.occurred_on }}</td>
+          <td>{{ entry.get_entry_type_display }}{% if entry.description %} — {{ entry.description }}{% endif %}</td>
+          <td>{{ entry.reference|default:"—" }}</td>
+          <td>{% if entry.is_debit %}{{ entry.amount|intcomma }}{% else %}—{% endif %}</td>
+          <td>{% if not entry.is_debit %}{{ entry.amount|intcomma }}{% else %}—{% endif %}</td>
+          <td>{{ entry.balance_after|intcomma }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">سندی ثبت نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</main>
+{% endblock %}

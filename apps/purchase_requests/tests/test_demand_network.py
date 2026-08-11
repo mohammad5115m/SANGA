@@ -11,6 +11,7 @@ from apps.businesses.models import BusinessMembership
 from apps.businesses.services import add_warehouse, create_business_for_owner
 from apps.inventory.models import InventoryLot, Product
 from apps.matching.services import RuleBasedMatchingService, persist_matches
+from apps.partners.models import PartnerRelation
 from apps.pricing.services import ensure_default_tiers, set_lot_prices
 from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
 from apps.purchase_requests.services import create_purchase_request, submit_private_offer
@@ -54,6 +55,15 @@ def demand_setup(db):
         inventory_confirmed_at=timezone.now(),
     )
     set_lot_prices(lot=lot, b2b_amount=Decimal("1800000"), b2c_amount=Decimal("2500000"))
+    # Matching only considers lots the buyer is allowed to see, and partner-only
+    # visibility now requires an approved partnership. Created directly to keep
+    # the notification counts in these tests about matching alone.
+    PartnerRelation.objects.create(
+        supplier_business=seller,
+        partner_business=buyer,
+        status=PartnerRelation.Status.APPROVED,
+        decided_at=timezone.now(),
+    )
     return {
         "buyer": buyer,
         "seller": seller,
@@ -174,6 +184,117 @@ def test_rematch_prunes_stale_matches(demand_setup):
     lot.save(update_fields=["available_sqm"])
     persist_matches(pr)
     assert not MatchResult.objects.filter(purchase_request=pr, lot=lot).exists()
+
+
+def _login_as_buyer(client, ctx) -> None:
+    client.force_login(ctx["buyer_user"])
+    session = client.session
+    session["current_business_id"] = str(ctx["buyer"].id)
+    session.save()
+
+
+def _matched_request(ctx) -> PurchaseRequest:
+    return create_purchase_request(
+        business=ctx["buyer"],
+        membership=ctx["buyer_m"],
+        title="نیاز نما برای پروژه",
+        stone_type="تراورتن",
+        color="سفید",
+        required_qty_sqm=Decimal("100"),
+        similar_accepted=True,
+    )
+
+
+def _detail_body(client, pr) -> str:
+    response = client.get(reverse("purchase_requests:detail", kwargs={"pr_id": pr.id}))
+    assert response.status_code == 200
+    return response.content.decode("utf-8")
+
+
+def _assert_supplier_hidden(body: str) -> None:
+    assert "تراورتن سفید تقاضا" not in body
+    assert "فروشنده عرضه" not in body
+    assert "تطبیقی پیدا نشد" in body
+
+
+@pytest.mark.django_db
+def test_buyer_sees_match_from_approved_partner(client, demand_setup):
+    pr = _matched_request(demand_setup)
+    _login_as_buyer(client, demand_setup)
+
+    body = _detail_body(client, pr)
+    assert "تراورتن سفید تقاضا" in body
+    assert "فروشنده عرضه" in body
+
+
+@pytest.mark.django_db
+def test_revoked_partnership_hides_stale_match_without_rematch(client, demand_setup):
+    from apps.matching.models import MatchResult
+
+    pr = _matched_request(demand_setup)
+    relation = PartnerRelation.objects.get(
+        supplier_business=demand_setup["seller"],
+        partner_business=demand_setup["buyer"],
+    )
+    relation.status = PartnerRelation.Status.REJECTED
+    relation.save(update_fields=["status"])
+
+    _login_as_buyer(client, demand_setup)
+    body = _detail_body(client, pr)
+
+    # The stale row survives until the next rematch; the read path must hide it anyway.
+    assert MatchResult.objects.filter(purchase_request=pr, lot=demand_setup["lot"]).exists()
+    _assert_supplier_hidden(body)
+
+
+@pytest.mark.django_db
+def test_lot_turned_private_hides_stale_match_without_rematch(client, demand_setup):
+    pr = _matched_request(demand_setup)
+    lot = demand_setup["lot"]
+    lot.visibility = InventoryLot.Visibility.PRIVATE
+    lot.save(update_fields=["visibility"])
+
+    _login_as_buyer(client, demand_setup)
+    _assert_supplier_hidden(_detail_body(client, pr))
+
+
+@pytest.mark.django_db
+def test_archived_lot_hides_stale_match_without_rematch(client, demand_setup):
+    pr = _matched_request(demand_setup)
+    lot = demand_setup["lot"]
+    lot.archived_at = timezone.now()
+    lot.save(update_fields=["archived_at"])
+
+    _login_as_buyer(client, demand_setup)
+    _assert_supplier_hidden(_detail_body(client, pr))
+
+
+@pytest.mark.django_db
+def test_visible_matches_cost_no_query_per_match(demand_setup, django_assert_num_queries):
+    from apps.matching.selectors import visible_matches_for
+
+    source = demand_setup["lot"]
+    second = InventoryLot.objects.create(
+        business=demand_setup["seller"],
+        product=source.product,
+        warehouse=source.warehouse,
+        lot_code="DEM-2",
+        status=InventoryLot.Status.AVAILABLE,
+        visibility=InventoryLot.Visibility.ALL_PARTNERS,
+        available_sqm=Decimal("300"),
+        original_sqm=Decimal("300"),
+        thickness_mm=Decimal("20"),
+        grade="ممتاز",
+        inventory_confirmed_at=timezone.now(),
+    )
+    pr = _matched_request(demand_setup)
+    assert pr.match_results.count() == 2
+
+    matches = visible_matches_for(pr, demand_setup["buyer"])
+    with django_assert_num_queries(1):
+        rendered = [(m.lot.product.commercial_name, m.lot.business.name) for m in matches]
+    assert len(rendered) == 2
+    assert second.id in {m.lot_id for m in matches}
 
 
 @pytest.mark.django_db

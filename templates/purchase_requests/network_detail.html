@@ -26,6 +26,7 @@
   </section>
   {% endif %}
 
+  {% if can_offer %}
   <section class="panel stack-md">
     <h2 class="section-title">{% if my_offer %}به‌روزرسانی پیشنهاد خصوصی{% else %}ارسال پیشنهاد خصوصی{% endif %}</h2>
     <form method="post" class="stack-md" novalidate>
@@ -41,5 +42,10 @@
       <button class="btn btn-primary" type="submit">ارسال خصوصی</button>
     </form>
   </section>
+  {% else %}
+  <section class="panel stack-sm">
+    <p class="muted">برای ارسال پیشنهاد روی این درخواست، دسترسی پاسخ به استعلام لازم است.</p>
+  </section>
+  {% endif %}
 </section>
 {% endblock %}

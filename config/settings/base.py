@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     "apps.purchase_requests",
     "apps.matching",
     "apps.reservations",
+    "apps.contacts",
+    "apps.accounting",
 ]
 
 MIDDLEWARE = [

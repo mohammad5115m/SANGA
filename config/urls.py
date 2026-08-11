@@ -17,6 +17,8 @@ urlpatterns = [
     path("app/partners/", include("apps.partners.urls")),
     path("app/purchase-requests/", include("apps.purchase_requests.urls")),
     path("app/reservations/", include("apps.reservations.urls")),
+    path("app/contacts/", include("apps.contacts.urls")),
+    path("app/accounting/", include("apps.accounting.urls")),
 ]
 
 if settings.DEBUG:
