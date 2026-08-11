@@ -1,0 +1,27 @@
+{% extends "inventory/wizard/_shell.html" %}
+{% block wizard_title %}بازبینی{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">بازبینی و انتشار</h1>
+    <p class="page-lead">قبل از انتشار سریع چک کنید.</p>
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="list-title">{{ lot.product.commercial_name }}</div>
+    <div class="muted" dir="ltr">{{ lot.lot_code }}</div>
+    <div class="kv"><span>متراژ</span><strong>{{ lot.available_sqm }} m²</strong></div>
+    <div class="kv"><span>انبار</span><strong>{{ lot.warehouse.name }}</strong></div>
+    <div class="kv"><span>نمایش</span><strong>{{ visibility }}</strong></div>
+    {% if prices.b2b %}<div class="kv"><span>B2B</span><strong>{{ prices.b2b.amount }}</strong></div>{% endif %}
+    {% if prices.b2c %}<div class="kv"><span>B2C</span><strong>{{ prices.b2c.amount }}</strong></div>{% endif %}
+  </section>
+
+  <form method="post" class="stack-md">
+    {% csrf_token %}
+    <button class="btn btn-primary btn-block" name="action" value="publish" type="submit">انتشار</button>
+    <button class="btn btn-secondary btn-block" name="action" value="draft" type="submit">ذخیره به‌عنوان پیش‌نویس</button>
+  </form>
+</section>
+{% endblock %}

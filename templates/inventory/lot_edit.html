@@ -1,0 +1,40 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}ویرایش {{ lot.lot_code }} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">ویرایش محموله</h1>
+    <p class="page-lead" dir="ltr">{{ lot.lot_code }}</p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+
+    <h2 class="section-title">قیمت‌ها</h2>
+    {% for field in price_form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">ذخیره</button>
+      <a class="btn btn-ghost" href="{% url 'inventory:lot_detail' lot.id %}">انصراف</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "inventory/wizard/_shell.html" %}
+{% block wizard_title %}نمایش{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">کجا نمایش داده شود؟</h1>
+    <p class="page-lead">نمایش را بعداً هم می‌توانید تغییر دهید.</p>
+  </div>
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-block" type="submit">بازبینی</button>
+  </form>
+</section>
+{% endblock %}

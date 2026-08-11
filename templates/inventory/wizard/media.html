@@ -1,0 +1,38 @@
+{% extends "inventory/wizard/_shell.html" %}
+{% block wizard_title %}عکس و ویدیو{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">عکس‌ها</h1>
+    <p class="page-lead">حداقل یک عکس واقعی از محموله اضافه کنید.</p>
+  </div>
+
+  {% if media_items %}
+  <div class="gallery">
+    {% for media in media_items %}
+      {% if media.kind == 'image' %}
+        <img src="{{ media.file.url }}" alt="" loading="lazy">
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <div class="btn-row">
+      <button class="btn btn-primary" name="continue" type="submit">ذخیره و ادامه</button>
+      <button class="btn btn-secondary" name="add_another" type="submit">ذخیره و افزودن بیشتر</button>
+      <button class="btn btn-ghost" name="skip" type="submit">رد کردن</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

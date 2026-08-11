@@ -11,6 +11,14 @@
 
   <div class="metric-grid">
     <article class="metric">
+      <div class="metric-label">موجودی فعال</div>
+      <div class="metric-value">{{ active_lots }}</div>
+    </article>
+    <article class="metric">
+      <div class="metric-label">نیاز به تأیید</div>
+      <div class="metric-value">{{ needs_confirmation }}</div>
+    </article>
+    <article class="metric">
       <div class="metric-label">انبارهای فعال</div>
       <div class="metric-value">{{ warehouse_count }}</div>
     </article>
@@ -18,25 +26,15 @@
       <div class="metric-label">اعضای تیم</div>
       <div class="metric-value">{{ team_count }}</div>
     </article>
-    <article class="metric">
-      <div class="metric-label">موجودی فعال</div>
-      <div class="metric-value">—</div>
-      <div class="metric-hint">فاز ۲</div>
-    </article>
-    <article class="metric">
-      <div class="metric-label">استعلام‌های باز</div>
-      <div class="metric-value">—</div>
-      <div class="metric-hint">فاز ۳</div>
-    </article>
   </div>
 
   <section class="panel stack-md">
     <h2 class="section-title">اقدام بعدی</h2>
-    <p class="muted">ثبت سریع موجودی در فاز بعد فعال می‌شود. فعلاً انبار و تیم را آماده کنید.</p>
+    <p class="muted">محموله جدید را در کمتر از دو دقیقه ثبت کنید.</p>
     <div class="btn-row">
-      <a class="btn btn-secondary" href="{% url 'businesses:warehouses' %}">مدیریت انبارها</a>
-      <a class="btn btn-ghost" href="{% url 'businesses:team' %}">تیم</a>
-      <a class="btn btn-ghost" href="{% url 'businesses:settings' %}">تنظیمات</a>
+      <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن موجودی</a>
+      <a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">مشاهده موجودی</a>
+      <a class="btn btn-ghost" href="{% url 'businesses:warehouses' %}">انبارها</a>
     </div>
   </section>
 

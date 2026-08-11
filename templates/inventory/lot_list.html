@@ -1,0 +1,69 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}موجودی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">موجودی</h1>
+      <p class="page-lead">محموله‌های فیزیکی کسب‌وکار شما</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن سریع</a>
+  </div>
+
+  <form method="get" class="panel filter-bar">
+    <label class="field">
+      <span class="field-label">جستجو</span>
+      {{ filter_form.q }}
+    </label>
+    <label class="field">
+      <span class="field-label">وضعیت</span>
+      {{ filter_form.status }}
+    </label>
+    <label class="field">
+      <span class="field-label">نمایش</span>
+      {{ filter_form.visibility }}
+    </label>
+    <label class="field">
+      <span class="field-label">فیلتر سریع</span>
+      {{ filter_form.freshness }}
+    </label>
+    <button class="btn btn-secondary" type="submit">اعمال</button>
+  </form>
+
+  <div class="list-stack">
+    {% for row in rows %}
+      <a class="lot-card" href="{% url 'inventory:lot_detail' row.lot.id %}">
+        <div class="lot-thumb">
+          {% if row.primary_media and row.primary_media.kind == 'image' %}
+            <img src="{{ row.primary_media.file.url }}" alt="{{ row.lot.product.commercial_name }}" loading="lazy">
+          {% else %}
+            <div class="lot-thumb-fallback" aria-hidden="true"></div>
+          {% endif %}
+        </div>
+        <div class="lot-body">
+          <div class="list-title">{{ row.lot.product.commercial_name }}</div>
+          <div class="muted" dir="ltr">{{ row.lot.lot_code }} · {{ row.lot.available_sqm }} m²</div>
+          <div class="badge-row">
+            <span class="badge">{{ row.lot.get_status_display }}</span>
+            <span class="badge badge-accent freshness-{{ row.freshness.level.value }}">{{ row.freshness.label }}</span>
+            {% if row.lot.is_urgent_sale %}<span class="badge badge-danger">فروش فوری</span>{% endif %}
+          </div>
+          {% if can_view_prices %}
+          <div class="price-inline muted">
+            {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount }}{% endif %}
+            {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount }}{% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state stack-md">
+        <div>هنوز محموله‌ای ثبت نشده است.</div>
+        <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">اولین محموله را ثبت کنید</a>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -40,13 +40,13 @@ Exit criteria: a user can register via OTP (dev), create a business, add warehou
 
 ## Phase 2 — Inventory Core (heart of the product)
 
-- Product + InventoryLot  
-- Pricing tiers B2B/B2C  
-- Media + thumbnails  
-- Status + visibility  
-- Quick Add wizard  
-- Inventory list/detail/edit/duplicate  
-- Freshness fields + confirm action + Celery tasks  
+- [x] Product + InventoryLot  
+- [x] Pricing tiers B2B/B2C service boundary  
+- [x] Media upload on lots (thumbnails deferred refinement)  
+- [x] Status + visibility  
+- [x] Quick Add wizard (7 steps)  
+- [x] Inventory list/detail/edit/duplicate/hide/archive/sold  
+- [x] Freshness evaluation + one-click confirm + Celery task  
 
 Exit criteria: register a lot in ~90s; both prices stored; public serializers cannot read B2B.
 

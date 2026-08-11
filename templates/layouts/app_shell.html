@@ -22,13 +22,13 @@
   </main>
 
   <nav class="bottom-nav" aria-label="ناوبری اصلی">
-    <a class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'businesses:dashboard' %}">
+    <a class="nav-item {% if request.resolver_match.app_name == 'businesses' and request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'businesses:dashboard' %}">
       <span class="nav-label">خانه</span>
     </a>
-    <a class="nav-item is-disabled" aria-disabled="true" title="به‌زودی">
+    <a class="nav-item {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name == 'lot_list' %}is-active{% endif %}" href="{% url 'inventory:lot_list' %}">
       <span class="nav-label">موجودی</span>
     </a>
-    <a class="nav-item nav-item-primary is-disabled" aria-disabled="true" title="به‌زودی">
+    <a class="nav-item nav-item-primary {% if request.resolver_match.app_name == 'inventory' and 'quick_add' in request.resolver_match.url_name %}is-active{% endif %}" href="{% url 'inventory:quick_add_start' %}">
       <span class="nav-label">افزودن</span>
     </a>
     <a class="nav-item is-disabled" aria-disabled="true" title="به‌زودی">

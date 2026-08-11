@@ -36,11 +36,18 @@ def post_login(request: HttpRequest) -> HttpResponse:
 def dashboard(request: HttpRequest) -> HttpResponse:
     if not request.business:
         return redirect("businesses:onboarding_start")
+    from apps.inventory.models import InventoryLot
+
     warehouses = request.business.warehouses.filter(is_active=True)
+    lots = InventoryLot.objects.filter(business=request.business, archived_at__isnull=True)
     context = {
         "warehouses": warehouses,
         "warehouse_count": warehouses.count(),
         "team_count": request.business.memberships.filter(status=BusinessMembership.Status.ACTIVE).count(),
+        "active_lots": lots.exclude(
+            status__in=[InventoryLot.Status.SOLD, InventoryLot.Status.DRAFT, InventoryLot.Status.HIDDEN]
+        ).count(),
+        "needs_confirmation": lots.filter(status=InventoryLot.Status.NEEDS_CONFIRMATION).count(),
     }
     return render(request, "businesses/dashboard.html", context)
 
