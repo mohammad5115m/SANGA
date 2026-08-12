@@ -246,3 +246,35 @@ def test_unknown_user_cannot_be_used_as_a_membership(seller):
     """Sanity check that the builders provision through the real service."""
     stranger = make_user("09129999999")
     assert not stranger.memberships.exists()
+
+
+# --- stock inquiry -------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_buyer_can_ask_about_stale_stock_and_the_seller_can_answer(client, seller):
+    """The «استعلام موجودی» loop: ask, notify, confirm, and the number returns."""
+    from apps.inquiries.models import Inquiry
+    from apps.notifications.models import Notification
+
+    item = make_item(seller, lot_code="ASK-1", available_sqm="650", stock_valid_for_days=3, b2c="100")
+    expire_stock(item)
+
+    page = client.get(f"/p/{item.public_token}/").content.decode()
+    assert "استعلام موجودی" in page
+
+    response = client.post(
+        f"/stock-inquiry/{item.id}/",
+        {"name": "آقای رضایی", "phone": "09123334455"},
+        follow=True,
+    )
+    assert response.status_code == 200
+
+    inquiry = Inquiry.objects.get()
+    assert inquiry.business_id == seller.id
+    assert inquiry.items.get().item_id == item.id
+    assert Notification.objects.filter(business=seller).exists()
+
+    confirm_item_stock(lot=item, membership=owner_membership(seller), available_sqm=Decimal("300"))
+    item.refresh_from_db()
+    assert stock_view(item).display == StockDisplay.EXACT

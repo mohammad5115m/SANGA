@@ -555,18 +555,3 @@ def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> Inve
             valid_for_days=price.price_valid_for_days,
         )
     return clone
-
-
-def lot_owner_context(lot: InventoryLot, *, can_view_prices: bool = True) -> dict:
-    from apps.pricing.services import resolve_visible_prices
-
-    from .freshness import stock_view
-
-    prices = resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices)
-    primary = next((m for m in lot.media.all() if m.is_primary), None) or next(iter(lot.media.all()), None)
-    return {
-        "lot": lot,
-        "stock": stock_view(lot),
-        "prices": prices,
-        "primary_media": primary,
-    }

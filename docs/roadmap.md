@@ -18,7 +18,7 @@ removed, and what is genuinely left.
 | Buying and selling | Product-bound requests, accept separated from finalize, snapshot-bearing trades |
 | Money | Business-counterparty ledger, exactly-once posting, four manual entry types, FIFO aging |
 | Invoicing | Snapshot invoices, locked per-seller numbering, print view |
-| Public customers | Login-free browsing, multi-product inquiries, customer-purpose OTP, seller inbox |
+| Public customers | Login-free browsing, multi-product inquiries, stock inquiries, customer-purpose OTP, seller inbox |
 | Catalogs | Manual, rule-based and hybrid, resolved live against eligibility |
 | Reports | Ten operational reports with date ranges and print views |
 | UI | Six-destination navigation, operational dashboard, 4-step product creation, media management |
@@ -72,9 +72,9 @@ prompt revisiting it.
 
 Ordered by how likely each is to be asked for:
 
-1. **Stock inquiry as a first-class action.** The model and inbox handle it
-   today; a dedicated button on the public product page, and a one-click
-   "confirm stock" reply from the notification, would close the loop properly.
+1. **One-click stock confirmation from the notification.** A buyer can already
+   ask, the seller is notified, and confirming restores the number — but the
+   seller still has to navigate to the product to do it.
 2. **Bulk product actions.** Confirming stock on twenty products one at a time is
    the most obvious remaining friction.
 3. **Colleague page financial panel.** Balance and invoices already exist; they

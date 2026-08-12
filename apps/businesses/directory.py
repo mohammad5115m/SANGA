@@ -15,7 +15,6 @@ from django.db.models import Q, QuerySet
 
 from apps.core.persian import normalize_persian_text
 
-from .entitlements import subscription_is_current
 from .models import Business, BusinessMembership
 
 
@@ -67,8 +66,3 @@ def representative_of(business: Business) -> BusinessMembership | None:
     )
     owner = next((m for m in memberships if m.role == BusinessMembership.Role.OWNER), None)
     return owner or memberships.first()
-
-
-def colleague_is_tradeable(business: Business) -> bool:
-    """Whether this colleague can currently be sold to or bought from."""
-    return business.status == Business.Status.ACTIVE and subscription_is_current(business)

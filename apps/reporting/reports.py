@@ -17,7 +17,6 @@ from decimal import Decimal
 
 from django.db.models import Count, DecimalField, Q, QuerySet, Sum, Value
 from django.db.models.functions import Coalesce
-from django.utils import timezone
 
 from apps.accounting.models import LedgerEntry
 from apps.accounting.selectors import describe_balance
@@ -292,13 +291,3 @@ def invoice_summary(business: Business, window: DateRange) -> dict:
 
 
 # --- 7. colleague statement is apps.accounting.selectors.counterparty_statement ---
-
-
-def colleague_trades(business: Business, colleague: Business, window: DateRange) -> QuerySet[Trade]:
-    return _trades(business, window).filter(buyer_business=colleague).order_by("-finalized_at")
-
-
-def default_window() -> DateRange:
-    """Current month, which is what somebody opening reports usually wants."""
-    today = timezone.localdate()
-    return DateRange(date_from=today.replace(day=1), date_to=today)

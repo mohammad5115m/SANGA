@@ -214,37 +214,6 @@ def set_lot_price(
 
 
 @transaction.atomic
-def set_lot_prices(
-    *,
-    lot,
-    b2b_amount: Decimal | None,
-    b2c_amount: Decimal | None,
-    currency: str = "IRR",
-    unit: str = LotPrice.Unit.PER_SQM,
-    b2b_valid_for_days: int | None = None,
-    b2c_valid_for_days: int | None = None,
-) -> None:
-    if b2b_amount is not None:
-        set_lot_price(
-            lot=lot,
-            tier_code="b2b",
-            amount=b2b_amount,
-            currency=currency,
-            unit=unit,
-            valid_for_days=b2b_valid_for_days,
-        )
-    if b2c_amount is not None:
-        set_lot_price(
-            lot=lot,
-            tier_code="b2c",
-            amount=b2c_amount,
-            currency=currency,
-            unit=unit,
-            valid_for_days=b2c_valid_for_days,
-        )
-
-
-@transaction.atomic
 def confirm_lot_price(*, lot, tier_code: str, membership) -> LotPrice | None:
     """Restart the validity window without changing the number.
 

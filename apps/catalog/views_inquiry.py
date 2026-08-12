@@ -16,7 +16,12 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.accounts.services import OTPError, request_customer_otp, verify_customer_otp
 from apps.inquiries.models import Inquiry
-from apps.inquiries.services import InquiryError, create_inquiry, validate_phone
+from apps.inquiries.services import (
+    InquiryError,
+    create_inquiry,
+    create_stock_inquiry,
+    validate_phone,
+)
 from apps.inventory.policy import get_eligible_item
 
 from . import cart
@@ -34,6 +39,40 @@ def _safe_next(request: HttpRequest, fallback: str) -> str:
     ):
         return candidate
     return fallback
+
+
+@require_http_methods(["GET", "POST"])
+def stock_inquiry(request: HttpRequest, item_id) -> HttpResponse:
+    """«استعلام موجودی» — ask whether a stale quantity still holds.
+
+    Recorded as a normal inquiry so it lands in the same inbox. The seller's
+    reply is either confirming the stock or marking the product ناموجود.
+    """
+    item = get_eligible_item(audience="public", item_id=item_id)
+    if item is None:
+        return render(request, "catalog/item_unavailable.html", status=404)
+
+    form = CustomerIdentityForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            create_stock_inquiry(
+                item=item,
+                name=form.cleaned_data["name"],
+                phone=form.cleaned_data["phone"],
+                message=form.cleaned_data.get("message", ""),
+                requester=request.user,
+            )
+        except InquiryError as exc:
+            form.add_error(None, exc.message)
+        else:
+            messages.success(request, "درخواست استعلام موجودی برای فروشنده ارسال شد.")
+            return render(
+                request,
+                "catalog/inquiry_thanks.html",
+                {"business": item.business, "lot": item},
+            )
+
+    return render(request, "catalog/stock_inquiry.html", {"item": item, "form": form})
 
 
 @require_POST

@@ -20,10 +20,6 @@ def invoices_for(business: Business) -> QuerySet[SalesInvoice]:
     )
 
 
-def issued_by(business: Business) -> QuerySet[SalesInvoice]:
-    return invoices_for(business).filter(seller_business=business)
-
-
 def invoices_between(business: Business, colleague: Business) -> QuerySet[SalesInvoice]:
     """Everything exchanged with one colleague, in either direction."""
     return invoices_for(business).filter(

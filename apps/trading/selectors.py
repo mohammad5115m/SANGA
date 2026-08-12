@@ -41,16 +41,8 @@ def filter_requests(qs: QuerySet[PurchaseRequest], *, status: str = "") -> Query
     return qs
 
 
-def open_received_count(business: Business) -> int:
-    return received_requests(business).filter(status=PurchaseRequest.Status.SENT).count()
-
-
 def trades_for_seller(business: Business) -> QuerySet[Trade]:
     return Trade.objects.filter(seller_business=business).select_related("buyer_business", "item")
-
-
-def trades_with_colleague(seller: Business, colleague: Business) -> QuerySet[Trade]:
-    return trades_for_seller(seller).filter(buyer_business=colleague)
 
 
 def get_trade(business: Business, trade_id) -> Trade | None:

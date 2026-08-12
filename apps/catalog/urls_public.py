@@ -11,6 +11,7 @@ urlpatterns = [
     path("search/", views_public.public_search, name="public_search"),
     # Multi-product inquiry: browse → select → review → identify → verify → save.
     path("select/<uuid:item_id>/", views_inquiry.selection_toggle, name="selection_toggle"),
+    path("stock-inquiry/<uuid:item_id>/", views_inquiry.stock_inquiry, name="stock_inquiry"),
     path("inquiry/", views_inquiry.selection_review, name="inquiry_review"),
     path("inquiry/remove/<uuid:item_id>/", views_inquiry.selection_remove, name="selection_remove"),
     path("inquiry/identify/", views_inquiry.inquiry_identify, name="inquiry_identify"),

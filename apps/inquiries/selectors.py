@@ -31,10 +31,6 @@ def filter_inquiries(qs: QuerySet[Inquiry], *, status: str = "", q: str = "") ->
     return qs
 
 
-def open_inquiry_count(business: Business) -> int:
-    return Inquiry.objects.filter(business=business, status__in=Inquiry.OPEN_STATUSES).count()
-
-
 def leads_for(business: Business) -> QuerySet[CustomerLead]:
     return CustomerLead.objects.filter(business=business).annotate(inquiry_count=Count("inquiries"))
 
