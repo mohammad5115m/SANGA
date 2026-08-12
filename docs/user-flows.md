@@ -65,21 +65,28 @@ destinations are **بازار** (marketplace, with saved searches),
 
 > URL choice: short `/s/` and `/c/` for shareability; internal app under `/app/`.
 
-## 2. Onboarding Flow (Business)
+## 2. Account Provisioning and First Login
+
+There is **no self-service signup**. A Business and its Users exist only because
+a Platform Admin created them.
 
 ```text
-Create account (OTP)
-  → Create business
+Platform Admin provisions Business + Owner User
+  (./manage.py provision_business, or Django admin)
+  → Admin provisions additional Users
+    (./manage.py provision_user)
+  → User logs in with OTP
   → Business profile (city/contact)
-  → Add first warehouse
-  → Verification info (skippable)
-  → Logo/branding (skippable)
-  → Add first inventory lot (wizard)
-  → Invite teammate (skippable)
   → Dashboard
 ```
 
-Show progress checklist; allow skip for non-essential steps.
+Authentication never creates an account. Requesting an OTP for an unknown phone
+produces a normal-looking response but sends no SMS; verifying it fails with a
+message that deliberately cannot distinguish "no such account" from "account
+deactivated".
+
+A User who belongs to no Business lands on `/app/no-business/`, which explains
+the situation and links to support. It contains no form.
 
 ## 3. Quick Add Lot (Target 60–90s)
 

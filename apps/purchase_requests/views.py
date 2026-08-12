@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 @require_capability(INQUIRIES_VIEW)
 def my_list(request: HttpRequest) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     items = my_purchase_requests(request.business)
     return render(request, "purchase_requests/my_list.html", {"items": items})
 
@@ -44,7 +44,7 @@ def my_list(request: HttpRequest) -> HttpResponse:
 @require_capability(INQUIRIES_VIEW)
 def network_list(request: HttpRequest) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     items = network_purchase_requests(request.business)[:80]
     return render(request, "purchase_requests/network_list.html", {"items": items})
 
@@ -54,7 +54,7 @@ def network_list(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def create(request: HttpRequest) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     form = PurchaseRequestForm(request.POST or None, initial={"similar_accepted": True, "is_public_to_network": True})
     if request.method == "POST" and form.is_valid():
         try:
@@ -78,7 +78,7 @@ def create(request: HttpRequest) -> HttpResponse:
 @require_capability(INQUIRIES_VIEW)
 def detail(request: HttpRequest, pr_id) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     pr = get_own_request(request.business, pr_id)
     if pr is None:
         messages.error(request, "درخواست یافت نشد.")
@@ -118,7 +118,7 @@ def close(request: HttpRequest, pr_id) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def network_detail(request: HttpRequest, pr_id) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     pr = get_network_request(request.business, pr_id)
     if pr is None:
         messages.error(request, "این درخواست در شبکه قابل مشاهده نیست.")

@@ -7,6 +7,25 @@
 3. Make staff permissions **configurable** without hard-coding checks everywhere.  
 4. Keep the matrix understandable for non-technical owners.
 
+## 1.1 Account provisioning is admin-only
+
+Before any capability question arises, there is a harder boundary: **only a
+Platform Admin creates platform Users and Businesses.**
+
+- Authentication never creates an account. `verify_login_otp` looks the User up
+  and refuses when it is missing or inactive.
+- Requesting an OTP for an unprovisioned phone still writes a challenge row (so
+  the rate limiter cannot be used to enumerate numbers) but sends no SMS.
+- Refusal for "no such account" and "account deactivated" uses one shared
+  message, so an anonymous caller cannot tell the two apart.
+- There is no route that creates a Business. Provisioning happens through
+  `./manage.py provision_business`, `./manage.py provision_user`, or Django admin.
+- A User with no membership is redirected to `/app/no-business/`, a page with no
+  form on it.
+
+Public retail customers are never platform Users. Submitting an inquiry must
+never create one.
+
 ## 2. Audiences (Resolved at Request Time)
 
 | Audience code | Who | Sees B2B price? | Sees B2C price? | Sees a contact-specific price? |

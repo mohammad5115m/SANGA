@@ -28,6 +28,14 @@ def create_business_for_owner(
     province: str = "",
     phone: str = "",
 ) -> Business:
+    """Provision a Business and make ``owner`` its Owner.
+
+    Platform-admin only. There is no public route into this function: SANGA has
+    no self-service signup, so a Business exists only because an operator ran
+    the ``provision_business`` command or used Django admin. Callers are
+    responsible for having established that authority — the function itself
+    cannot see a request.
+    """
     name = (name or "").strip()
     if len(name) < 2:
         raise BusinessServiceError("نام کسب‌وکار خیلی کوتاه است.")
@@ -46,7 +54,7 @@ def create_business_for_owner(
         permissions=defaults_for_role(BusinessMembership.Role.OWNER),
         status=BusinessMembership.Status.ACTIVE,
     )
-    logger.info("Business created id=%s owner=%s", business.id, owner.id)
+    logger.info("Business provisioned id=%s owner=%s", business.id, owner.id)
     return business
 
 

@@ -5,18 +5,6 @@ from django import forms
 from .models import Business, Warehouse
 
 
-class BusinessCreateForm(forms.ModelForm):
-    class Meta:
-        model = Business
-        fields = ("name", "city", "province", "phone")
-        widgets = {
-            "name": forms.TextInput(attrs={"class": "field-input", "placeholder": "مثلاً سنگبری نمونه"}),
-            "city": forms.TextInput(attrs={"class": "field-input", "placeholder": "شهر"}),
-            "province": forms.TextInput(attrs={"class": "field-input", "placeholder": "استان"}),
-            "phone": forms.TextInput(attrs={"class": "field-input", "dir": "ltr"}),
-        }
-
-
 class BusinessProfileForm(forms.ModelForm):
     class Meta:
         model = Business

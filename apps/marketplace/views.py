@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 @business_login_required
 def marketplace_home(request: HttpRequest) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
 
     form = MarketplaceFilterForm(request.GET or None)
     qs = marketplace_lots_for(request.business)
@@ -57,7 +57,7 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     lot = get_marketplace_lot(request.business, lot_id)
     if lot is None:
         messages.error(request, "این محموله در شبکه همکاران قابل مشاهده نیست.")
@@ -101,7 +101,7 @@ def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
 @require_POST
 def save_current_search(request: HttpRequest) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     form = SaveSearchForm(request.POST)
     filters = MarketplaceFilterForm(request.POST)
     if form.is_valid() and filters.is_valid():

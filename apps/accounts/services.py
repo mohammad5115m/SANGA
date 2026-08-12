@@ -36,6 +36,12 @@ class OTPValidationError(OTPError):
     pass
 
 
+# Shown when the phone has no provisioned User, or has one that is deactivated.
+# Both cases must produce the *same* message: telling an anonymous caller which
+# of the two applies would confirm whether a number belongs to a SANGA account.
+NOT_PROVISIONED_MESSAGE = "ورود با این شماره ممکن نیست. برای ایجاد حساب با پشتیبانی سنگا تماس بگیرید."
+
+
 @dataclass(frozen=True)
 class OTPRequestResult:
     phone: str
@@ -88,6 +94,10 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     if request is not None:
         user_agent = (request.META.get("HTTP_USER_AGENT") or "")[:255]
 
+    # The challenge row is written even when no User owns this phone, so the
+    # cooldown and hourly counters above behave identically for provisioned and
+    # unprovisioned numbers. Skipping it here would turn the rate limiter itself
+    # into a phone-enumeration oracle.
     with transaction.atomic():
         OTPChallenge.objects.create(
             phone=phone,
@@ -99,14 +109,21 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
             user_agent=user_agent,
         )
 
-    body = f"کد ورود سنگا: {code}"
-    try:
-        get_sms_provider().send(SmsMessage(phone=phone, body=body))
-    except Exception:
-        logger.exception("Failed to send OTP SMS to %s", phone)
-        raise OTPError("ارسال پیامک با مشکل روبه‌رو شد. دوباره تلاش کنید.") from None
+    # No SMS for a phone nobody can log in with: it would cost money and tell a
+    # stranger that SANGA is interested in their number. The caller still gets a
+    # normal-looking result; the refusal surfaces at verify time.
+    is_provisioned = User.objects.filter(phone=phone).exists()
+    if is_provisioned:
+        body = f"کد ورود سنگا: {code}"
+        try:
+            get_sms_provider().send(SmsMessage(phone=phone, body=body))
+        except Exception:
+            logger.exception("Failed to send OTP SMS to %s", phone)
+            raise OTPError("ارسال پیامک با مشکل روبه‌رو شد. دوباره تلاش کنید.") from None
+    else:
+        logger.info("OTP requested for unprovisioned phone; no SMS sent")
 
-    dev_code = code if settings.DEBUG and settings.SMS_PROVIDER == "console" else None
+    dev_code = code if settings.DEBUG and settings.SMS_PROVIDER == "console" and is_provisioned else None
     return OTPRequestResult(
         phone=phone,
         expires_at=expires_at,
@@ -144,12 +161,21 @@ def verify_login_otp(phone: str, code: str, *, request: HttpRequest) -> User:
         challenge.save(update_fields=["attempts"])
         raise OTPValidationError("کد وارد شده نادرست است.")
 
+    # Burn the challenge outside the login transaction and before deciding the
+    # outcome. Doing it inside would let the rollback on refusal hand the code
+    # back to the caller, so a correct code for an unprovisioned phone could be
+    # replayed the moment that phone is provisioned.
+    challenge.is_used = True
+    challenge.save(update_fields=["is_used"])
+
+    # Authentication never creates an account. Platform Users exist only because
+    # a Platform Admin provisioned them.
+    user = User.objects.filter(phone=phone).first()
+    if user is None or not user.is_active:
+        logger.warning("OTP verify refused for an unprovisioned or inactive phone")
+        raise OTPValidationError(NOT_PROVISIONED_MESSAGE)
+
     with transaction.atomic():
-        challenge.is_used = True
-        challenge.save(update_fields=["is_used"])
-        user, _created = User.objects.get_or_create(phone=phone)
-        if not user.is_active:
-            raise OTPValidationError("حساب کاربری غیرفعال است.")
         login(request, user)
         user.last_login = timezone.now()
         user.save(update_fields=["last_login"])

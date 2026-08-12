@@ -160,6 +160,83 @@ def test_shared_catalog_is_b2c_safe(client, seller_setup):
 
 
 @pytest.mark.django_db
+def test_shared_catalog_never_exposes_a_private_lot(client, seller_setup):
+    """P0 regression: a curated share link must not widen visibility.
+
+    Attaching a lot to a catalog used to bypass the visibility check entirely,
+    because the share view filtered on ``status`` but never on ``visibility``.
+    """
+    business = seller_setup["business"]
+    membership = seller_setup["membership"]
+    private = seller_setup["private_lot"]
+
+    catalog = create_custom_catalog(
+        business=business,
+        membership=membership,
+        title="کاتالوگ نشتی",
+        lot_ids=[seller_setup["public_lot"].id, private.id],
+    )
+    # The seller may curate whatever they own; the public link is what must be safe.
+    assert catalog.items.count() == 2
+
+    url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
+    content = client.get(url).content.decode("utf-8")
+
+    assert "PRIV-1" not in content
+    assert "4444444" not in content.replace(",", "")
+    assert "3333333" not in content.replace(",", "")
+    assert "2222222" in content.replace(",", "")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("status", InventoryLot.Status.HIDDEN),
+        ("status", InventoryLot.Status.DRAFT),
+        ("status", InventoryLot.Status.SOLD),
+        ("visibility", InventoryLot.Visibility.PRIVATE),
+        ("visibility", InventoryLot.Visibility.COLLEAGUES),
+    ],
+)
+def test_shared_catalog_drops_lots_the_storefront_would_hide(client, seller_setup, field, value):
+    """The share link and the storefront must agree on every exclusion rule."""
+    business = seller_setup["business"]
+    lot = seller_setup["public_lot"]
+    catalog = create_custom_catalog(
+        business=business,
+        membership=seller_setup["membership"],
+        title="کاتالوگ بررسی",
+        lot_ids=[lot.id],
+    )
+
+    setattr(lot, field, value)
+    lot.save(update_fields=[field, "updated_at"])
+
+    url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
+    content = client.get(url).content.decode("utf-8")
+    assert "PUB-1" not in content
+    assert "2222222" not in content.replace(",", "")
+
+
+@pytest.mark.django_db
+def test_shared_catalog_drops_archived_lots(client, seller_setup):
+    lot = seller_setup["public_lot"]
+    catalog = create_custom_catalog(
+        business=seller_setup["business"],
+        membership=seller_setup["membership"],
+        title="کاتالوگ بایگانی",
+        lot_ids=[lot.id],
+    )
+    lot.archived_at = timezone.now()
+    lot.save(update_fields=["archived_at", "updated_at"])
+
+    url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
+    content = client.get(url).content.decode("utf-8")
+    assert "PUB-1" not in content
+
+
+@pytest.mark.django_db
 def test_catalog_refuses_a_lot_belonging_to_another_business(seller_setup):
     intruder_owner = User.objects.create_user(phone="09125550002", full_name="مزاحم")
     intruder = create_business_for_owner(owner=intruder_owner, name="سنگ مزاحم", city="تهران")

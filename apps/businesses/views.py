@@ -9,14 +9,13 @@ from django.views.decorators.http import require_http_methods
 
 from .dashboard import dashboard_data
 from .decorators import business_login_required, require_capability
-from .forms import BusinessCreateForm, BusinessProfileForm, WarehouseForm
+from .forms import BusinessProfileForm, WarehouseForm
 from .models import BusinessMembership
 from .permissions import BUSINESS_SETTINGS, TEAM_MANAGE
 from .services import (
     BusinessServiceError,
     add_warehouse,
     complete_onboarding,
-    create_business_for_owner,
     update_business_profile,
 )
 
@@ -26,54 +25,33 @@ logger = logging.getLogger(__name__)
 @business_login_required
 def post_login(request: HttpRequest) -> HttpResponse:
     if not request.user_memberships:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     business = request.business
     if business and not business.is_onboarded:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:onboarding_profile")
     return redirect("businesses:dashboard")
 
 
 @business_login_required
 def dashboard(request: HttpRequest) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     context = dashboard_data(business=request.business, membership=request.membership)
     return render(request, "businesses/dashboard.html", context)
 
 
 @business_login_required
-@require_http_methods(["GET", "POST"])
-def onboarding_start(request: HttpRequest) -> HttpResponse:
-    if request.business and request.business.is_onboarded:
+@require_http_methods(["GET"])
+def no_business(request: HttpRequest) -> HttpResponse:
+    """Dead end for a User who belongs to no Business.
+
+    Businesses are provisioned by a Platform Admin, so there is deliberately no
+    form here. A User reaching this page is either mid-provisioning or has had
+    every membership suspended.
+    """
+    if request.business is not None:
         return redirect("businesses:dashboard")
-
-    if request.business is None:
-        form = BusinessCreateForm(request.POST or None)
-        if request.method == "POST" and form.is_valid():
-            try:
-                business = create_business_for_owner(
-                    owner=request.user,
-                    name=form.cleaned_data["name"],
-                    city=form.cleaned_data.get("city", ""),
-                    province=form.cleaned_data.get("province", ""),
-                    phone=form.cleaned_data.get("phone", ""),
-                )
-            except BusinessServiceError as exc:
-                form.add_error(None, exc.message)
-            except Exception:
-                logger.exception("Business create failed")
-                form.add_error(None, "ایجاد کسب‌وکار با خطا روبه‌رو شد.")
-            else:
-                request.session["current_business_id"] = str(business.id)
-                messages.success(request, "کسب‌وکار ایجاد شد.")
-                return redirect("businesses:onboarding_warehouse")
-        return render(
-            request,
-            "businesses/onboarding_business.html",
-            {"form": form, "step": 1, "total_steps": 4},
-        )
-
-    return redirect("businesses:onboarding_warehouse")
+    return render(request, "businesses/no_business.html")
 
 
 @business_login_required
@@ -81,7 +59,7 @@ def onboarding_start(request: HttpRequest) -> HttpResponse:
 def onboarding_warehouse(request: HttpRequest) -> HttpResponse:
     business = request.business
     if business is None:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
 
     form = WarehouseForm(request.POST or None, initial={"is_default": True, "city": business.city})
     if request.method == "POST" and form.is_valid():
@@ -114,7 +92,7 @@ def onboarding_warehouse(request: HttpRequest) -> HttpResponse:
 def onboarding_profile(request: HttpRequest) -> HttpResponse:
     business = request.business
     if business is None:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
 
     form = BusinessProfileForm(request.POST or None, instance=business)
     if request.method == "POST" and form.is_valid():
@@ -142,7 +120,7 @@ def onboarding_profile(request: HttpRequest) -> HttpResponse:
 def onboarding_done(request: HttpRequest) -> HttpResponse:
     business = request.business
     if business is None:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
 
     if request.method == "POST":
         complete_onboarding(business)

@@ -84,9 +84,16 @@ def get_shareable_catalog(token: str) -> CustomCatalog | None:
     catalog = CustomCatalog.objects.select_related("business").filter(share_token=token).first()
     if catalog is None or not catalog.is_publicly_accessible:
         return None
-    # Attach items with B2C-safe lot prefetch
+
+    # A curated share link must never widen visibility. Intersecting with the
+    # storefront queryset means the two surfaces cannot drift apart again: a lot
+    # that is private, hidden, sold or archived is excluded here for exactly the
+    # same reason it is excluded from /s/<business>/, and any future rule added
+    # to public_catalog_lots applies to share links automatically.
+    publishable = public_catalog_lots(catalog.business).order_by().values("pk")
+
     items = (
-        CustomCatalogItem.objects.filter(catalog=catalog)
+        CustomCatalogItem.objects.filter(catalog=catalog, lot__in=publishable)
         .select_related("lot__product", "lot__warehouse")
         .prefetch_related(
             Prefetch(

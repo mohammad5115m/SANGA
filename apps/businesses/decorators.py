@@ -29,8 +29,7 @@ def require_capability[F: View](capability: str) -> Callable[[F], F]:
                 return redirect_to_login(request.get_full_path())
             membership = getattr(request, "membership", None)
             if membership is None:
-                messages.info(request, "ابتدا کسب‌وکار خود را بسازید.")
-                return redirect("businesses:onboarding_start")
+                return redirect("businesses:no_business")
             if not membership.has_capability(capability):
                 messages.error(request, "دسترسی لازم برای این عملیات را ندارید.")
                 return redirect("businesses:dashboard")

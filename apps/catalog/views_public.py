@@ -142,19 +142,11 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
                 {"business": catalog.business, "catalog": catalog},
             )
 
-    items = getattr(catalog, "prefetched_items", list(catalog.items.select_related("lot__product")))
-    cards = []
-    for item in items:
-        lot = item.lot
-        # Curated share links may include owner-selected lots; never show unavailable/sold/hidden.
-        if lot.archived_at is not None or lot.status in {
-            lot.Status.HIDDEN,
-            lot.Status.DRAFT,
-            lot.Status.SOLD,
-            lot.Status.EXPIRED,
-        }:
-            continue
-        cards.append({**public_lot_card(lot), "note": item.note})
+    # get_shareable_catalog already intersected the items with the storefront
+    # queryset, so everything reaching here is publicly showable. Re-filtering by
+    # status in the template layer is what let a private lot slip through before.
+    items = getattr(catalog, "prefetched_items", [])
+    cards = [{**public_lot_card(item.lot), "note": item.note} for item in items]
 
     return render(
         request,
