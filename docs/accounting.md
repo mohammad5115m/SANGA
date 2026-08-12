@@ -256,6 +256,18 @@ report by archiving.**
 
 ## 7. UX
 
+### URL map
+
+| Path | Purpose |
+|------|---------|
+| `/app/accounting/` | Business-wide summary + contact balance list |
+| `/app/accounting/aging/` | Aging report |
+| `/app/accounting/record-trade/` | Manual trade recording («ثبت معامله») |
+| `/app/accounting/contacts/<id>/` | Contact statement |
+| `/app/accounting/contacts/<id>/add/` | Post a manual entry |
+| `/app/accounting/contacts/<id>/print/` | Printable statement (browser print; no server PDF) |
+| `/app/accounting/entries/<id>/reverse/` | Confirm and post a reversal |
+
 - Entry point: `/app/accounting/` opens with the business-wide summary card
   (جمع مطالبات / جمع دیون / مانده کل / counts), then one row per reported contact
   (§6.4) with its balance (summed from `balance_delta` in one query) and its
@@ -266,7 +278,6 @@ report by archiving.**
 - The dashboard (`/app/`) repeats خلاصه مالی and the largest debtors/creditors for
   members holding `ledger.view` — the same selectors, no second implementation.
   See [user-flows.md](./user-flows.md) §1.1.
-- `/app/accounting/aging/` — the business-wide aging report (§6.2).
 - One statement screen per contact: labeled balance card, date/type filters, a
   بدهکار/بستانکار/مانده table with column totals and «مانده پایان دوره», the
   contact's aging breakdown, and a print-to-PDF statement (browser print; no server

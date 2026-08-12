@@ -52,11 +52,11 @@ already does on paper. See [accounting.md](./accounting.md).
 
 | Persona | Primary job | Key constraint |
 |--------|-------------|----------------|
-| Business Owner | Run inventory, team, colleagues, analytics | Needs overview without clutter |
+| Business Owner | Run inventory, team, colleagues, ledger overview | Needs overview without clutter |
 | Business Employee | Fast operational work | Permission-scoped tools |
 | Colleague («همکار») | Find stock at colleague price | Any stone business with an account |
 | B2C Customer | Browse beautiful catalog, inquire | Never has an account; must never see B2B price |
-| Platform Admin | Verify businesses, moderate, configure | Custom admin UX + Django Admin for technical ops |
+| Platform Admin | Verify businesses, moderate, configure | Django Admin today; custom `platform_admin` UI not built |
 
 ## 5. Core Domain Distinctions
 
@@ -99,7 +99,8 @@ When trade-offs conflict, prefer this order:
 
 ### Primary product metric
 
-**Successful verified supply–demand matches per week**
+**Accepted offers that become recorded trades per week** (demand board → private
+offer → ledger trade), plus catalog → inquiry conversion on the B2C side.
 
 ### Supporting metrics
 

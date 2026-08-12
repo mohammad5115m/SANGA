@@ -20,7 +20,7 @@ Deliverables:
 
 Exit criteria: clear app structure, ER model, permission matrix, navigation IA, milestones.
 
-## Phase 1 — Technical Foundation (in progress)
+## Phase 1 — Technical Foundation ✅
 
 Completed in foundation pass:
 
@@ -190,10 +190,9 @@ A bare signed number is never shown without this label. Money is always `Decimal
 - django-environ  
 - django-storages + boto3 (prod media)  
 - Pillow  
-- Tailwind CSS (via Node or django-tailwind approach)  
-- HTMX + Alpine.js  
+- Hand-written CSS tokens (`static/css/app.css`); Tailwind deferred  
+- HTMX (+ Alpine.js available)  
 - pytest-django  
-- factory-boy  
 - ruff / black (formatting)  
 
 ## Testing Strategy by Phase
@@ -201,8 +200,9 @@ A bare signed number is never shown without this label. Money is always `Decimal
 - Phase 1: auth, membership, tenant scoping  
 - Phase 2: pricing leakage tests, freshness, lot constraints  
 - Phase 3: public catalog never includes B2B  
-- Phase 4–6: colleague-network privacy (what an open marketplace must *not* expose),
-  trade-recording idempotency under concurrency  
+- Phase 4–5 + Phase 7 trade path: colleague-network privacy (what an open
+  marketplace must *not* expose), trade-recording idempotency under concurrency,
+  contacts / ledger / ContactPrice / dashboard gates  
 - Phase 9: broader e2e critical path  
 
 ## Deployment Architecture (Target)
@@ -210,14 +210,6 @@ A bare signed number is never shown without this label. Money is always `Decimal
 Docker images → Compose/VM initially → Nginx + Gunicorn + Celery + Postgres + Redis + S3-compatible storage.
 
 No Kubernetes in v1.
-
-## What Comes Immediately After This Document Pass
-
-1. Write ADRs + pricing doc  
-2. Scaffold project + Docker + settings  
-3. Implement accounts/businesses foundation  
-4. RTL shell + design system components  
-5. Onboarding + verify with tests  
 
 ## Future (Do Not Overbuild Now)
 

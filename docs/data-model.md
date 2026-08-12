@@ -149,7 +149,9 @@ Physical batch.
 | created_at / updated_at | |
 | archived_at | nullable |
 
-Check constraints: quantities ≥ 0; available ≤ original.
+Check constraints: `available_sqm >= 0` and `original_sqm >= 0`. There is **no**
+DB constraint that `available_sqm <= original_sqm` — that remains an application
+convention, not an enforced check.
 
 ### pricing.PriceTier
 
@@ -234,7 +236,10 @@ be settled into the ledger once per business — see `LedgerEntry.related_offer`
 
 ### inquiries.Inquiry
 
-Links: business, requester (user/customer), optional lot/catalog/PR, status pipeline (`new` → … → `converted/closed/lost`), assignee, timestamps.
+Links: business, optional `lot` and/or `custom_catalog` (no purchase-request FK),
+optional `requester` user, optional `assignee` user (field exists; **no assign UI
+yet**), status pipeline (`new` → … → `converted/closed/lost`), contact fields
+(`name`, `phone`, `message`), `source`, timestamps.
 
 ### contacts.Contact
 
@@ -293,7 +298,9 @@ Constraints: `ledger_amount_positive`; `uniq_trade_entry_per_offer` on
 
 ### catalog.CustomCatalog
 
-title, business, customer optional, message, share_token, expires_at, is_active, view_count, first/last viewed.
+`title`, `business`, optional free-text `customer_name` (not a Contact/Customer FK),
+`custom_message`, `share_token`, `expires_at`, `is_active`, `view_count`,
+first/last viewed timestamps.
 
 ### catalog.CustomCatalogItem
 

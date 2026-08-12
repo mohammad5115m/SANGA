@@ -39,7 +39,9 @@ Sections 1 and 2 render **only** for a membership with `ledger.view`; the gate i
 in the data layer, not the template ([permissions.md](./permissions.md) §10).
 There are no charts — numbers, labels and lists only. Every section has its own
 empty state, so a brand-new business sees a coherent screen rather than a frame.
-The whole page is a fixed number of queries, pinned by a test.
+Row caps (starting point, not a full report): 5 balances per side, 8 attention
+lots, 6 colleague lots, 5 pending items. The whole page is a fixed number of
+queries, pinned by a test.
 
 The desktop top bar carries the same destinations plus **تابلوی تقاضا**,
 **مخاطبین**, **دفتر حساب**, and **کاتالوگ‌ها** directly. The last three are hidden
@@ -91,14 +93,15 @@ Mobile-first wizard:
 6. Visibility & publication  
 7. Review & publish / save draft  
 
-Supports: autosave draft, duplicate existing lot, primary image selection, compression before upload.
+Supports today: duplicate existing lot, primary image selection.  
+Not built yet: autosave draft mid-wizard, client-side image compression before upload.
 
 ## 4. Inventory Management Flow
 
 - List with filters/chips, search, sort  
 - Row/card indicators: freshness, availability, visibility, urgent  
 - Actions: quick edit, duplicate, archive, hide/show, mark sold, confirm, media, prices  
-- Bulk actions for status/visibility/confirm  
+- Bulk actions for status/visibility/confirm are **not built** — each lot is acted on one at a time
 
 ## 5. Freshness Flow
 
@@ -130,8 +133,9 @@ to a suspended business — and a suspended business sees nothing at all.
 New → Viewed → Contacted → Negotiating → Converted / Closed / Lost
 ```
 
-Linked to a lot or a custom catalog. Assignment to a specific staff member is not
-built — `Inquiry` has no assignee field.
+Linked to a lot or a custom catalog (no purchase-request FK). The model has an
+`assignee` field, but there is **no assignment UI or workflow** yet — Phase 7 still
+lists inquiry-pipeline UX as open.
 
 ## 9. Trade Recording Flow
 
@@ -179,9 +183,9 @@ Owner curates lots → generates share link → customer opens B2C-safe view →
 - Storefront + lot public detail  
 - Colleague marketplace  
 - PR board / demand board  
-- Ledger + trade recording  
-- CRM list/detail  
-- Platform verification  
+- Contacts (CRM-lite) + ledger + trade recording  
+- Business dashboard (§1.1)  
+- Platform verification (status field only; workflow UI not built) 
 
 ## 13. UI Component System (Design System Targets)
 

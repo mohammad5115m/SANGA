@@ -8,52 +8,57 @@ Therefore we bootstrap a greenfield Django-first monorepo with documentation-fir
 
 ## 2. Architectural Style
 
-**Django modular monolith** with clear domain apps, service/selector layers, and HTMX/Alpine UI.
+**Django modular monolith** with clear domain apps, service/selector layers, and HTMX (+ Alpine where useful) UI.
 
 ### Why not microservices / React / Next.js?
 
 - Small product team needs one deployable unit.
-- Excellent UX is achievable with Django Templates + HTMX + Alpine + Tailwind.
+- Excellent UX is achievable with Django Templates + HTMX + hand-written RTL CSS tokens (`static/css/app.css`). Tailwind was considered and deferred — there is no Node/Tailwind build step.
 - React would increase complexity without solving a proven constraint.
-- Search starts with PostgreSQL; Meilisearch/ES can plug into a search service later.
+- Search starts with PostgreSQL; Meilisearch/ES can plug into a search service later (ADR-0004). The `SearchService` interface itself is **not implemented yet**.
 
 ## 3. Recommended App Structure
+
+### Built today
 
 ```text
 config/                       # project package (settings, urls, asgi/wsgi, celery)
 apps/
-  core/                       # shared utilities, design-system base templates, middleware, health
-  accounts/                   # User, OTP auth, sessions/devices, profiles
-  businesses/                 # Business, Membership, Warehouse, verification, onboarding
+  core/                       # shared utilities, base templates, middleware, health, seed
+  accounts/                   # User, OTP auth
+  businesses/                 # Business, Membership, Warehouse, onboarding, dashboard
   inventory/                  # Product, InventoryLot, media, freshness, status
-  pricing/                    # PriceTier, LotPrice, audience-aware price resolution
+  pricing/                    # PriceTier, LotPrice, ContactPrice, audience-aware resolution
   catalog/                    # public storefront, custom catalogs, sharing previews
-  marketplace/                # colleague browse/search experience + saved searches
+  marketplace/                # colleague browse/search + saved searches
   purchase_requests/          # PR board + private offers
   inquiries/                  # inquiry pipeline
   contacts/                   # lightweight CRM (private per-business contacts)
   accounting/                 # per-contact ledger + manual trade recording
-  notifications/              # in-app/email/SMS abstraction + preferences
-  analytics/                  # business + platform metrics
-  audit/                      # immutable-ish audit log
-  moderation/                 # reports, content moderation, suspicious activity
-  platform_admin/             # custom platform admin screens (not Django Admin skin)
-design/                       # design tokens, component notes, wireframe notes
+  notifications/              # in-app notifications (no preference table yet)
+design/                       # design tokens, component notes
 docs/                         # product & engineering docs
-tests/                        # cross-app integration/e2e helpers when needed
+templates/                    # global templates
+static/                       # hand-written CSS + assets
 ```
+
+### Planned / not built as apps
+
+`analytics/`, `audit/`, `moderation/`, and `platform_admin/` are **roadmap items**,
+not packages in the tree. Capability codes like `analytics.view` / `audit.view`
+exist as reserved strings; they gate nothing yet. Platform ops use Django Admin.
 
 ### Why this structure (vs dumping everything into `inventory`)?
 
 - **Pricing is isolated** so B2B leakage becomes a hard architectural boundary.
 - **Catalog vs marketplace** separate public B2C UX from private B2B UX.
-- **Audit / notifications / analytics** remain cross-cutting but not mixed into domain models.
+- **Notifications** stay cross-cutting; analytics/audit/moderation stay deferred.
 
-There is no `partners/` app: membership of the network is having an account, so
-lot visibility alone decides who sees what, and `marketplace/` owns the B2B
-experience (including `SavedSearch`). The `matching/` and `reservations/` apps were
-removed with the features they served. All three remain in `INSTALLED_APPS` as
-empty, migrations-only packages until the history is squashed.
+There is no live `partners/` product surface: membership of the network is having
+an account, so lot visibility alone decides who sees what, and `marketplace/` owns
+the B2B experience (including `SavedSearch`). The `matching/` and `reservations/`
+features were removed with the models they served. All three package names remain
+in `INSTALLED_APPS` as empty, migrations-only stubs until the history is squashed.
 
 ## 4. Layering Conventions
 
@@ -98,15 +103,17 @@ Rules:
 
 ```text
 InventoryLot
-    └── LotPrice (tier=B2B|B2C, amount, currency, unit)
+    ├── LotPrice (tier=B2B|B2C, amount, currency, unit)
+    └── ContactPrice (contact, amount, currency, unit)  # optional override
 ```
 
 Access path:
 
 1. Resolve **audience** (`owner_staff`, `b2b_partner`, `b2c_public`, `platform_admin`).
-2. Ask `pricing.services.resolve_prices(lot, audience)`.
-3. Serializers/templates receive only allowed price fields.
-4. Public catalog endpoints never join/select B2B amounts.
+2. Ask `pricing.services.resolve_prices_for_viewer(lot, audience, viewer_business=…)`.
+3. Serializers/templates receive only allowed price fields (including a `"contact"`
+   key only when the viewer is the linked colleague).
+4. Public catalog endpoints never join/select B2B amounts or contact overrides.
 
 Future tiers = new `PriceTier` rows + policy mapping — not a rewrite.
 
@@ -114,13 +121,17 @@ Details: [permissions.md](./permissions.md), [pricing.md](./pricing.md).
 
 ## 8. Search Architecture
 
+**Planned** (ADR-0004), not a shipped abstraction yet:
+
 ```text
-SearchService interface
+SearchService interface          # not implemented
   └── PostgresSearchService (v1)
   └── (future) MeilisearchService
 ```
 
-Persian normalization (ی/ي، ک/ك، whitespace, ZWNJ) lives in a shared normalizer used by both indexing and query.
+Today, list/search screens use ordinary Django ORM filters/annotations. Persian
+normalization (ی/ي، ک/ك، whitespace, ZWNJ) should live in a shared normalizer when
+the search service lands.
 
 ## 9. Media Architecture
 
@@ -139,9 +150,12 @@ Persian normalization (ی/ي، ک/ك، whitespace, ZWNJ) lives in a shared norma
 ## 11. Frontend Architecture
 
 - Django Templates + HTMX for progressive enhancement
-- Alpine.js for local UI state (tabs, modals, wizard steps)
-- Tailwind CSS design system (RTL-first)
+- Alpine.js is loaded and available for local UI state; most screens use plain
+  server-rendered forms/HTMX today
+- Hand-written RTL CSS tokens and components in `static/css/app.css` (no Tailwind
+  build pipeline)
 - PWA: installable, offline fallback page, **no aggressive caching of prices/stock**
+  (hardening target; not fully verified)
 
 ## 12. Deployment Architecture (Target)
 
@@ -175,9 +189,9 @@ Docker Compose provides local parity: `web`, `db`, `redis`, `worker`, `beat`.
 
 | Layer | Focus |
 |-------|-------|
-| Unit | pricing resolution, freshness, balance math |
+| Unit | pricing resolution (incl. ContactPrice), freshness, balance math |
 | Integration | onboarding, quick-add, demand → offer → recorded trade |
-| Authorization | tenant isolation, B2B leakage, visibility matrix |
+| Authorization | tenant isolation, B2B leakage, visibility matrix, network privacy |
 | E2E (later) | critical happy paths with Playwright if practical |
 
 ## 15. Major Risks & Mitigations

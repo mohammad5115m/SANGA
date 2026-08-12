@@ -226,9 +226,13 @@ a crafted lot UUID is rejected rather than silently ignored.
 
 ## 9. Platform Admin
 
-- Django Admin: technical superuser ops  
-- `platform_admin` UI: verification, moderation, suspicious activity  
+- **Built today:** Django Admin for technical superuser ops  
+- **Not built:** a custom `platform_admin` UI for verification, moderation, or
+  suspicious-activity workflows (Phase 8)  
 - Normal customers never see Django Admin
+
+> `analytics.view` remains a reserved capability and is **not** what powers the
+> business dashboard. Financial dashboard panels use `ledger.view` only.
 
 ## 10. Navigation
 
