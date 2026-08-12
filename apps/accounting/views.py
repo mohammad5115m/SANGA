@@ -10,27 +10,34 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.http import urlencode
 from django.views.decorators.http import require_http_methods
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import LEDGER_MANAGE, LEDGER_VIEW
 from apps.contacts.models import Contact
-from apps.contacts.selectors import get_contact, is_approved_partner
+from apps.contacts.selectors import get_contact
 from apps.contacts.services import ContactError, create_contact
-from apps.reservations.models import Reservation
-from apps.reservations.selectors import get_reservation_for_business
+from apps.purchase_requests.models import PurchaseOffer
 
 from .forms import LedgerEntryForm, QuickContactForm, TradeEntryForm
 from .models import LedgerEntry
+from .reports import business_aging, contact_aging
 from .selectors import (
+    BALANCE_SORTS,
+    BALANCE_STATE_LABELS,
+    accepted_offer_for,
+    business_financial_summary,
     contact_balances,
     contact_statement,
     current_balance,
     describe_balance,
+    offer_counterparty,
     reversed_entry_ids,
-    suggested_contact_for_reservation,
-    suggested_trade_amount,
-    trade_entry_for_reservation,
+    statement_totals,
+    suggested_amount_for_offer,
+    suggested_contact_for_offer,
+    trade_entry_for_offer,
 )
 from .services import (
     TRADE_ALREADY_RECORDED,
@@ -42,6 +49,16 @@ from .services import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Filter chips on the ledger index, in display order.
+STATE_OPTIONS: list[tuple[str, str]] = [("", "همه"), *BALANCE_STATE_LABELS.items()]
+
+# Sort choices offered on the ledger index; keys must exist in ``BALANCE_SORTS``.
+SORT_OPTIONS: list[tuple[str, str]] = [
+    ("name", "نام مخاطب"),
+    ("debtor", "بیشترین بدهکاری"),
+    ("creditor", "بیشترین بستانکاری"),
+]
 
 
 def _get_owned_contact(request: HttpRequest, contact_id) -> Contact:
@@ -64,15 +81,46 @@ def _parse_date(value: str):
 @business_login_required
 @require_capability(LEDGER_VIEW)
 def ledger_index(request: HttpRequest) -> HttpResponse:
-    """Entry point for the ledger: every contact with its current balance."""
+    """Entry point for the ledger: the business-wide summary plus one labeled row
+    per contact, filterable by accounting state and sortable by balance.
+    """
+    state = request.GET.get("state", "").strip()
+    if state not in BALANCE_STATE_LABELS:
+        state = ""
+    sort = request.GET.get("sort", "").strip()
+    if sort not in BALANCE_SORTS:
+        sort = "name"
+
     rows = [
         {"contact": contact, "balance": describe_balance(contact.balance)}
-        for contact in contact_balances(request.business)
+        for contact in contact_balances(request.business, state=state, sort=sort)
     ]
     return render(
         request,
         "accounting/index.html",
-        {"rows": rows, "can_manage": request.membership.has_capability(LEDGER_MANAGE)},
+        {
+            "rows": rows,
+            "summary": business_financial_summary(request.business),
+            "state": state,
+            "sort": sort,
+            "state_options": STATE_OPTIONS,
+            "sort_options": SORT_OPTIONS,
+            "can_manage": request.membership.has_capability(LEDGER_MANAGE),
+        },
+    )
+
+
+@business_login_required
+@require_capability(LEDGER_VIEW)
+def aging_report(request: HttpRequest) -> HttpResponse:
+    """گزارش سنی بدهی for the whole business, oldest debts first per contact."""
+    return render(
+        request,
+        "accounting/aging.html",
+        {
+            "report": business_aging(request.business),
+            "summary": business_financial_summary(request.business),
+        },
     )
 
 
@@ -101,6 +149,10 @@ def statement(request: HttpRequest, contact_id) -> HttpResponse:
         {
             "contact": contact,
             "entries": entries,
+            # Totals follow the active filters; the aging report deliberately does
+            # not — how old a debt is cannot depend on what the viewer filtered.
+            "totals": statement_totals(entries),
+            "aging": contact_aging(request.business, contact),
             "balance": describe_balance(balance),
             "reversed_ids": reversed_ids,
             "can_manage": can_manage,
@@ -157,61 +209,83 @@ def reverse_view(request: HttpRequest, entry_id) -> HttpResponse:
     return render(request, "accounting/confirm_reverse.html", {"entry": entry})
 
 
-def _seller_reservation(request: HttpRequest, reservation_id) -> Reservation:
-    """A reservation this business sells on. Any other business — including the
-    buyer — gets a 404 rather than a hint that the reservation exists.
+def _offer_for_trade(request: HttpRequest) -> PurchaseOffer | None:
+    """The accepted offer this screen was started from, if any.
+
+    A business that is party to neither side of the offer gets a 404 rather than
+    a hint that the offer exists. Recording a trade without an offer is the
+    normal case — most trades here are agreed offline.
     """
-    reservation = get_reservation_for_business(request.business, reservation_id)
-    if reservation is None or reservation.seller_business_id != request.business.id:
-        raise Http404("رزرو یافت نشد.")
-    return reservation
+    offer_id = (request.POST.get("offer") or request.GET.get("offer") or "").strip()
+    if not offer_id:
+        return None
+    try:
+        offer = accepted_offer_for(request.business, offer_id)
+    except (ValueError, ValidationError):
+        offer = None
+    if offer is None:
+        raise Http404("پیشنهاد یافت نشد.")
+    return offer
 
 
-def _record_trade_url(reservation: Reservation, contact: Contact | None = None) -> str:
-    url = reverse("accounting:record_trade", args=[reservation.id])
-    return f"{url}?contact={contact.id}" if contact is not None else url
+def _record_trade_url(offer: PurchaseOffer | None, contact: Contact | None = None) -> str:
+    params = {}
+    if offer is not None:
+        params["offer"] = str(offer.id)
+    if contact is not None:
+        params["contact"] = str(contact.id)
+    url = reverse("accounting:record_trade")
+    return f"{url}?{urlencode(params)}" if params else url
 
 
-def _create_contact_for_trade(request: HttpRequest, reservation: Reservation) -> HttpResponse:
-    """Create a contact from the confirmation screen and come back with it chosen."""
+def _default_entry_type(request: HttpRequest, offer: PurchaseOffer | None) -> str:
+    """A sale by default; a purchase when this business accepted someone's offer."""
+    if offer is not None and offer.purchase_request.business_id == request.business.id:
+        return LedgerEntry.Type.PURCHASE.value
+    return LedgerEntry.Type.SALE.value
+
+
+def _create_contact_for_trade(
+    request: HttpRequest, offer: PurchaseOffer | None
+) -> HttpResponse:
+    """Create a contact from the trade screen and come back with it chosen."""
     quick_form = QuickContactForm(request.POST)
     if not quick_form.is_valid():
         messages.error(request, "نام مخاطب را درست وارد کنید.")
-        return redirect(_record_trade_url(reservation))
+        return redirect(_record_trade_url(offer))
 
-    link_requested = quick_form.cleaned_data.get("link_to_buyer")
-    linked_business = (
-        reservation.requester_business
-        if link_requested and is_approved_partner(request.business, reservation.requester_business)
-        else None
-    )
+    counterparty = offer_counterparty(request.business, offer) if offer else None
+    link_requested = quick_form.cleaned_data.get("link_to_counterparty")
+    linked_business = counterparty if (link_requested and counterparty) else None
     try:
         contact = create_contact(
             business=request.business,
             membership=request.membership,
             display_name=quick_form.cleaned_data["display_name"],
             phone=quick_form.cleaned_data.get("phone", ""),
-            is_customer=True,
             linked_business=linked_business,
         )
     except ContactError as exc:
         messages.error(request, exc.message)
-        return redirect(_record_trade_url(reservation))
+        return redirect(_record_trade_url(offer))
     except Exception:
-        logger.exception("Quick contact creation failed reservation=%s", reservation.id)
+        logger.exception("Quick contact creation failed business=%s", request.business.id)
         messages.error(request, "ساخت مخاطب با خطا روبه‌رو شد؛ دوباره تلاش کنید.")
-        return redirect(_record_trade_url(reservation))
+        return redirect(_record_trade_url(offer))
 
     messages.success(request, "مخاطب ساخته شد و برای این سند انتخاب شد.")
-    return redirect(_record_trade_url(reservation, contact))
+    return redirect(_record_trade_url(offer, contact))
 
 
-def _describe_trade_effect(request: HttpRequest, contact: Contact | None, amount) -> dict | None:
+def _describe_trade_effect(
+    request: HttpRequest, contact: Contact | None, entry_type: str, amount
+) -> dict | None:
     """Balance before/after for the plain-Persian effect statement."""
     if contact is None or not amount:
         return None
+    direction = -1 if entry_type == LedgerEntry.Type.PURCHASE.value else 1
     current = current_balance(request.business, contact)
-    projected = (current + Decimal(amount)).quantize(Decimal("0.01"))
+    projected = (current + Decimal(amount) * direction).quantize(Decimal("0.01"))
     return {
         "contact": contact,
         "amount": amount,
@@ -223,25 +297,22 @@ def _describe_trade_effect(request: HttpRequest, contact: Contact | None, amount
 @business_login_required
 @require_capability(LEDGER_MANAGE)
 @require_http_methods(["GET", "POST"])
-def record_trade(request: HttpRequest, reservation_id) -> HttpResponse:
-    """Explicit, idempotent step that records a converted sale in the ledger.
+def record_trade(request: HttpRequest) -> HttpResponse:
+    """Record a trade in the ledger: manually, or started from an accepted offer.
 
-    Conversion itself stays non-financial; nothing is posted until this screen is
-    submitted with the confirmation ticked. A repeat submit finds the existing
-    entry and reports it instead of posting twice.
+    Nothing is posted until the form is submitted with the confirmation ticked.
+    When an offer is involved, a repeat submit finds the existing entry and
+    reports it instead of posting twice.
     """
-    reservation = _seller_reservation(request, reservation_id)
-    if reservation.status != Reservation.Status.CONVERTED:
-        messages.error(request, "فقط برای معامله نهایی‌شده می‌توان سند مالی ثبت کرد.")
-        return redirect("reservations:detail", reservation_id=reservation.id)
-
-    existing = trade_entry_for_reservation(request.business, reservation)
-    if existing is not None:
-        messages.info(request, TRADE_ALREADY_RECORDED)
-        return redirect("accounting:statement", contact_id=existing.contact_id)
+    offer = _offer_for_trade(request)
+    if offer is not None:
+        existing = trade_entry_for_offer(request.business, offer)
+        if existing is not None:
+            messages.info(request, TRADE_ALREADY_RECORDED)
+            return redirect("accounting:statement", contact_id=existing.contact_id)
 
     if request.method == "POST" and request.POST.get("action") == "create_contact":
-        return _create_contact_for_trade(request, reservation)
+        return _create_contact_for_trade(request, offer)
 
     action = request.POST.get("action", "") if request.method == "POST" else ""
     chosen_contact = None
@@ -251,39 +322,45 @@ def record_trade(request: HttpRequest, reservation_id) -> HttpResponse:
             chosen_contact = get_contact(request.business, contact_param)
         except (Contact.DoesNotExist, ValueError, ValidationError):
             chosen_contact = None
-    if chosen_contact is None:
-        chosen_contact = suggested_contact_for_reservation(request.business, reservation)
+    if chosen_contact is None and offer is not None:
+        chosen_contact = suggested_contact_for_offer(request.business, offer)
 
-    suggested_amount = suggested_trade_amount(reservation)
+    suggested_amount = suggested_amount_for_offer(offer) if offer is not None else None
+    default_type = _default_entry_type(request, offer)
     form = TradeEntryForm(
         request.POST or None,
         business=request.business,
         require_confirm=(action == "record"),
         initial={
+            "entry_type": default_type,
             "contact": chosen_contact,
             "amount": suggested_amount,
             "occurred_on": timezone.localdate(),
+            "related_lot": offer.lot if offer is not None else None,
         },
     )
 
-    effect_contact, effect_amount = chosen_contact, suggested_amount
+    effect_contact, effect_amount, effect_type = chosen_contact, suggested_amount, default_type
     if request.method == "POST":
-        # Validate first so the effect statement mirrors what the seller just typed.
+        # Validate first so the effect statement mirrors what the user just typed.
         form.is_valid()
         effect_contact = form.cleaned_data.get("contact")
         effect_amount = form.cleaned_data.get("amount")
+        effect_type = form.cleaned_data.get("entry_type") or default_type
 
     if action == "record" and form.is_valid():
         try:
             entry = post_trade_entry(
-                reservation=reservation,
                 business=request.business,
                 contact=form.cleaned_data["contact"],
                 membership=request.membership,
+                entry_type=form.cleaned_data["entry_type"],
                 amount=form.cleaned_data["amount"],
                 description=form.cleaned_data.get("description", ""),
                 reference=form.cleaned_data.get("reference", ""),
                 occurred_on=form.cleaned_data["occurred_on"],
+                related_lot=form.cleaned_data.get("related_lot"),
+                related_offer=offer,
             )
         except LedgerDuplicateError as exc:
             messages.info(request, exc.message)
@@ -292,24 +369,25 @@ def record_trade(request: HttpRequest, reservation_id) -> HttpResponse:
         except LedgerError as exc:
             form.add_error(None, exc.message)
         except Exception:
-            logger.exception("Trade ledger entry failed reservation=%s", reservation.id)
+            logger.exception("Trade ledger entry failed business=%s", request.business.id)
             form.add_error(None, "ثبت سند مالی با خطا روبه‌رو شد؛ دوباره تلاش کنید.")
         else:
             messages.success(request, "سند مالی این معامله ثبت شد.")
             return redirect("accounting:statement", contact_id=entry.contact_id)
 
+    counterparty = offer_counterparty(request.business, offer) if offer else None
     return render(
         request,
         "accounting/record_trade.html",
         {
-            "reservation": reservation,
+            "offer": offer,
+            "counterparty": counterparty,
             "form": form,
             "quick_form": QuickContactForm(
-                initial={"display_name": reservation.requester_business.name}
+                initial={"display_name": counterparty.name if counterparty else ""}
             ),
             "suggested_amount": suggested_amount,
-            "effect": _describe_trade_effect(request, effect_contact, effect_amount),
-            "can_link_buyer": is_approved_partner(request.business, reservation.requester_business),
+            "effect": _describe_trade_effect(request, effect_contact, effect_type, effect_amount),
         },
     )
 
@@ -326,6 +404,7 @@ def print_statement(request: HttpRequest, contact_id) -> HttpResponse:
         {
             "contact": contact,
             "entries": entries,
+            "totals": statement_totals(entries),
             "balance": describe_balance(balance),
             "business": request.business,
         },

@@ -28,13 +28,11 @@ apps/
   inventory/                  # Product, InventoryLot, media, freshness, status
   pricing/                    # PriceTier, LotPrice, audience-aware price resolution
   catalog/                    # public storefront, custom catalogs, sharing previews
-  partners/                   # partner relationships, follow, marketplace access rules
-  marketplace/                # B2B browse/search experience (views/services over inventory)
+  marketplace/                # colleague browse/search experience + saved searches
   purchase_requests/          # PR board + private offers
-  matching/                   # rule-based matching service
   inquiries/                  # inquiry pipeline
-  reservations/               # reservation workflow + quantity locking
-  customers/                  # lightweight CRM
+  contacts/                   # lightweight CRM (private per-business contacts)
+  accounting/                 # per-contact ledger + manual trade recording
   notifications/              # in-app/email/SMS abstraction + preferences
   analytics/                  # business + platform metrics
   audit/                      # immutable-ish audit log
@@ -49,10 +47,13 @@ tests/                        # cross-app integration/e2e helpers when needed
 
 - **Pricing is isolated** so B2B leakage becomes a hard architectural boundary.
 - **Catalog vs marketplace** separate public B2C UX from private B2B UX.
-- **Matching** stays replaceable without touching purchase-request CRUD.
 - **Audit / notifications / analytics** remain cross-cutting but not mixed into domain models.
 
-Slight adjustment from the prompt: add `matching/` and `platform_admin/`; keep `marketplace/` as the B2B experience layer rather than bloating `partners/`.
+There is no `partners/` app: membership of the network is having an account, so
+lot visibility alone decides who sees what, and `marketplace/` owns the B2B
+experience (including `SavedSearch`). The `matching/` and `reservations/` apps were
+removed with the features they served. All three remain in `INSTALLED_APPS` as
+empty, migrations-only packages until the history is squashed.
 
 ## 4. Layering Conventions
 
@@ -174,8 +175,8 @@ Docker Compose provides local parity: `web`, `db`, `redis`, `worker`, `beat`.
 
 | Layer | Focus |
 |-------|-------|
-| Unit | pricing resolution, freshness, matching, reservation math |
-| Integration | onboarding, quick-add, inquiry → reservation |
+| Unit | pricing resolution, freshness, balance math |
+| Integration | onboarding, quick-add, demand → offer → recorded trade |
 | Authorization | tenant isolation, B2B leakage, visibility matrix |
 | E2E (later) | critical happy paths with Playwright if practical |
 
@@ -184,7 +185,7 @@ Docker Compose provides local parity: `web`, `db`, `redis`, `worker`, `beat`.
 | Risk | Mitigation |
 |------|------------|
 | Accidental B2B leakage | Pricing service boundary + negative tests |
-| Overselling / double reserve | `select_for_update` + DB constraints |
+| Duplicate/racing ledger entries | `select_for_update` + conditional unique constraints |
 | Stale stock | Celery freshness jobs + UI warnings |
 | Permission sprawl | Capability flags on membership + matrix doc |
 | Overabstraction | Service layer only where rules exist |

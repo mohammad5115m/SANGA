@@ -6,11 +6,11 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 
-from apps.marketplace.selectors import filter_marketplace_lots, marketplace_lots_for
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_user
 
 from .models import SavedSearch
+from .selectors import filter_marketplace_lots, marketplace_lots_for
 
 logger = logging.getLogger(__name__)
 

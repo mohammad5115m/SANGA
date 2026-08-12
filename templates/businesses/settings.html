@@ -42,11 +42,7 @@
       <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
       <a class="btn btn-ghost" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
     {% endif %}
-    <a class="btn btn-ghost" href="{% url 'partners:directory' %}">تأمین‌کنندگان</a>
-    {% if 'partners.manage' in capabilities %}
-      <a class="btn btn-ghost" href="{% url 'partners:incoming' %}">درخواست‌های همکاری</a>
-    {% endif %}
-    <a class="btn btn-ghost" href="{% url 'partners:notifications' %}">اعلان‌ها</a>
+    <a class="btn btn-ghost" href="{% url 'notifications:list' %}">اعلان‌ها</a>
     {% if current_business %}
       <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین عمومی</a>
     {% endif %}

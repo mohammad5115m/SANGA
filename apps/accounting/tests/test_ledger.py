@@ -35,12 +35,8 @@ def setup(db):
         status=BusinessMembership.Status.ACTIVE,
     )
 
-    contact_a = create_contact(
-        business=biz_a, membership=m_a, display_name="مشتری الف", is_customer=True
-    )
-    contact_b = create_contact(
-        business=biz_b, membership=m_b, display_name="مشتری ب", is_customer=True
-    )
+    contact_a = create_contact(business=biz_a, membership=m_a, display_name="مشتری الف")
+    contact_b = create_contact(business=biz_b, membership=m_b, display_name="مشتری ب")
     return {
         "owner_a": owner_a,
         "owner_b": owner_b,
@@ -65,11 +61,11 @@ def _sale(setup, amount):
     )
 
 
-def test_sale_increases_balance_they_owe_us(setup):
+def test_sale_makes_the_contact_debtor(setup):
     _sale(setup, Decimal("1000000"))
     balance = current_balance(setup["biz_a"], setup["contact_a"])
     assert balance == Decimal("1000000.00")
-    assert describe_balance(balance)["state"] == "they_owe"
+    assert describe_balance(balance)["state"] == "debtor"
 
 
 def test_payment_received_reduces_balance(setup):
@@ -190,9 +186,25 @@ def test_entry_cannot_be_deleted(setup):
 
 
 def test_describe_balance_labels():
-    assert describe_balance(Decimal("10"))["state"] == "they_owe"
-    assert describe_balance(Decimal("-10"))["state"] == "we_owe"
-    assert describe_balance(Decimal("0"))["state"] == "settled"
+    debtor = describe_balance(Decimal("10"))
+    creditor = describe_balance(Decimal("-10"))
+    settled = describe_balance(Decimal("0"))
+
+    assert debtor["state"] == "debtor"
+    assert debtor["label"] == "بدهکار"
+    assert creditor["state"] == "creditor"
+    assert creditor["label"] == "بستانکار"
+    assert settled["state"] == "settled"
+    assert settled["label"] == "تسویه"
+
+
+def test_describe_balance_never_returns_a_negative_amount():
+    """The magnitude carries the label instead of a minus sign, so no screen can
+    show a bare signed number.
+    """
+    creditor = describe_balance(Decimal("-2500.50"))
+    assert creditor["amount"] == Decimal("2500.50")
+    assert creditor["signed"] == Decimal("-2500.50")
 
 
 def test_statement_view_tenant_isolation(client, setup):

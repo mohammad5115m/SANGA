@@ -25,15 +25,6 @@
         {% if form.phone.errors %}<span class="field-error">{{ form.phone.errors|striptags }}</span>{% endif %}
       </label>
 
-      <fieldset class="field">
-        <span class="field-label">نوع ارتباط</span>
-        <div class="badge-row">
-          <label class="checkbox-inline">{{ form.is_customer }} <span>مشتری</span></label>
-          <label class="checkbox-inline">{{ form.is_supplier }} <span>تأمین‌کننده</span></label>
-          <label class="checkbox-inline">{{ form.is_trader }} <span>واسطه</span></label>
-        </div>
-      </fieldset>
-
       <label class="field">
         <span class="field-label">{{ form.address.label }}</span>
         {{ form.address }}

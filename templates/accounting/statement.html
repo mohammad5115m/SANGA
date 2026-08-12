@@ -6,7 +6,7 @@
 <section class="stack-lg">
   <div class="toolbar">
     <div>
-      <h1 class="page-title">دفتر حساب</h1>
+      <h1 class="page-title">صورت‌حساب</h1>
       <p class="page-lead">{{ contact.display_name }}</p>
     </div>
     <div class="btn-row">
@@ -19,10 +19,15 @@
   </div>
 
   <section class="panel balance-card balance-{{ balance.state }}">
-    <div class="balance-label">{{ balance.label }}</div>
+    <div class="balance-label">مانده حساب</div>
     <div class="balance-amount">{{ balance.amount|intcomma }} <span class="balance-unit">ریال</span></div>
+    <div class="balance-state">{{ balance.label }}</div>
     {% if balance.state == 'settled' %}
       <div class="muted">حساب این مخاطب تسویه است.</div>
+    {% elif balance.state == 'debtor' %}
+      <div class="muted">این مبلغ جزو مطالبات شما از این مخاطب است.</div>
+    {% else %}
+      <div class="muted">این مبلغ جزو دیون شما به این مخاطب است.</div>
     {% endif %}
   </section>
 
@@ -52,33 +57,92 @@
     </div>
   </form>
 
-  <div class="list-stack">
-    {% for entry in entries %}
-      <article class="list-item ledger-row">
-        <div>
-          <div class="list-title">{{ entry.get_entry_type_display }}</div>
-          <div class="muted">
-            {{ entry.occurred_on }}
-            {% if entry.reference %} · مرجع: {{ entry.reference }}{% endif %}
-          </div>
-          {% if entry.description %}<div class="muted">{{ entry.description }}</div>{% endif %}
-          {% if entry.related_lot %}<div class="muted" dir="ltr">{{ entry.related_lot.lot_code }}</div>{% endif %}
-        </div>
-        <div class="ledger-amounts">
-          <div class="ledger-delta {% if entry.is_debit %}is-debit{% else %}is-credit{% endif %}">
-            {% if entry.is_debit %}+{% else %}−{% endif %}{{ entry.amount|intcomma }}
-          </div>
-          <div class="muted">مانده: {{ entry.balance_after|intcomma }}</div>
-          {% if can_manage and entry.entry_type != 'reversal' and entry.id not in reversed_ids %}
-            <a class="btn btn-ghost btn-sm" href="{% url 'accounting:reverse' entry.id %}">برگشت</a>
-          {% elif entry.id in reversed_ids %}
-            <span class="badge badge-muted">برگشت‌خورده</span>
-          {% endif %}
-        </div>
-      </article>
-    {% empty %}
-      <div class="empty-state">هنوز سندی برای این مخاطب ثبت نشده است.</div>
-    {% endfor %}
+  <div class="table-scroll">
+    <table class="ledger-table">
+      <thead>
+        <tr>
+          <th>تاریخ</th>
+          <th>شرح</th>
+          <th>مرجع</th>
+          <th>بدهکار</th>
+          <th>بستانکار</th>
+          <th>مانده</th>
+          {% if can_manage %}<th>عملیات</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+          <tr>
+            <td>{{ entry.occurred_on }}</td>
+            <td>
+              <div class="list-title">{{ entry.get_entry_type_display }}</div>
+              {% if entry.description %}<div class="muted">{{ entry.description }}</div>{% endif %}
+              {% if entry.related_lot %}<div class="muted" dir="ltr">{{ entry.related_lot.lot_code }}</div>{% endif %}
+              {% if entry.id in reversed_ids %}<span class="badge badge-muted">برگشت‌خورده</span>{% endif %}
+            </td>
+            <td>{{ entry.reference|default:"—" }}</td>
+            <td class="num">{% if entry.is_debit %}{{ entry.amount|intcomma }}{% else %}—{% endif %}</td>
+            <td class="num">{% if entry.is_credit %}{{ entry.amount|intcomma }}{% else %}—{% endif %}</td>
+            <td class="num">{{ entry.balance_after|intcomma }}</td>
+            {% if can_manage %}
+              <td>
+                {% if entry.entry_type != 'reversal' and entry.id not in reversed_ids %}
+                  <a class="btn btn-ghost btn-sm" href="{% url 'accounting:reverse' entry.id %}">برگشت</a>
+                {% endif %}
+              </td>
+            {% endif %}
+          </tr>
+        {% empty %}
+          <tr>
+            <td class="empty-cell" colspan="{% if can_manage %}7{% else %}6{% endif %}">
+              سندی با این فیلترها یافت نشد.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+      {% if totals.row_count %}
+        <tfoot>
+          <tr>
+            <th colspan="3">جمع دوره</th>
+            <td class="num">{{ totals.debit|intcomma }}</td>
+            <td class="num">{{ totals.credit|intcomma }}</td>
+            <td class="num">—</td>
+            {% if can_manage %}<td></td>{% endif %}
+          </tr>
+          <tr>
+            <th colspan="3">مانده پایان دوره</th>
+            <td class="num" colspan="{% if can_manage %}4{% else %}3{% endif %}">
+              {{ totals.closing_balance.amount|intcomma }} ریال · {{ totals.closing_balance.label }}
+            </td>
+          </tr>
+        </tfoot>
+      {% endif %}
+    </table>
   </div>
+
+  <section class="panel stack-sm">
+    <h2 class="section-title">گزارش سنی بدهی</h2>
+    <p class="muted">
+      بر پایه تاریخ اسناد تا {{ aging.as_of }}؛ هر بستانکاری به قدیمی‌ترین بدهی تخصیص می‌یابد.
+      این گزارش مستقل از فیلترهای بالاست.
+    </p>
+    {% if aging.has_outstanding %}
+      <div class="aging-grid">
+        {% for bucket in aging.rows %}
+          <div class="aging-cell">
+            <div class="metric-label">{{ bucket.label }}</div>
+            <div class="aging-amount">{{ bucket.amount|intcomma }}</div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="kv"><span>جمع مطالبات معوق</span><strong>{{ aging.total|intcomma }} ریال</strong></div>
+    {% elif aging.unapplied_credit %}
+      <p class="muted">
+        مطالبه‌ای از این مخاطب باقی نمانده؛ حساب او {{ aging.unapplied_credit|intcomma }} ریال بستانکار است.
+      </p>
+    {% else %}
+      <p class="muted">مطالبه‌ای از این مخاطب باقی نمانده است.</p>
+    {% endif %}
+  </section>
 </section>
 {% endblock %}

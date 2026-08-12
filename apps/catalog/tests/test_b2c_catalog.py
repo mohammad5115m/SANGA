@@ -43,7 +43,7 @@ def seller_setup(db):
         warehouse=warehouse,
         lot_code="PUB-1",
         status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.CUSTOMER_CATALOG,
+        visibility=InventoryLot.Visibility.PUBLIC,
         available_sqm=Decimal("90"),
         original_sqm=Decimal("90"),
         inventory_confirmed_at=timezone.now(),

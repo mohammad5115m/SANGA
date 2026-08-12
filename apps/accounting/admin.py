@@ -18,7 +18,7 @@ class LedgerEntryAdmin(admin.ModelAdmin):
     )
     list_filter = ("entry_type", "occurred_on")
     search_fields = ("description", "reference", "contact__display_name")
-    raw_id_fields = ("business", "contact", "related_lot", "related_reservation", "reverses", "created_by")
+    raw_id_fields = ("business", "contact", "related_lot", "related_offer", "reverses", "created_by")
     # Ledger entries are immutable; expose as read-only in admin too.
     readonly_fields = [f.name for f in LedgerEntry._meta.fields]
 

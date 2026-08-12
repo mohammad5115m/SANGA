@@ -3,33 +3,22 @@ from __future__ import annotations
 from django.db.models import Q, QuerySet
 
 from apps.businesses.models import Business
-from apps.partners.models import PartnerRelation
 
 from .models import Contact
-
-# Relationship filter keys accepted by the list view.
-KIND_FILTERS = {
-    "customer": "is_customer",
-    "supplier": "is_supplier",
-    "trader": "is_trader",
-}
-
 
 def contacts_for_business(
     business: Business,
     *,
     q: str = "",
-    kind: str = "",
     include_archived: bool = False,
 ) -> QuerySet[Contact]:
-    """Tenant-scoped contact list with optional search and relationship filter."""
+    """Tenant-scoped contact list with optional free-text search.
+
+    Every contact is a colleague, so there is nothing to filter by type.
+    """
     qs = Contact.objects.filter(business=business)
     if not include_archived:
         qs = qs.filter(is_active=True)
-
-    kind_field = KIND_FILTERS.get(kind)
-    if kind_field:
-        qs = qs.filter(**{kind_field: True})
 
     term = (q or "").strip()
     if term:
@@ -49,34 +38,20 @@ def get_contact(business: Business, contact_id) -> Contact:
     )
 
 
-def approved_partner_businesses(business: Business) -> QuerySet[Business]:
-    """Businesses that have an approved partner relation with ``business``
-    (in either direction). Used to constrain the optional contact link so a
-    contact can only be tied to a genuinely approved partner.
+def linkable_businesses(business: Business) -> QuerySet[Business]:
+    """Businesses a contact may be linked to.
+
+    There is no partnership to approve any more: every other active business is
+    a colleague, so the only exclusion is the acting business itself.
     """
-    as_partner = PartnerRelation.objects.filter(
-        partner_business=business,
-        status=PartnerRelation.Status.APPROVED,
-    ).values_list("supplier_business_id", flat=True)
-    as_supplier = PartnerRelation.objects.filter(
-        supplier_business=business,
-        status=PartnerRelation.Status.APPROVED,
-    ).values_list("partner_business_id", flat=True)
-    ids = set(as_partner) | set(as_supplier)
-    return Business.objects.filter(id__in=ids).order_by("name")
+    return (
+        Business.objects.filter(status=Business.Status.ACTIVE)
+        .exclude(pk=business.pk)
+        .order_by("name")
+    )
 
 
-def is_approved_partner(business: Business, other: Business) -> bool:
+def is_linkable_business(business: Business, other: Business) -> bool:
     if other is None or other.id == business.id:
         return False
-    return PartnerRelation.objects.filter(
-        Q(
-            partner_business=business,
-            supplier_business=other,
-        )
-        | Q(
-            supplier_business=business,
-            partner_business=other,
-        ),
-        status=PartnerRelation.Status.APPROVED,
-    ).exists()
+    return other.status == Business.Status.ACTIVE

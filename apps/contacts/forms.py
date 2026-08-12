@@ -4,7 +4,7 @@ from django import forms
 
 from apps.businesses.models import Business
 
-from .selectors import approved_partner_businesses
+from .selectors import linkable_businesses
 
 
 class ContactForm(forms.Form):
@@ -19,9 +19,6 @@ class ContactForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"class": "field-input", "placeholder": "۰۹...", "inputmode": "tel"}),
     )
-    is_customer = forms.BooleanField(label="مشتری", required=False)
-    is_supplier = forms.BooleanField(label="تأمین‌کننده", required=False)
-    is_trader = forms.BooleanField(label="واسطه", required=False)
     address = forms.CharField(
         label="آدرس",
         required=False,
@@ -33,7 +30,7 @@ class ContactForm(forms.Form):
         widget=forms.Textarea(attrs={"class": "field-input", "rows": 3}),
     )
     linked_business = forms.ModelChoiceField(
-        label="اتصال به همکار تأییدشده (اختیاری)",
+        label="اتصال به همکار در سنگا (اختیاری)",
         queryset=Business.objects.none(),
         required=False,
         empty_label="— بدون اتصال —",
@@ -42,16 +39,4 @@ class ContactForm(forms.Form):
 
     def __init__(self, *args, business: Business, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.fields["linked_business"].queryset = approved_partner_businesses(business)
-
-    def clean(self):
-        cleaned = super().clean()
-        if not (
-            cleaned.get("is_customer")
-            or cleaned.get("is_supplier")
-            or cleaned.get("is_trader")
-        ):
-            raise forms.ValidationError(
-                "حداقل یک نوع ارتباط را انتخاب کنید (مشتری، تأمین‌کننده یا واسطه)."
-            )
-        return cleaned
+        self.fields["linked_business"].queryset = linkable_businesses(business)

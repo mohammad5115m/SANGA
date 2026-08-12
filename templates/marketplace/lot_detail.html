@@ -27,22 +27,6 @@
     <div class="kv"><span>تازگی موجودی</span><strong>{% if lot.inventory_confirmed_at %}{{ lot.inventory_confirmed_at }}{% else %}—{% endif %}</strong></div>
   </section>
 
-  <div class="btn-row">
-    <form method="post" action="{% url 'marketplace:follow_toggle' supplier.id %}">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ request.path }}">
-      {% if is_following %}
-        <input type="hidden" name="action" value="unfollow">
-        <button class="btn btn-ghost" type="submit">لغو دنبال‌کردن</button>
-      {% else %}
-        <input type="hidden" name="action" value="follow">
-        <button class="btn btn-secondary" type="submit">دنبال‌کردن تأمین‌کننده</button>
-      {% endif %}
-    </form>
-    <a class="btn btn-ghost" href="{% url 'partners:request' supplier.id %}">درخواست همکاری</a>
-    <a class="btn btn-secondary" href="{% url 'reservations:request_create' lot.id %}">درخواست رزرو</a>
-  </div>
-
   <section class="panel stack-md">
     <h2 class="section-title">استعلام از تأمین‌کننده</h2>
     <form method="post" class="stack-md" novalidate>

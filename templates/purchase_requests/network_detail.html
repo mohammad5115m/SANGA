@@ -23,6 +23,11 @@
     <h2 class="section-title">پیشنهاد شما (خصوصی)</h2>
     <div class="muted">{{ my_offer.unit_price }} / m² · {{ my_offer.offered_qty_sqm }} m² · {{ my_offer.get_status_display }}</div>
     <p class="muted">فقط شما و درخواست‌کننده این پیشنهاد را می‌بینید.</p>
+    {% if my_offer.status == 'accepted' and 'ledger.manage' in capabilities %}
+      <div class="btn-row">
+        <a class="btn btn-primary btn-sm" href="{% url 'accounting:record_trade' %}?offer={{ my_offer.id }}">ثبت سند مالی این معامله</a>
+      </div>
+    {% endif %}
   </section>
   {% endif %}
 

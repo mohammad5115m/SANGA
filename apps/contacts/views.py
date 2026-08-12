@@ -9,14 +9,16 @@ from django.views.decorators.http import require_http_methods
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import CUSTOMERS_MANAGE
+from apps.pricing.selectors import contact_price_count_for_contact
 
 from .forms import ContactForm
 from .models import Contact
-from .selectors import KIND_FILTERS, contacts_for_business, get_contact
+from .selectors import contacts_for_business, get_contact
 from .services import (
     ContactError,
     archive_contact,
     create_contact,
+    restore_contact,
     update_contact,
 )
 
@@ -34,18 +36,14 @@ def _get_owned_contact(request: HttpRequest, contact_id) -> Contact:
 @require_capability(CUSTOMERS_MANAGE)
 def contact_list(request: HttpRequest) -> HttpResponse:
     q = request.GET.get("q", "").strip()
-    kind = request.GET.get("kind", "").strip()
-    if kind not in KIND_FILTERS:
-        kind = ""
-    contacts = contacts_for_business(request.business, q=q, kind=kind)
+    # Archived contacts are hidden by default, but they must stay reachable:
+    # otherwise an archived contact could never be opened, let alone restored.
+    show_archived = request.GET.get("archived") == "1"
+    contacts = contacts_for_business(request.business, q=q, include_archived=show_archived)
     return render(
         request,
         "contacts/list.html",
-        {
-            "contacts": contacts,
-            "q": q,
-            "kind": kind,
-        },
+        {"contacts": contacts, "q": q, "show_archived": show_archived},
     )
 
 
@@ -90,9 +88,6 @@ def contact_create(request: HttpRequest) -> HttpResponse:
                 phone=form.cleaned_data["phone"],
                 address=form.cleaned_data["address"],
                 notes=form.cleaned_data["notes"],
-                is_customer=form.cleaned_data["is_customer"],
-                is_supplier=form.cleaned_data["is_supplier"],
-                is_trader=form.cleaned_data["is_trader"],
                 linked_business=form.cleaned_data["linked_business"],
             )
         except ContactError as exc:
@@ -117,9 +112,6 @@ def contact_edit(request: HttpRequest, contact_id) -> HttpResponse:
         "phone": contact.phone,
         "address": contact.address,
         "notes": contact.notes,
-        "is_customer": contact.is_customer,
-        "is_supplier": contact.is_supplier,
-        "is_trader": contact.is_trader,
         "linked_business": contact.linked_business_id,
     }
     form = ContactForm(request.POST or None, business=request.business, initial=initial)
@@ -132,9 +124,6 @@ def contact_edit(request: HttpRequest, contact_id) -> HttpResponse:
                 phone=form.cleaned_data["phone"],
                 address=form.cleaned_data["address"],
                 notes=form.cleaned_data["notes"],
-                is_customer=form.cleaned_data["is_customer"],
-                is_supplier=form.cleaned_data["is_supplier"],
-                is_trader=form.cleaned_data["is_trader"],
                 linked_business=form.cleaned_data["linked_business"],
             )
         except ContactError as exc:
@@ -162,4 +151,28 @@ def contact_archive(request: HttpRequest, contact_id) -> HttpResponse:
             return redirect("contacts:detail", contact_id=contact.id)
         messages.success(request, "مخاطب بایگانی شد.")
         return redirect("contacts:list")
-    return render(request, "contacts/confirm_archive.html", {"contact": contact})
+
+    # Only the number is shown, not the amounts, so this is not gated behind
+    # prices.view: whoever archives has to see the consequence of archiving.
+    return render(
+        request,
+        "contacts/confirm_archive.html",
+        {
+            "contact": contact,
+            "contact_price_count": contact_price_count_for_contact(request.business, contact),
+        },
+    )
+
+
+@business_login_required
+@require_capability(CUSTOMERS_MANAGE)
+@require_http_methods(["POST"])
+def contact_restore(request: HttpRequest, contact_id) -> HttpResponse:
+    contact = _get_owned_contact(request, contact_id)
+    try:
+        restore_contact(contact=contact, membership=request.membership)
+    except ContactError as exc:
+        messages.error(request, exc.message)
+    else:
+        messages.success(request, "مخاطب به فهرست فعال بازگشت و قیمت‌های اختصاصی‌اش دوباره اعمال می‌شود.")
+    return redirect("contacts:detail", contact_id=contact.id)

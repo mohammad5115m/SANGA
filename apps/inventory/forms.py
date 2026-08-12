@@ -200,20 +200,9 @@ class ContactPriceForm(forms.Form):
         return cleaned
 
 
-def editable_visibility_choices(current: str = "") -> list[tuple[str, str]]:
-    """
-    Choices offered when creating/editing a lot.
-
-    `selected_partners` behaves exactly like `all_partners` (approved partners
-    only), so it is hidden to avoid implying a per-lot allowlist. Lots already
-    stored with it keep the option so editing them does not silently change
-    their visibility.
-    """
-    legacy = InventoryLot.Visibility.SELECTED_PARTNERS
-    choices = [choice for choice in InventoryLot.Visibility.choices if choice[0] != legacy]
-    if current == legacy:
-        choices.insert(1, (legacy.value, legacy.label))
-    return choices
+def editable_visibility_choices() -> list[tuple[str, str]]:
+    """Choices offered when creating/editing a lot: all three levels."""
+    return list(InventoryLot.Visibility.choices)
 
 
 class LotVisibilityForm(forms.Form):
@@ -288,9 +277,7 @@ class LotEditForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if business is not None:
             self.fields["warehouse"].queryset = Warehouse.objects.filter(business=business, is_active=True)
-        self.fields["visibility"].choices = editable_visibility_choices(
-            getattr(self.instance, "visibility", "")
-        )
+        self.fields["visibility"].choices = editable_visibility_choices()
 
 
 class InventoryFilterForm(forms.Form):

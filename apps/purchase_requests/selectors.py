@@ -15,16 +15,27 @@ def my_purchase_requests(business: Business) -> QuerySet[PurchaseRequest]:
                 "offers",
                 queryset=PurchaseOffer.objects.select_related("seller_business", "lot"),
             ),
-            "match_results__lot__product",
         )
         .order_by("-created_at")
     )
 
 
 def network_purchase_requests(viewer_business: Business) -> QuerySet[PurchaseRequest]:
-    """Open network demand visible to other businesses (not a public auction)."""
+    """Open network demand visible to other businesses (not a public auction).
+
+    Both sides must be an active business, exactly as in
+    ``marketplace.marketplace_lots_for``: a suspended viewer gets an empty board
+    and a suspended buyer's demand is shown to nobody. Same notion of "active"
+    as ``contacts.is_linkable_business`` and ``businesses.get_active_membership``.
+    Own requests stay reachable through ``my_purchase_requests``.
+    """
+    if viewer_business is None or viewer_business.status != Business.Status.ACTIVE:
+        return PurchaseRequest.objects.none()
+
     return (
         PurchaseRequest.objects.filter(
+            # A join on the requesting business, not a per-row lookup.
+            business__status=Business.Status.ACTIVE,
             is_public_to_network=True,
             status__in=[
                 PurchaseRequest.Status.OPEN,

@@ -6,7 +6,7 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">مخاطبین</h1>
-      <p class="page-lead">مشتریان، تأمین‌کنندگان و واسطه‌های کسب‌وکار شما</p>
+      <p class="page-lead">همکاران کسب‌وکار شما</p>
     </div>
     <a class="btn btn-primary" href="{% url 'contacts:create' %}">افزودن مخاطب</a>
   </div>
@@ -16,12 +16,10 @@
       <span class="field-label">جستجو</span>
       <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="نام یا شماره تماس">
     </label>
-    <div class="badge-row">
-      <a class="chip {% if not kind %}is-active{% endif %}" href="{% url 'contacts:list' %}{% if q %}?q={{ q }}{% endif %}">همه</a>
-      <a class="chip {% if kind == 'customer' %}is-active{% endif %}" href="?kind=customer{% if q %}&q={{ q }}{% endif %}">مشتری</a>
-      <a class="chip {% if kind == 'supplier' %}is-active{% endif %}" href="?kind=supplier{% if q %}&q={{ q }}{% endif %}">تأمین‌کننده</a>
-      <a class="chip {% if kind == 'trader' %}is-active{% endif %}" href="?kind=trader{% if q %}&q={{ q }}{% endif %}">واسطه</a>
-    </div>
+    <label class="checkbox-inline">
+      <input class="field-checkbox" type="checkbox" name="archived" value="1" {% if show_archived %}checked{% endif %}>
+      <span>نمایش مخاطبین بایگانی‌شده</span>
+    </label>
     <div class="btn-row">
       <button class="btn btn-secondary btn-sm" type="submit">اعمال جستجو</button>
     </div>
@@ -34,18 +32,18 @@
           <div class="list-title">{{ contact.display_name }}</div>
           <div class="muted">{{ contact.phone|default:"بدون شماره" }}</div>
           <div class="badge-row">
-            {% for label in contact.relationship_labels %}
-              <span class="badge">{{ label }}</span>
-            {% endfor %}
             {% if contact.linked_business %}
               <span class="badge badge-muted">همکار متصل</span>
+            {% endif %}
+            {% if not contact.is_active %}
+              <span class="badge badge-muted">بایگانی‌شده</span>
             {% endif %}
           </div>
         </div>
       </a>
     {% empty %}
       <div class="empty-state">
-        {% if q or kind %}
+        {% if q %}
           مخاطبی با این جستجو پیدا نشد.
         {% else %}
           هنوز مخاطبی ثبت نکرده‌اید. برای شروع «افزودن مخاطب» را بزنید.

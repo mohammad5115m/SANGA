@@ -10,7 +10,6 @@
     </div>
     <div class="btn-row">
       <a class="btn btn-secondary" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
-      <a class="btn btn-ghost" href="{% url 'partners:directory' %}">تأمین‌کنندگان</a>
     </div>
   </div>
 
@@ -20,7 +19,6 @@
     <label class="field"><span class="field-label">رنگ</span>{{ filter_form.color }}</label>
     <label class="field"><span class="field-label">حداقل متراژ</span>{{ filter_form.min_qty }}</label>
     <label class="field checkbox-field">{{ filter_form.only_urgent }} <span>{{ filter_form.only_urgent.label }}</span></label>
-    <label class="field checkbox-field">{{ filter_form.only_followed }} <span>{{ filter_form.only_followed.label }}</span></label>
     <button class="btn btn-secondary" type="submit">اعمال</button>
   </form>
 
@@ -65,7 +63,7 @@
         </div>
       </a>
     {% empty %}
-      <div class="empty-state">موردی در شبکه همکاران یافت نشد. تأمین‌کننده را دنبال کنید یا همکاری درخواست دهید.</div>
+      <div class="empty-state">موردی در شبکه همکاران یافت نشد. فیلترها را تغییر دهید یا بعداً دوباره سر بزنید.</div>
     {% endfor %}
   </div>
 </section>

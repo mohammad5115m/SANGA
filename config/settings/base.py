@@ -36,14 +36,20 @@ INSTALLED_APPS = [
     "apps.inventory",
     "apps.catalog",
     "apps.inquiries",
-    "apps.partners",
     "apps.marketplace",
     "apps.notifications",
     "apps.purchase_requests",
-    "apps.matching",
-    "apps.reservations",
     "apps.contacts",
     "apps.accounting",
+    # Migrations-only apps: they hold no models any more, but their migration
+    # history is still needed. partners.0002 drops the partnership tables and
+    # hands SavedSearch to apps.marketplace; reservations.0002 and matching.0003
+    # drop their tables, and accounting.0001 still references
+    # reservations.Reservation when a fresh database replays the history.
+    # Delete once every environment has applied these and the history is squashed.
+    "apps.partners",
+    "apps.matching",
+    "apps.reservations",
 ]
 
 MIDDLEWARE = [
@@ -166,12 +172,8 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60,  # hourly
     },
     "match-saved-searches": {
-        "task": "apps.partners.tasks.match_saved_searches",
+        "task": "apps.marketplace.tasks.match_saved_searches",
         "schedule": 60 * 30,  # every 30 minutes
-    },
-    "expire-reservations": {
-        "task": "apps.reservations.tasks.expire_reservations",
-        "schedule": 60 * 15,  # every 15 minutes
     },
 }
 

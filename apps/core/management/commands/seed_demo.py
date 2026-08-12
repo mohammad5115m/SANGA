@@ -10,8 +10,6 @@ from apps.accounts.models import User
 from apps.businesses.models import BusinessMembership
 from apps.businesses.services import add_warehouse, complete_onboarding, create_business_for_owner
 from apps.inventory.models import InventoryLot, Product
-from apps.partners.models import PartnerRelation
-from apps.partners.services import decide_partnership, request_partnership
 from apps.pricing.services import ensure_default_tiers, set_lot_prices
 
 
@@ -46,7 +44,6 @@ class Command(BaseCommand):
             )
             warehouse = add_warehouse(business=business, name="انبار مرکزی", city="محلات", is_default=True)
             complete_onboarding(business)
-            membership = BusinessMembership.objects.get(user=owner, business=business)
 
         samples = [
             ("تراورتن عباس‌آباد (فرضی)", "تراورتن", "کرم", "محلات", "120.000", "1850000", "2600000"),
@@ -72,7 +69,7 @@ class Command(BaseCommand):
                     "product": product,
                     "warehouse": warehouse,
                     "status": InventoryLot.Status.AVAILABLE,
-                    "visibility": InventoryLot.Visibility.CUSTOMER_CATALOG,
+                    "visibility": InventoryLot.Visibility.PUBLIC,
                     "available_sqm": Decimal(qty),
                     "original_sqm": Decimal(qty),
                     "grade": "ممتاز",
@@ -88,22 +85,21 @@ class Command(BaseCommand):
                     b2c_amount=Decimal(b2c),
                     currency="IRR",
                 )
-            # Publish first demo lot also into B2B network for marketplace testing.
-            if code == "DEMO-001" and lot.visibility != InventoryLot.Visibility.PUBLIC:
-                lot.visibility = InventoryLot.Visibility.ALL_PARTNERS
+            # Keep one demo lot colleagues-only so the marketplace/storefront
+            # split is visible locally.
+            if code == "DEMO-002" and lot.visibility != InventoryLot.Visibility.COLLEAGUES:
+                lot.visibility = InventoryLot.Visibility.COLLEAGUES
                 lot.save(update_fields=["visibility", "updated_at"])
 
         partner_owner, _ = User.objects.get_or_create(
             phone="09122222222",
             defaults={"full_name": "شریک دمو (فرضی)"},
         )
-        partner_membership = BusinessMembership.objects.filter(
+        has_partner_business = BusinessMembership.objects.filter(
             user=partner_owner,
             role=BusinessMembership.Role.OWNER,
-        ).first()
-        if partner_membership:
-            partner_business = partner_membership.business
-        else:
+        ).exists()
+        if not has_partner_business:
             partner_business = create_business_for_owner(
                 owner=partner_owner,
                 name="بازرگانی سنگ پارس (دمو ـ فرضی)",
@@ -113,21 +109,6 @@ class Command(BaseCommand):
             )
             add_warehouse(business=partner_business, name="انبار تهران", city="تهران", is_default=True)
             complete_onboarding(partner_business)
-            partner_membership = BusinessMembership.objects.get(user=partner_owner, business=partner_business)
-
-        relation = PartnerRelation.objects.filter(
-            supplier_business=business,
-            partner_business=partner_business,
-        ).first()
-        if relation is None:
-            relation = request_partnership(
-                partner_business=partner_business,
-                supplier_business=business,
-                membership=partner_membership,
-                message="درخواست همکاری دمو",
-            )
-        if relation.status != PartnerRelation.Status.APPROVED:
-            decide_partnership(relation=relation, membership=membership, approve=True)
 
         self.stdout.write(self.style.SUCCESS("Demo seed complete (fictional SANGA data)."))
         self.stdout.write(f"Supplier login phone: {owner.phone}")

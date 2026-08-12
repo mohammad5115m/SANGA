@@ -536,7 +536,7 @@ def quick_add_visibility(request: HttpRequest) -> HttpResponse:
 
     form = LotVisibilityForm(
         request.POST or None,
-        initial={"visibility": InventoryLot.Visibility.CUSTOMER_CATALOG},
+        initial={"visibility": InventoryLot.Visibility.PUBLIC},
     )
     if request.method == "POST" and form.is_valid():
         data["visibility"] = form.cleaned_data["visibility"]

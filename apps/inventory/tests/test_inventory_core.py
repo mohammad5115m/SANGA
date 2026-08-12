@@ -148,24 +148,26 @@ def test_other_business_cannot_price_lot(owner_business):
 
 
 @pytest.mark.django_db
-def test_legacy_selected_partners_only_offered_for_lots_already_using_it(owner_business):
+def test_visibility_offers_exactly_three_levels(owner_business):
     _owner, business, warehouse, _membership = owner_business
-    legacy = InventoryLot.Visibility.SELECTED_PARTNERS
 
     offered = [value for value, _label in editable_visibility_choices()]
-    assert legacy not in offered
-    assert InventoryLot.Visibility.ALL_PARTNERS in offered
+    assert offered == [
+        InventoryLot.Visibility.PRIVATE,
+        InventoryLot.Visibility.COLLEAGUES,
+        InventoryLot.Visibility.PUBLIC,
+    ]
 
-    product = Product.objects.create(business=business, commercial_name="سنگ شرکای انتخابی")
+    product = Product.objects.create(business=business, commercial_name="سنگ سه‌سطحی")
     lot = InventoryLot.objects.create(
         business=business,
         product=product,
         warehouse=warehouse,
-        lot_code="LEG-1",
+        lot_code="VIS-1",
         status=InventoryLot.Status.AVAILABLE,
-        visibility=legacy,
+        visibility=InventoryLot.Visibility.COLLEAGUES,
         available_sqm=Decimal("10"),
         original_sqm=Decimal("10"),
     )
     form = LotEditForm(instance=lot, business=business)
-    assert legacy in [value for value, _label in form.fields["visibility"].choices]
+    assert [value for value, _label in form.fields["visibility"].choices] == offered

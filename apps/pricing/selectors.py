@@ -33,3 +33,14 @@ def contact_prices_for_contact(business, contact) -> QuerySet[ContactPrice]:
         .select_related("lot", "lot__product")
         .order_by("lot__lot_code")
     )
+
+
+def contact_price_count_for_contact(business, contact) -> int:
+    """How many overrides archiving ``contact`` would silently stop applying.
+
+    Resolution requires ``contact__is_active``, so archiving drops every one of
+    these back to the standard B2B tier without deleting a row. Shares the
+    tenant scoping of ``contact_prices_for_contact``: another business's
+    overrides can never reach the count.
+    """
+    return contact_prices_for_contact(business, contact).count()

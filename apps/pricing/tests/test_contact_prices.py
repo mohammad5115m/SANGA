@@ -10,12 +10,12 @@ from django.utils import timezone
 from apps.businesses.models import BusinessMembership
 from apps.businesses.services import add_warehouse, create_business_for_owner
 from apps.catalog.services import b2c_price_context
-from apps.contacts.services import create_contact
+from apps.contacts.services import create_contact, restore_contact
 from apps.inventory.models import InventoryLot, Product
 from apps.marketplace.selectors import get_marketplace_lot, marketplace_lots_for
 from apps.marketplace.services import b2b_price_context, marketplace_lot_card
-from apps.partners.models import PartnerRelation
 from apps.pricing.models import ContactPrice
+from apps.pricing.selectors import contact_price_count_for_contact
 from apps.pricing.services import (
     PricingError,
     ensure_default_tiers,
@@ -34,7 +34,7 @@ OVERRIDE_AMOUNT = Decimal("1200000")
 
 @pytest.fixture
 def pricing(db):
-    """One seller, two approved partners, one lot priced at both tiers."""
+    """One seller, two colleague businesses, one lot priced at both tiers."""
     ensure_default_tiers()
     seller_user = User.objects.create_user(phone="09127770001", full_name="فروشنده")
     friend_user = User.objects.create_user(phone="09127770002", full_name="همکار ویژه")
@@ -55,13 +55,6 @@ def pricing(db):
         role=BusinessMembership.Role.STAFF,
         status=BusinessMembership.Status.ACTIVE,
     )
-
-    for partner in (friend, other):
-        PartnerRelation.objects.create(
-            supplier_business=seller,
-            partner_business=partner,
-            status=PartnerRelation.Status.APPROVED,
-        )
 
     warehouse = add_warehouse(business=seller, name="انبار", is_default=True)
     product = Product.objects.create(
@@ -84,14 +77,12 @@ def pricing(db):
         business=seller,
         membership=seller_m,
         display_name="همکار ویژه",
-        is_customer=True,
         linked_business=friend,
     )
     plain_contact = create_contact(
         business=seller,
         membership=seller_m,
         display_name="مشتری بدون اتصال",
-        is_customer=True,
     )
     return {
         "seller": seller,
@@ -128,7 +119,7 @@ def _viewer_lot(pricing, viewer):
 # --- resolution ------------------------------------------------------------
 
 
-def test_linked_partner_sees_the_override_instead_of_the_b2b_tier(pricing):
+def test_linked_colleague_sees_the_override_instead_of_the_b2b_tier(pricing):
     _set_override(pricing)
     lot = _viewer_lot(pricing, pricing["friend"])
 
@@ -138,7 +129,7 @@ def test_linked_partner_sees_the_override_instead_of_the_b2b_tier(pricing):
     assert str(B2B_AMOUNT) not in str(context)
 
 
-def test_a_different_approved_partner_still_sees_the_plain_b2b_tier(pricing):
+def test_a_different_colleague_still_sees_the_plain_b2b_tier(pricing):
     _set_override(pricing)
     lot = _viewer_lot(pricing, pricing["other"])
 
@@ -286,7 +277,6 @@ def test_a_business_cannot_price_another_businesses_lot(pricing):
         business=pricing["friend"],
         membership=pricing["friend_m"],
         display_name="مخاطب همکار",
-        is_customer=True,
     )
     with pytest.raises(PricingError):
         set_contact_price(
@@ -303,7 +293,6 @@ def test_a_business_cannot_price_against_another_businesses_contact(pricing):
         business=pricing["other"],
         membership=pricing["other_m"],
         display_name="مخاطب بیگانه",
-        is_customer=True,
     )
     with pytest.raises(PricingError):
         set_contact_price(
@@ -385,3 +374,123 @@ def test_management_screen_rejects_another_businesses_lot(client, pricing):
     )
     assert response.status_code == 302
     assert not ContactPrice.objects.exists()
+
+
+# --- archive warning -------------------------------------------------------
+
+WARNING_MARKER = "قیمت توافقی ثبت شده است"
+
+
+def _extra_lot(pricing, code: str) -> InventoryLot:
+    lot = pricing["lot"]
+    return InventoryLot.objects.create(
+        business=lot.business,
+        product=lot.product,
+        warehouse=lot.warehouse,
+        lot_code=code,
+        status=InventoryLot.Status.AVAILABLE,
+        visibility=InventoryLot.Visibility.PUBLIC,
+        available_sqm=Decimal("40"),
+        original_sqm=Decimal("40"),
+        inventory_confirmed_at=timezone.now(),
+    )
+
+
+def _archive_url(contact) -> str:
+    return reverse("contacts:archive", kwargs={"contact_id": contact.id})
+
+
+def test_archive_screen_warns_with_the_number_of_negotiated_prices(client, pricing):
+    _set_override(pricing)
+    set_contact_price(
+        lot=_extra_lot(pricing, "CP-2"),
+        contact=pricing["friend_contact"],
+        membership=pricing["seller_m"],
+        amount=OVERRIDE_AMOUNT,
+    )
+    client.force_login(pricing["seller_user"])
+
+    response = client.get(_archive_url(pricing["friend_contact"]))
+    assert response.status_code == 200
+    assert response.context["contact_price_count"] == 2
+    content = response.content.decode("utf-8")
+    assert WARNING_MARKER in content
+    assert pricing["friend_contact"].display_name in content
+
+
+def test_archive_screen_stays_silent_for_a_contact_without_overrides(client, pricing):
+    _set_override(pricing)
+    client.force_login(pricing["seller_user"])
+
+    response = client.get(_archive_url(pricing["plain_contact"]))
+    assert response.status_code == 200
+    assert response.context["contact_price_count"] == 0
+    assert WARNING_MARKER not in response.content.decode("utf-8")
+
+
+def test_the_warning_count_never_crosses_a_tenant_boundary(pricing):
+    _set_override(pricing)
+    # The other business prices its own lot for its own contact.
+    other_warehouse = add_warehouse(business=pricing["other"], name="انبار همکار", is_default=True)
+    other_product = Product.objects.create(
+        business=pricing["other"], commercial_name="تراورتن", stone_type="تراورتن"
+    )
+    other_lot = InventoryLot.objects.create(
+        business=pricing["other"],
+        product=other_product,
+        warehouse=other_warehouse,
+        lot_code="CP-OTHER",
+        status=InventoryLot.Status.AVAILABLE,
+        visibility=InventoryLot.Visibility.PUBLIC,
+        available_sqm=Decimal("10"),
+        original_sqm=Decimal("10"),
+        inventory_confirmed_at=timezone.now(),
+    )
+    other_contact = create_contact(
+        business=pricing["other"],
+        membership=pricing["other_m"],
+        display_name="مخاطب همکار عادی",
+    )
+    set_contact_price(
+        lot=other_lot,
+        contact=other_contact,
+        membership=pricing["other_m"],
+        amount=OVERRIDE_AMOUNT,
+    )
+
+    assert contact_price_count_for_contact(pricing["seller"], pricing["friend_contact"]) == 1
+    assert contact_price_count_for_contact(pricing["other"], other_contact) == 1
+    # A contact id from another tenant yields nothing, not that tenant's count.
+    assert contact_price_count_for_contact(pricing["other"], pricing["friend_contact"]) == 0
+    assert contact_price_count_for_contact(pricing["seller"], other_contact) == 0
+
+
+def test_archiving_keeps_the_overrides_and_restoring_reapplies_them(client, pricing):
+    _set_override(pricing)
+    contact = pricing["friend_contact"]
+    client.force_login(pricing["seller_user"])
+
+    response = client.post(_archive_url(contact))
+    assert response.status_code == 302
+    contact.refresh_from_db()
+    assert contact.is_active is False
+    # Archiving is a warning, not a deletion: the rows survive.
+    assert ContactPrice.objects.filter(contact=contact).count() == 1
+    assert b2b_price_context(_viewer_lot(pricing, pricing["friend"]), pricing["friend"])[
+        "amount"
+    ] == B2B_AMOUNT
+
+    restore_contact(contact=contact, membership=pricing["seller_m"])
+    assert b2b_price_context(_viewer_lot(pricing, pricing["friend"]), pricing["friend"])[
+        "amount"
+    ] == OVERRIDE_AMOUNT
+
+
+def test_archiving_a_contact_without_overrides_still_succeeds(client, pricing):
+    contact = pricing["plain_contact"]
+    client.force_login(pricing["seller_user"])
+
+    response = client.post(_archive_url(contact))
+    assert response.status_code == 302
+    contact.refresh_from_db()
+    assert contact.is_active is False

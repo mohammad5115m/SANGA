@@ -1,7 +1,18 @@
 from __future__ import annotations
 
+from django.db import transaction
+
+from apps.businesses.models import Business
 from apps.inventory.models import InventoryLot
 from apps.pricing.services import CONTACT_TIER_CODE, effective_price, resolve_prices_for_viewer
+
+from .models import SavedSearch
+
+
+class MarketplaceError(Exception):
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
 
 
 def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
@@ -31,6 +42,27 @@ def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
         "label": f"{price.amount:,.0f} {price.currency}",
         "is_partner_price": price.tier_code == CONTACT_TIER_CODE,
     }
+
+
+@transaction.atomic
+def save_search(
+    *,
+    business: Business,
+    user,
+    name: str,
+    query: dict,
+    notify_enabled: bool = True,
+) -> SavedSearch:
+    name = (name or "").strip()
+    if len(name) < 2:
+        raise MarketplaceError("نام جستجو خیلی کوتاه است.")
+    return SavedSearch.objects.create(
+        business=business,
+        user=user,
+        name=name,
+        query=query or {},
+        notify_enabled=notify_enabled,
+    )
 
 
 def marketplace_lot_card(lot: InventoryLot, viewer_business=None) -> dict:

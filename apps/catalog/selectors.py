@@ -30,10 +30,7 @@ def public_catalog_lots(business: Business) -> QuerySet[InventoryLot]:
                 InventoryLot.Status.NEEDS_CONFIRMATION,
                 InventoryLot.Status.PARTIALLY_SOLD,
             ],
-            visibility__in=[
-                InventoryLot.Visibility.CUSTOMER_CATALOG,
-                InventoryLot.Visibility.PUBLIC,
-            ],
+            visibility=InventoryLot.Visibility.PUBLIC,
         )
         .select_related("product", "warehouse")
         .prefetch_related(_b2c_price_prefetch(), "media")

@@ -22,6 +22,12 @@ ENTRY_TYPE_CHOICES = [
 
 ADJUSTMENT_TYPES = {LedgerEntry.Type.ADJUST_DEBIT.value, LedgerEntry.Type.ADJUST_CREDIT.value}
 
+# The two sides of a trade, offered on the «ثبت معامله» screen.
+TRADE_TYPE_CHOICES = [
+    (LedgerEntry.Type.SALE.value, LedgerEntry.Type.SALE.label),
+    (LedgerEntry.Type.PURCHASE.value, LedgerEntry.Type.PURCHASE.label),
+]
+
 
 class LedgerEntryForm(forms.Form):
     entry_type = forms.ChoiceField(
@@ -76,13 +82,18 @@ class LedgerEntryForm(forms.Form):
 
 
 class TradeEntryForm(forms.Form):
-    """Confirmation form for recording the financial result of a converted trade.
+    """Form for recording a trade (فروش / خرید) in the ledger.
 
-    ``confirm`` is only required for the final submit, so the seller can ask for a
+    ``confirm`` is only required for the final submit, so the user can ask for a
     recalculated balance preview without being nagged for a confirmation they have
     not made yet.
     """
 
+    entry_type = forms.ChoiceField(
+        label="نوع معامله",
+        choices=TRADE_TYPE_CHOICES,
+        widget=forms.Select(attrs={"class": "field-input"}),
+    )
     contact = forms.ModelChoiceField(
         label="طرف حساب (مخاطب شما)",
         queryset=Contact.objects.none(),
@@ -114,6 +125,13 @@ class TradeEntryForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"class": "field-input"}),
     )
+    related_lot = forms.ModelChoiceField(
+        label="محموله مرتبط (اختیاری)",
+        queryset=InventoryLot.objects.none(),
+        required=False,
+        empty_label="— بدون محموله —",
+        widget=forms.Select(attrs={"class": "field-input"}),
+    )
     confirm = forms.BooleanField(
         label="مبلغ و طرف حساب را بررسی کردم؛ ثبت این سند مالی را تأیید می‌کنم.",
         required=False,
@@ -125,12 +143,17 @@ class TradeEntryForm(forms.Form):
         self.fields["contact"].queryset = Contact.objects.filter(
             business=business, is_active=True
         ).order_by("display_name")
+        # Only the acting business's own lots are selectable; the service checks
+        # ownership again so a hand-crafted POST cannot attach a foreign lot.
+        self.fields["related_lot"].queryset = InventoryLot.objects.filter(
+            business=business, archived_at__isnull=True
+        ).order_by("-updated_at")
         self.fields["confirm"].required = require_confirm
 
 
 class QuickContactForm(forms.Form):
-    """Minimal contact creation from the confirmation screen, so the seller never
-    gets a silently auto-created contact but also does not have to leave the flow.
+    """Minimal contact creation from the trade screen, so the user never gets a
+    silently auto-created contact but also does not have to leave the flow.
     """
 
     display_name = forms.CharField(
@@ -144,7 +167,7 @@ class QuickContactForm(forms.Form):
         required=False,
         widget=forms.TextInput(attrs={"class": "field-input", "inputmode": "tel"}),
     )
-    link_to_buyer = forms.BooleanField(
-        label="این مخاطب همان کسب‌وکار خریدار است (اتصال به همکار تأییدشده)",
+    link_to_counterparty = forms.BooleanField(
+        label="این مخاطب همان کسب‌وکار طرف معامله است (اتصال به همکار)",
         required=False,
     )

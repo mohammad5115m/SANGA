@@ -8,9 +8,7 @@
     <div>
       <h1 class="page-title">{{ contact.display_name }}</h1>
       <div class="badge-row">
-        {% for label in contact.relationship_labels %}
-          <span class="badge">{{ label }}</span>
-        {% endfor %}
+        {% if contact.linked_business %}<span class="badge badge-muted">همکار متصل</span>{% endif %}
         {% if not contact.is_active %}<span class="badge badge-muted">بایگانی‌شده</span>{% endif %}
       </div>
     </div>
@@ -39,7 +37,10 @@
   <section class="panel stack-sm">
     <h2 class="section-title">خلاصه مالی</h2>
     {% if balance %}
-      <div class="kv"><span>{{ balance.label }}</span><strong>{{ balance.amount|intcomma }} ریال</strong></div>
+      <div class="kv">
+        <span>مانده حساب</span>
+        <strong class="amount-{{ balance.state }}">{{ balance.amount|intcomma }} ریال · {{ balance.label }}</strong>
+      </div>
       <div class="btn-row">
         <a class="btn btn-secondary btn-sm" href="{% url 'accounting:statement' contact.id %}">دفتر حساب</a>
       </div>
@@ -79,8 +80,16 @@
     <div class="btn-row">
       {% if contact.is_active %}
         <a class="btn btn-ghost btn-sm" href="{% url 'contacts:archive' contact.id %}">بایگانی مخاطب</a>
+      {% else %}
+        <form method="post" action="{% url 'contacts:restore' contact.id %}">
+          {% csrf_token %}
+          <button class="btn btn-secondary btn-sm" type="submit">بازگرداندن از بایگانی</button>
+        </form>
       {% endif %}
     </div>
+    {% if not contact.is_active %}
+      <p class="muted">تا وقتی این مخاطب بایگانی است، قیمت‌های اختصاصی‌اش اعمال نمی‌شود.</p>
+    {% endif %}
   </section>
 </section>
 {% endblock %}

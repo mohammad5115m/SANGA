@@ -8,9 +8,11 @@
 SANGA is a production-grade web platform for natural-stone businesses. It is **not** primarily a generic online shop. It is:
 
 1. **Inventory Management System** — register and keep lots accurate  
-2. **B2B Partner Network** — private supply network with partner pricing  
+2. **Colleague Network («همکاران»)** — every stone business with an account trades
+   with every other, at colleague prices  
 3. **B2C Digital Catalog** — beautiful customer-facing storefronts  
-4. **Demand Matching Platform** — purchase requests matched to inventory  
+4. **Demand Board** — purchase requests posted to the network, answered with
+   private offers  
 
 The central promise:
 
@@ -41,19 +43,19 @@ Do **not** build in early phases:
 - microservices / Kubernetes / Elasticsearch-first search.
 
 What *did* get built, and where the line sits: `apps/accounting` is a **ledger of
-record** — the seller writes down what a contact owes or is owed («دفتر حساب»),
-including a trade recorded from a converted reservation. It moves no money, issues
-no invoice, and settles nothing. Payments are recorded after the fact, as the trader
+record** — the business writes down what a contact owes or is owed («دفتر حساب»),
+including trades it recorded by hand. It moves no money, issues no invoice, and
+settles nothing. Payments are recorded after the fact, as the trader
 already does on paper. See [accounting.md](./accounting.md).
 
 ## 4. Target Personas
 
 | Persona | Primary job | Key constraint |
 |--------|-------------|----------------|
-| Business Owner | Run inventory, team, partners, analytics | Needs overview without clutter |
+| Business Owner | Run inventory, team, colleagues, analytics | Needs overview without clutter |
 | Business Employee | Fast operational work | Permission-scoped tools |
-| B2B Partner | Find stock at wholesale price | Approved membership only |
-| B2C Customer | Browse beautiful catalog, inquire | Must never see B2B price |
+| Colleague («همکار») | Find stock at colleague price | Any stone business with an account |
+| B2C Customer | Browse beautiful catalog, inquire | Never has an account; must never see B2B price |
 | Platform Admin | Verify businesses, moderate, configure | Custom admin UX + Django Admin for technical ops |
 
 ## 5. Core Domain Distinctions
@@ -67,16 +69,17 @@ Never collapse these into one model.
 
 ### B2B vs B2C Price
 
-- **B2B price**: only for authorized/approved partners (and owner/staff with price permission).  
+- **B2B price**: for colleagues — any business with an account — and owner/staff
+  with price permission.
 - **B2C price**: for public catalog visitors and retail buyers.
-- **Partner-specific price**: one negotiated number for one contact on one lot,
+- **Contact-specific price**: one negotiated number for one contact on one lot,
   visible only to the business that contact is linked to. It overrides the B2B tier
-  for that partner and nobody else.
+  for that colleague and nobody else.
 
-Resolution order for any viewer: partner-specific price → the tier their audience is
+Resolution order for any viewer: contact-specific price → the tier their audience is
 allowed to see → «استعلام بگیرید». A missing price is never rendered as zero or blank.
 
-B2B prices must never leak into public HTML, APIs, JS payloads, metadata, logs visible to users, or caches. This is a **security requirement**. A partner-specific price is stricter still: it is dropped for every audience except that one partner.
+B2B prices must never leak into public HTML, APIs, JS payloads, metadata, logs visible to users, or caches. This is a **security requirement**. A contact-specific price is stricter still: it is dropped for every audience except that one colleague.
 
 ## 6. Product Pillars (Priority Order)
 
@@ -103,8 +106,8 @@ When trade-offs conflict, prefer this order:
 - Fresh inventory percentage  
 - Active lots  
 - Search → inquiry conversion  
-- Inquiry → reservation conversion  
-- Reservation → transaction conversion  
+- Demand posted → private offer conversion  
+- Accepted offer → recorded trade conversion  
 - Catalog views and catalog → inquiry conversion  
 - Weekly active sellers / returning B2B users  
 - Average inventory creation time (target: 60–90 seconds for skilled users)
@@ -127,18 +130,21 @@ When trade-offs conflict, prefer this order:
 
 Each lot can appear in:
 
-| Visibility | Audience |
-|-----------|----------|
-| Private / internal | Owner business only |
-| Approved B2B partners | Partner marketplace, businesses with an approved partnership only |
-| Customer catalog | Business public storefront |
-| Public | Broader public discovery (later / optional) |
+Exactly three levels:
+
+| Visibility | Persian | Audience |
+|-----------|---------|----------|
+| `private` | داخلی | Owner business only |
+| `colleagues` | همکاران | Every business with an account, at B2B prices |
+| `public` | عمومی | Colleagues **and** the public storefront, at B2C prices there |
 
 Enforcement must be at query/service level, not only UI.
 
-There is no per-lot partner allowlist. The legacy `selected_partners` value is kept
-for existing rows and behaves identically to `all_partners`; a business with no
-approved partnership sees neither, in the list or by direct UUID.
+There is no per-lot allowlist and no partnership: having an *active* account *is*
+being a colleague. A `private` lot is invisible to every other business, in the
+list and by direct UUID, and a business never sees its own lots in the marketplace.
+A suspended business is out of the network in both directions: it browses nothing
+and nothing of its own is listed.
 
 ## 11. Trust & Verification
 
@@ -147,7 +153,7 @@ Business states: `unverified` → `pending` → `verified` / `rejected` / `suspe
 Prefer objective signals. Built today: **Verified Business**
 (`Business.verification_status`) and **Recently Confirmed Inventory**
 (`InventoryLot.freshness`). Still intended but not built: average response time,
-successful-reservation count, inventory-accuracy score.
+completed-trade count, inventory-accuracy score.
 
 ## 12. Open Product Risks (Tracked)
 
@@ -155,8 +161,11 @@ successful-reservation count, inventory-accuracy score.
 |------|------------|
 | B2B price leakage | Dedicated pricing service + audience serializers + authz tests |
 | Stale inventory damages trust | Freshness engine + reminders + auto-hide |
-| Overbuilding CRM/accounting | CRM stays a flat contact list; the ledger stays a record of debts, with no payments, invoices, or double-entry |
-| One partner's balance splitting across two contacts | A partner can be linked to at most one contact per business, enforced by a DB constraint |
+| Overbuilding CRM/accounting | CRM stays a flat contact list of همکاران with no relationship types; the ledger stays a record of debts, with no payments, invoices, or double-entry |
+| A suspended business still trading in the network | The marketplace selector requires an active business on both sides, so suspension takes effect in the same query that enforces visibility |
+| Archiving a contact quietly erasing their debt | Financial reports keep any archived contact whose balance is not zero, marked «بایگانی‌شده» |
+| One colleague's balance splitting across two contacts | A business can be linked to at most one contact per business, enforced by a DB constraint |
+| An open network exposing private data | Contacts, ledger, private lots, inquiries and offers are scoped by owning business, independent of who can see the marketplace; covered by `apps/marketplace/tests/test_network_privacy.py` |
 | A wrong ledger amount becoming permanent | Entries are immutable; a reversal frees the trade slot so the correct amount can be re-recorded |
 | Complex permissions confuse staff | Sensible role defaults + clear Persian labels |
 | Public caching of prices/stock | No aggressive PWA cache for inventory/pricing |

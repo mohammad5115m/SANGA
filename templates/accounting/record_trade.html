@@ -1,37 +1,45 @@
 {% extends "layouts/app_shell.html" %}
 {% load humanize %}
-{% block title %}ثبت سند مالی معامله | سنگا{% endblock %}
+{% block title %}ثبت معامله | سنگا{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
   <div>
-    <h1 class="page-title">ثبت سند مالی این معامله</h1>
-    <p class="page-lead">این مرحله جداست؛ تا وقتی تأیید نکنید هیچ سندی در دفتر حساب ثبت نمی‌شود.</p>
+    <h1 class="page-title">ثبت سند مالی معامله</h1>
+    <p class="page-lead">معامله را همان‌طور که انجام شده ثبت کنید؛ تا وقتی تأیید نکنید هیچ سندی در دفتر حساب ثبت نمی‌شود.</p>
   </div>
 
-  <section class="panel stack-sm">
-    <h2 class="section-title">خلاصه معامله</h2>
-    <div class="kv"><span>محموله</span><strong dir="ltr">{{ reservation.lot.lot_code }}</strong></div>
-    <div class="kv"><span>محصول</span><strong>{{ reservation.lot.product.commercial_name }}</strong></div>
-    <div class="kv"><span>متراژ</span><strong>{{ reservation.quantity_sqm }} m²</strong></div>
-    <div class="kv"><span>خریدار</span><strong>{{ reservation.requester_business.name }}</strong></div>
-    {% if suggested_amount %}
-      <div class="kv"><span>مبلغ پیشنهادی</span><strong>{{ suggested_amount|intcomma }} ریال</strong></div>
-    {% else %}
-      <p class="muted">برای این محموله قیمت متری همکار ثبت نشده است؛ مبلغ معامله را دستی وارد کنید.</p>
-    {% endif %}
-  </section>
+  {% if offer %}
+    <section class="panel stack-sm">
+      <h2 class="section-title">خلاصه پیشنهاد پذیرفته‌شده</h2>
+      <div class="kv"><span>درخواست</span><strong>{{ offer.purchase_request.title }}</strong></div>
+      {% if offer.lot %}
+        <div class="kv"><span>محموله</span><strong dir="ltr">{{ offer.lot.lot_code }}</strong></div>
+        <div class="kv"><span>محصول</span><strong>{{ offer.lot.product.commercial_name }}</strong></div>
+      {% endif %}
+      <div class="kv"><span>متراژ</span><strong>{{ offer.offered_qty_sqm }} m²</strong></div>
+      <div class="kv"><span>طرف معامله</span><strong>{{ counterparty.name }}</strong></div>
+      {% if suggested_amount %}
+        <div class="kv"><span>مبلغ پیشنهادی</span><strong>{{ suggested_amount|intcomma }} ریال</strong></div>
+      {% else %}
+        <p class="muted">این پیشنهاد قیمت مشخصی ندارد؛ مبلغ معامله را دستی وارد کنید.</p>
+      {% endif %}
+    </section>
+  {% else %}
+    <div class="alert">این سند به هیچ پیشنهادی متصل نیست؛ یک معامله دستی ثبت می‌کنید.</div>
+  {% endif %}
 
   {% if effect %}
     <section class="panel balance-card balance-{{ effect.projected.state }}">
       <div class="balance-label">اثر این سند بر حساب «{{ effect.contact.display_name }}»</div>
       <div class="balance-amount">{{ effect.projected.amount|intcomma }} <span class="balance-unit">ریال</span></div>
+      <div class="balance-state">{{ effect.projected.label }}</div>
       {% if effect.projected.state == 'settled' %}
         <div class="muted">با ثبت این سند، حساب این مخاطب تسویه می‌شود.</div>
       {% else %}
         <div class="muted">
-          با ثبت این سند، {{ effect.projected.label }} {{ effect.projected.amount|intcomma }} ریال می‌شود
-          (مانده فعلی: {{ effect.current.label }} {{ effect.current.amount|intcomma }} ریال).
+          با ثبت این سند، حساب این مخاطب {{ effect.projected.amount|intcomma }} ریال {{ effect.projected.label }} می‌شود
+          (مانده فعلی: {{ effect.current.amount|intcomma }} ریال {{ effect.current.label }}).
         </div>
       {% endif %}
     </section>
@@ -63,7 +71,7 @@
       <div class="btn-row">
         <button class="btn btn-primary" type="submit" name="action" value="record">ثبت نهایی سند</button>
         <button class="btn btn-secondary" type="submit" name="action" value="recalculate" formnovalidate>محاسبه اثر بر مانده</button>
-        <a class="btn btn-ghost" href="{% url 'reservations:detail' reservation.id %}">انصراف</a>
+        <a class="btn btn-ghost" href="{% url 'accounting:index' %}">انصراف</a>
       </div>
     </form>
   </section>
@@ -81,10 +89,10 @@
         <span class="field-label">{{ quick_form.phone.label }}</span>
         {{ quick_form.phone }}
       </label>
-      {% if can_link_buyer %}
+      {% if counterparty %}
         <label class="checkbox-inline">
-          {{ quick_form.link_to_buyer }}
-          <span>{{ quick_form.link_to_buyer.label }}</span>
+          {{ quick_form.link_to_counterparty }}
+          <span>{{ quick_form.link_to_counterparty.label }}</span>
         </label>
       {% endif %}
       <div class="btn-row">

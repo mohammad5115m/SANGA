@@ -6,10 +6,11 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from apps.businesses.models import BusinessMembership
-from apps.businesses.permissions import INQUIRIES_RESPOND, RESERVATIONS_MANAGE
+from apps.businesses.models import Business, BusinessMembership
+from apps.businesses.permissions import INQUIRIES_RESPOND
 from apps.businesses.services import add_warehouse, create_business_for_owner
 from apps.inventory.models import InventoryLot, Product
+from apps.notifications.models import Notification
 from apps.purchase_requests.forms import PurchaseOfferForm
 from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
 from apps.purchase_requests.services import (
@@ -132,8 +133,8 @@ def test_closing_a_purchase_request_requires_the_capability(demand):
 
 
 def test_accepting_an_offer_uses_the_purchase_request_capability(demand):
-    """The buyer needs the capability that governs their own purchase requests,
-    not the seller-side reservations.manage that used to be demanded here.
+    """Accepting is part of running your own purchase request, so ``inquiries.respond``
+    is the only capability involved — and it is enough on its own.
     """
     pr = _make_request(demand)
     offer = _make_offer(demand, pr)
@@ -143,14 +144,30 @@ def test_accepting_an_offer_uses_the_purchase_request_capability(demand):
         business=demand["buyer"],
         role=BusinessMembership.Role.STAFF,
         status=BusinessMembership.Status.ACTIVE,
-        # Holds inquiries.respond but explicitly not reservations.manage.
         permissions=[INQUIRIES_RESPOND],
     )
-    assert not buyer_staff.has_capability(RESERVATIONS_MANAGE)
 
     decide_offer(offer=offer, membership=buyer_staff, accept=True)
     offer.refresh_from_db()
     assert offer.status == PurchaseOffer.Status.ACCEPTED
+
+
+def test_accepting_an_offer_holds_no_stock_and_notifies_the_seller(demand):
+    """Acceptance is a decision, not a hold: quantity and lot status are untouched
+    and the seller is told so the trade can be settled offline.
+    """
+    pr = _make_request(demand)
+    offer = _make_offer(demand, pr, lot=demand["lot"])
+    available_before = demand["lot"].available_sqm
+
+    decide_offer(offer=offer, membership=demand["buyer_m"], accept=True)
+
+    demand["lot"].refresh_from_db()
+    assert demand["lot"].available_sqm == available_before
+    assert demand["lot"].status == InventoryLot.Status.AVAILABLE
+    assert Notification.objects.filter(
+        user=demand["seller_user"], title="پیشنهاد شما پذیرفته شد"
+    ).exists()
 
 
 def test_a_viewer_cannot_accept_an_offer(demand):
@@ -193,6 +210,54 @@ def test_a_viewer_posting_an_offer_is_refused_by_the_view(client, demand):
     )
     assert response.status_code == 302
     assert not PurchaseOffer.objects.exists()
+
+
+# --- active-business gating ------------------------------------------------
+
+
+def _suspend(business: Business) -> None:
+    business.status = Business.Status.SUSPENDED
+    business.save(update_fields=["status"])
+
+
+def test_a_suspended_business_cannot_submit_an_offer(demand):
+    pr = _make_request(demand)
+    _suspend(demand["seller"])
+
+    with pytest.raises(PurchaseRequestError):
+        _make_offer(demand, pr)
+    assert not PurchaseOffer.objects.exists()
+
+
+def test_a_suspended_business_receives_no_offers(demand):
+    _make_request(demand)
+    _suspend(demand["buyer"])
+    pr = PurchaseRequest.objects.get(business=demand["buyer"])
+
+    with pytest.raises(PurchaseRequestError):
+        _make_offer(demand, pr)
+    assert not PurchaseOffer.objects.exists()
+
+
+def test_an_active_business_still_submits_offers(demand):
+    pr = _make_request(demand)
+    offer = _make_offer(demand, pr)
+    assert offer.status == PurchaseOffer.Status.SUBMITTED
+
+
+def test_a_suspended_sellers_offer_cannot_be_accepted(demand):
+    """The offer predates the suspension; accepting it would still commit the
+    buyer to a counterparty that is no longer in the network.
+    """
+    pr = _make_request(demand)
+    offer = _make_offer(demand, pr)
+    _suspend(demand["seller"])
+    offer = PurchaseOffer.objects.select_related("seller_business", "purchase_request").get(pk=offer.pk)
+
+    with pytest.raises(PurchaseRequestError):
+        decide_offer(offer=offer, membership=demand["buyer_m"], accept=True)
+    offer.refresh_from_db()
+    assert offer.status == PurchaseOffer.Status.SUBMITTED
 
 
 # --- lot scoping -----------------------------------------------------------

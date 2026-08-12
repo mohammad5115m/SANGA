@@ -12,4 +12,5 @@ urlpatterns = [
     path("<uuid:contact_id>/", views.contact_detail, name="detail"),
     path("<uuid:contact_id>/edit/", views.contact_edit, name="edit"),
     path("<uuid:contact_id>/archive/", views.contact_archive, name="archive"),
+    path("<uuid:contact_id>/restore/", views.contact_restore, name="restore"),
 ]

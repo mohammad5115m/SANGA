@@ -9,11 +9,6 @@ from django.db import models
 class Notification(models.Model):
     class Kind(models.TextChoices):
         SAVED_SEARCH_MATCH = "saved_search_match", "تطابق جستجو"
-        PARTNER_REQUEST = "partner_request", "درخواست همکاری"
-        PARTNER_DECISION = "partner_decision", "نتیجه همکاری"
-        RESERVATION_REQUEST = "reservation_request", "درخواست رزرو"
-        RESERVATION_DECISION = "reservation_decision", "نتیجه رزرو"
-        RESERVATION_EXPIRED = "reservation_expired", "انقضای رزرو"
         GENERAL = "general", "عمومی"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

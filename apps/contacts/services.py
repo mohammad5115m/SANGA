@@ -8,7 +8,7 @@ from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import CUSTOMERS_MANAGE
 
 from .models import Contact
-from .selectors import is_approved_partner
+from .selectors import is_linkable_business
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,6 @@ def _require_same_business(membership: BusinessMembership, business: Business) -
         raise ContactError("دسترسی نامعتبر است.")
 
 
-def _clean_types(is_customer: bool, is_supplier: bool, is_trader: bool) -> None:
-    if not (is_customer or is_supplier or is_trader):
-        raise ContactError("حداقل یک نوع ارتباط را انتخاب کنید (مشتری، تأمین‌کننده یا واسطه).")
-
-
 def _validate_link(
     business: Business,
     linked_business: Business | None,
@@ -46,11 +41,11 @@ def _validate_link(
         return
     if linked_business.id == business.id:
         raise ContactError("نمی‌توانید کسب‌وکار خودتان را به‌عنوان مخاطب متصل کنید.")
-    if not is_approved_partner(business, linked_business):
-        raise ContactError("اتصال فقط به همکاران تأییدشده امکان‌پذیر است.")
+    if not is_linkable_business(business, linked_business):
+        raise ContactError("اتصال فقط به کسب‌وکارهای فعال امکان‌پذیر است.")
 
-    # One partner, one ledger: a second contact linked to the same partner would
-    # split that partner's balance across two statements. Mirrors the
+    # One colleague, one ledger: a second contact linked to the same business
+    # would split that colleague's balance across two statements. Mirrors the
     # ``uniq_linked_business_per_business`` constraint.
     taken = Contact.objects.filter(business=business, linked_business=linked_business)
     if exclude_contact is not None:
@@ -72,9 +67,6 @@ def create_contact(
     phone: str = "",
     address: str = "",
     notes: str = "",
-    is_customer: bool = False,
-    is_supplier: bool = False,
-    is_trader: bool = False,
     linked_business: Business | None = None,
 ) -> Contact:
     _require_manage(membership)
@@ -84,7 +76,6 @@ def create_contact(
     if len(display_name) < 2:
         raise ContactError("نام مخاطب خیلی کوتاه است.")
 
-    _clean_types(is_customer, is_supplier, is_trader)
     _validate_link(business, linked_business)
 
     try:
@@ -94,9 +85,6 @@ def create_contact(
             phone=(phone or "").strip(),
             address=(address or "").strip(),
             notes=(notes or "").strip(),
-            is_customer=is_customer,
-            is_supplier=is_supplier,
-            is_trader=is_trader,
             linked_business=linked_business,
             created_by=membership.user,
         )
@@ -116,9 +104,6 @@ def update_contact(
     phone: str = "",
     address: str = "",
     notes: str = "",
-    is_customer: bool = False,
-    is_supplier: bool = False,
-    is_trader: bool = False,
     linked_business: Business | None = None,
 ) -> Contact:
     _require_manage(membership)
@@ -128,16 +113,12 @@ def update_contact(
     if len(display_name) < 2:
         raise ContactError("نام مخاطب خیلی کوتاه است.")
 
-    _clean_types(is_customer, is_supplier, is_trader)
     _validate_link(contact.business, linked_business, exclude_contact=contact)
 
     contact.display_name = display_name
     contact.phone = (phone or "").strip()
     contact.address = (address or "").strip()
     contact.notes = (notes or "").strip()
-    contact.is_customer = is_customer
-    contact.is_supplier = is_supplier
-    contact.is_trader = is_trader
     contact.linked_business = linked_business
     try:
         contact.save(
@@ -146,9 +127,6 @@ def update_contact(
                 "phone",
                 "address",
                 "notes",
-                "is_customer",
-                "is_supplier",
-                "is_trader",
                 "linked_business",
                 "updated_at",
             ]
@@ -179,4 +157,5 @@ def restore_contact(*, contact: Contact, membership: BusinessMembership) -> Cont
         return contact
     contact.is_active = True
     contact.save(update_fields=["is_active", "updated_at"])
+    logger.info("Contact restored id=%s business=%s", contact.id, contact.business_id)
     return contact

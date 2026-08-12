@@ -9,17 +9,19 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 # Entry types that represent a real trade (as opposed to money movement, a manual
-# adjustment, or a correction). A trade may be recorded at most once per
-# reservation per business — enforced by ``uniq_trade_entry_per_reservation``.
+# adjustment, or a correction). A trade started from an accepted offer may be
+# recorded at most once per offer per business — enforced by
+# ``uniq_trade_entry_per_offer``.
 TRADE_ENTRY_TYPES: tuple[str, ...] = ("sale", "purchase")
 
 
 class LedgerEntry(models.Model):
     """An immutable financial ledger entry for a contact.
 
-    Balance convention (owning business perspective):
-      balance > 0  ⇒ the contact owes us   (طلب ما)
-      balance < 0  ⇒ we owe the contact     (بدهی ما)
+    Balance convention (owning business's books, standard bookkeeping terms):
+      balance > 0  ⇒ the contact is «بدهکار» — a receivable of the business
+      balance < 0  ⇒ the contact is «بستانکار» — a payable of the business
+      balance == 0 ⇒ «تسویه»
 
     ``amount`` is always a positive magnitude. ``balance_delta`` is the signed
     effect on the running balance and is the single source of truth for balance
@@ -29,12 +31,12 @@ class LedgerEntry(models.Model):
     """
 
     class Type(models.TextChoices):
-        SALE = "sale", "فروش به مخاطب"
-        PURCHASE = "purchase", "خرید از مخاطب"
-        PAYMENT_RECEIVED = "payment_received", "دریافت وجه"
-        PAYMENT_MADE = "payment_made", "پرداخت وجه"
-        ADJUST_DEBIT = "adjust_debit", "بدهکار کردن مخاطب"
-        ADJUST_CREDIT = "adjust_credit", "بستانکار کردن مخاطب"
+        SALE = "sale", "فروش"
+        PURCHASE = "purchase", "خرید"
+        PAYMENT_RECEIVED = "payment_received", "دریافت"
+        PAYMENT_MADE = "payment_made", "پرداخت"
+        ADJUST_DEBIT = "adjust_debit", "اصلاح بدهکار"
+        ADJUST_CREDIT = "adjust_credit", "اصلاح بستانکار"
         REVERSAL = "reversal", "برگشت سند"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -69,8 +71,11 @@ class LedgerEntry(models.Model):
         blank=True,
         related_name="ledger_entries",
     )
-    related_reservation = models.ForeignKey(
-        "reservations.Reservation",
+    # Set only when the trade was recorded from an accepted purchase offer. A
+    # manually recorded trade leaves it null and is therefore not deduplicated —
+    # nothing outside the ledger identifies an offline trade.
+    related_offer = models.ForeignKey(
+        "purchase_requests.PurchaseOffer",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -85,7 +90,7 @@ class LedgerEntry(models.Model):
     )
 
     # Bookkeeping flag, not financial data: stamped on the *original* entry when a
-    # reversal is posted, so ``uniq_trade_entry_per_reservation`` can free the slot
+    # reversal is posted, so ``uniq_trade_entry_per_offer`` can free the slot
     # and the trade can be re-recorded correctly. Because ``save()`` blocks updates
     # by design, this is only ever written through a queryset ``.update()`` inside
     # ``services.reverse_entry`` — see docs/accounting.md. No amount, delta, or
@@ -110,21 +115,22 @@ class LedgerEntry(models.Model):
                 condition=models.Q(amount__gt=0),
                 name="ledger_amount_positive",
             ),
-            # Idempotency for trades: a reservation can yield at most one *live*
-            # trade entry in a given business's ledger, no matter how many times
-            # the seller retries or double-submits. Reversals and money movements
-            # are outside the condition, so corrections stay possible. Scoped by
-            # business so the (postponed) buyer-side PURCHASE mirror still fits.
+            # Idempotency for trades started from an accepted offer: one offer can
+            # yield at most one *live* trade entry in a given business's ledger, no
+            # matter how many times the form is retried or double-submitted.
+            # Reversals and money movements are outside the condition, so
+            # corrections stay possible. Scoped by business so both sides of the
+            # same offer can record their own entry (seller SALE, buyer PURCHASE).
             # ``reversed_at__isnull=True`` means a reversed trade releases the
-            # slot, so the seller can re-record it with the reservation link.
+            # slot, so it can be re-recorded with the offer link intact.
             models.UniqueConstraint(
-                fields=["business", "related_reservation"],
+                fields=["business", "related_offer"],
                 condition=models.Q(
                     entry_type__in=TRADE_ENTRY_TYPES,
-                    related_reservation__isnull=False,
+                    related_offer__isnull=False,
                     reversed_at__isnull=True,
                 ),
-                name="uniq_trade_entry_per_reservation",
+                name="uniq_trade_entry_per_offer",
             ),
         ]
         indexes = [
@@ -147,5 +153,15 @@ class LedgerEntry(models.Model):
 
     @property
     def is_debit(self) -> bool:
-        """True when the entry increases what the contact owes us."""
+        """True when the entry belongs in the «بدهکار» column of the statement."""
         return self.balance_delta > 0
+
+    @property
+    def is_credit(self) -> bool:
+        """True when the entry belongs in the «بستانکار» column of the statement.
+
+        Mutually exclusive with ``is_debit``: ``amount`` is always > 0 and every
+        entry type moves the balance in exactly one direction, so ``balance_delta``
+        is never zero and an amount is never shown in both columns.
+        """
+        return self.balance_delta < 0

@@ -12,8 +12,10 @@ python manage.py check
 1. OTP request/verify and rate limits  
 2. Tenant isolation (memberships/warehouses/lots)  
 3. B2B price non-leakage via `resolve_visible_prices`  
-4. Reservation quantity locking (Phase 6)  
+4. Trade-recording idempotency (one live entry per business per accepted offer)  
 5. Visibility matrix (Phase 2+)  
+6. Network privacy: what an open marketplace must **not** expose across businesses
+   (`apps/marketplace/tests/test_network_privacy.py`)  
 
 ## Conventions
 

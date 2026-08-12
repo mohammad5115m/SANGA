@@ -25,11 +25,6 @@ class MarketplaceFilterForm(forms.Form):
         label="فقط فروش فوری",
         widget=forms.CheckboxInput(attrs={"class": "field-checkbox"}),
     )
-    only_followed = forms.BooleanField(
-        required=False,
-        label="فقط تأمین‌کنندگان دنبال‌شده",
-        widget=forms.CheckboxInput(attrs={"class": "field-checkbox"}),
-    )
 
 
 class SaveSearchForm(forms.Form):

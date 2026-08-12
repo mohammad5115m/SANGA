@@ -8,12 +8,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import INQUIRIES_RESPOND, INQUIRIES_VIEW
-from apps.matching.selectors import visible_matches_for
-from apps.matching.services import persist_matches
+from apps.businesses.permissions import INQUIRIES_RESPOND, INQUIRIES_VIEW, LEDGER_MANAGE
 
 from .forms import PurchaseOfferForm, PurchaseRequestForm
-from .models import PurchaseOffer, PurchaseRequest
+from .models import PurchaseOffer
 from .selectors import (
     get_network_request,
     get_own_request,
@@ -71,7 +69,7 @@ def create(request: HttpRequest) -> HttpResponse:
             logger.exception("PR create failed")
             form.add_error(None, "ثبت درخواست با خطا روبه‌رو شد.")
         else:
-            messages.success(request, "درخواست خرید ثبت و تطبیق اولیه انجام شد.")
+            messages.success(request, "درخواست خرید ثبت شد و روی تابلوی شبکه دیده می‌شود.")
             return redirect("purchase_requests:detail", pr_id=pr.id)
     return render(request, "purchase_requests/form.html", {"form": form})
 
@@ -86,27 +84,16 @@ def detail(request: HttpRequest, pr_id) -> HttpResponse:
         messages.error(request, "درخواست یافت نشد.")
         return redirect("purchase_requests:my_list")
     offers = offers_for_requester(pr)
-    # Persisted matches are re-checked against current marketplace visibility, so a
-    # revoked partnership hides them immediately instead of at the next rematch.
-    matches = visible_matches_for(pr, request.business)[:30]
     return render(
         request,
         "purchase_requests/detail.html",
-        {"pr": pr, "offers": offers, "matches": matches},
+        {
+            "pr": pr,
+            "offers": offers,
+            # Recording the trade of an accepted offer is a ledger action.
+            "can_record_trade": request.membership.has_capability(LEDGER_MANAGE),
+        },
     )
-
-
-@business_login_required
-@require_capability(INQUIRIES_RESPOND)
-@require_POST
-def rematch(request: HttpRequest, pr_id) -> HttpResponse:
-    pr = get_own_request(request.business, pr_id) if request.business else None
-    if pr is None:
-        messages.error(request, "درخواست یافت نشد.")
-        return redirect("purchase_requests:my_list")
-    persist_matches(pr)
-    messages.success(request, "تطبیق دوباره اجرا شد.")
-    return redirect("purchase_requests:detail", pr_id=pr.id)
 
 
 @business_login_required

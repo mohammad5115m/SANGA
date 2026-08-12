@@ -264,6 +264,11 @@ button, input, select, textarea { font: inherit; }
   border-color: rgba(143, 45, 45, 0.2);
   color: var(--color-danger);
 }
+.alert-warning {
+  background: var(--color-accent-soft);
+  border-color: rgba(154, 107, 47, 0.35);
+  color: #6d4a1d;
+}
 
 .toast-region {
   position: fixed;
@@ -571,14 +576,53 @@ button, input, select, textarea { font: inherit; }
 .balance-label { color: var(--color-ink-muted); font-size: 0.9rem; }
 .balance-amount { font-size: 1.6rem; font-weight: 700; margin-top: 0.25rem; }
 .balance-unit { font-size: 0.9rem; font-weight: 600; color: var(--color-ink-muted); }
-.balance-they_owe .balance-amount { color: var(--color-success); }
-.balance-we_owe .balance-amount { color: var(--color-danger); }
-.balance-settled .balance-amount { color: var(--color-ink-muted); }
-.ledger-row { align-items: flex-start; }
+.balance-state { font-weight: 700; margin-top: 0.15rem; }
+.balance-debtor .balance-amount, .balance-debtor .balance-state { color: var(--color-success); }
+.balance-creditor .balance-amount, .balance-creditor .balance-state { color: var(--color-danger); }
+.balance-settled .balance-amount, .balance-settled .balance-state { color: var(--color-ink-muted); }
 .ledger-amounts { text-align: left; display: flex; flex-direction: column; gap: 0.25rem; align-items: flex-end; }
 .ledger-delta { font-weight: 700; font-variant-numeric: tabular-nums; }
-.ledger-delta.is-debit { color: var(--color-success); }
-.ledger-delta.is-credit { color: var(--color-danger); }
+.amount-debit, .amount-debtor { color: var(--color-success); }
+.amount-credit, .amount-creditor { color: var(--color-danger); }
+.amount-settled { color: var(--color-ink-muted); }
+.state-badge.is-debtor { background: rgba(47, 107, 79, 0.12); color: var(--color-success); }
+.state-badge.is-creditor { background: #f8e8e8; color: var(--color-danger); }
+.state-badge.is-settled { background: rgba(28, 36, 32, 0.06); color: var(--color-ink-muted); }
+
+/* Debit / credit statement table */
+.table-scroll { overflow-x: auto; }
+.ledger-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+}
+.ledger-table th, .ledger-table td {
+  border-bottom: 1px solid var(--color-line);
+  padding: 0.6rem 0.7rem;
+  text-align: right;
+  vertical-align: top;
+}
+.ledger-table thead th { background: var(--color-accent-soft); font-size: 0.85rem; }
+.ledger-table tfoot th, .ledger-table tfoot td { background: rgba(28, 36, 32, 0.04); font-weight: 700; }
+.ledger-table .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ledger-table .empty-cell { text-align: center; color: var(--color-ink-muted); padding: var(--space-5); }
+
+/* Aging buckets */
+.aging-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--space-3);
+}
+.aging-cell {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+.aging-amount { font-weight: 700; font-variant-numeric: tabular-nums; margin-top: var(--space-1); }
 
 /* Printable statement */
 .print-sheet { max-width: 820px; margin: 0 auto; padding: var(--space-5); background: #fff; }

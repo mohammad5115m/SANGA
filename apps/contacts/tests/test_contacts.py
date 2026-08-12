@@ -4,17 +4,17 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 
-from apps.businesses.models import BusinessMembership
+from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import create_business_for_owner
 from apps.contacts.models import Contact
-from apps.contacts.selectors import contacts_for_business, get_contact
+from apps.contacts.selectors import contacts_for_business, get_contact, linkable_businesses
 from apps.contacts.services import (
     ContactError,
     archive_contact,
     create_contact,
+    restore_contact,
     update_contact,
 )
-from apps.partners.models import PartnerRelation
 
 User = get_user_model()
 
@@ -47,35 +47,27 @@ def setup(db):
     }
 
 
-def _approve_partnership(biz_a, biz_b):
-    return PartnerRelation.objects.create(
-        supplier_business=biz_b,
-        partner_business=biz_a,
-        status=PartnerRelation.Status.APPROVED,
-    )
-
-
 def test_create_contact_success(setup):
     contact = create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="آقای رضایی",
         phone="09121110000",
-        is_customer=True,
     )
     assert contact.pk is not None
     assert contact.business_id == setup["biz_a"].id
     assert contact.created_by_id == setup["owner_a"].id
-    assert contact.relationship_labels == ["مشتری"]
+    assert contact.is_active is True
 
 
-def test_create_requires_at_least_one_type(setup):
-    with pytest.raises(ContactError):
-        create_contact(
-            business=setup["biz_a"],
-            membership=setup["m_a"],
-            display_name="بدون نوع",
-        )
+def test_create_needs_nothing_beyond_a_name(setup):
+    """Every contact is a همکار: there is no relationship type to choose."""
+    contact = create_contact(
+        business=setup["biz_a"],
+        membership=setup["m_a"],
+        display_name="همکار بی‌نوع",
+    )
+    assert contact.pk is not None
 
 
 def test_create_requires_name(setup):
@@ -84,7 +76,6 @@ def test_create_requires_name(setup):
             business=setup["biz_a"],
             membership=setup["m_a"],
             display_name="ا",
-            is_customer=True,
         )
 
 
@@ -94,7 +85,6 @@ def test_viewer_without_capability_cannot_create(setup):
             business=setup["biz_a"],
             membership=setup["viewer_m"],
             display_name="مخاطب",
-            is_customer=True,
         )
 
 
@@ -103,13 +93,11 @@ def test_tenant_isolation_selector(setup):
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="مال الف",
-        is_customer=True,
     )
     create_contact(
         business=setup["biz_b"],
         membership=setup["m_b"],
         display_name="مال ب",
-        is_supplier=True,
     )
     a_names = [c.display_name for c in contacts_for_business(setup["biz_a"])]
     b_names = [c.display_name for c in contacts_for_business(setup["biz_b"])]
@@ -122,26 +110,23 @@ def test_get_contact_rejects_cross_business(setup):
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="خصوصی الف",
-        is_customer=True,
     )
     with pytest.raises(Contact.DoesNotExist):
         get_contact(setup["biz_b"], contact.id)
 
 
-def test_search_and_kind_filter(setup):
+def test_free_text_search(setup):
     create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="سنگ آریا",
         phone="09120001111",
-        is_supplier=True,
     )
     create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="مشتری خرده",
         phone="09122223333",
-        is_customer=True,
     )
     by_name = list(contacts_for_business(setup["biz_a"], q="آریا"))
     assert len(by_name) == 1 and by_name[0].display_name == "سنگ آریا"
@@ -149,40 +134,42 @@ def test_search_and_kind_filter(setup):
     by_phone = list(contacts_for_business(setup["biz_a"], q="2222"))
     assert len(by_phone) == 1 and by_phone[0].display_name == "مشتری خرده"
 
-    suppliers = list(contacts_for_business(setup["biz_a"], kind="supplier"))
-    assert [c.display_name for c in suppliers] == ["سنگ آریا"]
 
-
-def test_link_requires_approved_partner(setup):
-    with pytest.raises(ContactError):
-        create_contact(
-            business=setup["biz_a"],
-            membership=setup["m_a"],
-            display_name="متصل غیرمجاز",
-            is_supplier=True,
-            linked_business=setup["biz_b"],
-        )
-
-
-def test_link_to_approved_partner_succeeds(setup):
-    _approve_partnership(setup["biz_a"], setup["biz_b"])
+def test_link_to_any_colleague_needs_no_approval(setup):
+    """No partnership of any kind exists between these two businesses."""
     contact = create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="همکار متصل",
-        is_supplier=True,
         linked_business=setup["biz_b"],
     )
     assert contact.linked_business_id == setup["biz_b"].id
 
 
+def test_link_to_a_suspended_business_is_refused(setup):
+    suspended = setup["biz_b"]
+    suspended.status = Business.Status.SUSPENDED
+    suspended.save(update_fields=["status"])
+
+    with pytest.raises(ContactError):
+        create_contact(
+            business=setup["biz_a"],
+            membership=setup["m_a"],
+            display_name="کسب‌وکار معلق",
+            linked_business=suspended,
+        )
+
+
+def test_linkable_businesses_lists_colleagues_but_never_self(setup):
+    options = list(linkable_businesses(setup["biz_a"]))
+    assert options == [setup["biz_b"]]
+
+
 def test_second_contact_cannot_link_the_same_partner(setup):
-    _approve_partnership(setup["biz_a"], setup["biz_b"])
     first = create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="همکار متصل",
-        is_supplier=True,
         linked_business=setup["biz_b"],
     )
     with pytest.raises(ContactError) as exc_info:
@@ -190,7 +177,6 @@ def test_second_contact_cannot_link_the_same_partner(setup):
             business=setup["biz_a"],
             membership=setup["m_a"],
             display_name="همان همکار، مخاطب دوم",
-            is_supplier=True,
             linked_business=setup["biz_b"],
         )
     assert first.display_name in exc_info.value.message
@@ -198,26 +184,22 @@ def test_second_contact_cannot_link_the_same_partner(setup):
 
 
 def test_update_cannot_move_a_partner_link_onto_a_second_contact(setup):
-    _approve_partnership(setup["biz_a"], setup["biz_b"])
     create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="همکار متصل",
-        is_supplier=True,
         linked_business=setup["biz_b"],
     )
     other = create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="مخاطب دیگر",
-        is_customer=True,
     )
     with pytest.raises(ContactError):
         update_contact(
             contact=other,
             membership=setup["m_a"],
             display_name="مخاطب دیگر",
-            is_customer=True,
             linked_business=setup["biz_b"],
         )
     other.refresh_from_db()
@@ -225,19 +207,16 @@ def test_update_cannot_move_a_partner_link_onto_a_second_contact(setup):
 
 
 def test_editing_the_linked_contact_itself_keeps_its_own_link(setup):
-    _approve_partnership(setup["biz_a"], setup["biz_b"])
     contact = create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="همکار متصل",
-        is_supplier=True,
         linked_business=setup["biz_b"],
     )
     update_contact(
         contact=contact,
         membership=setup["m_a"],
         display_name="همکار متصل (ویرایش‌شده)",
-        is_supplier=True,
         linked_business=setup["biz_b"],
     )
     contact.refresh_from_db()
@@ -246,12 +225,10 @@ def test_editing_the_linked_contact_itself_keeps_its_own_link(setup):
 
 
 def test_db_constraint_rejects_a_duplicate_partner_link(setup):
-    _approve_partnership(setup["biz_a"], setup["biz_b"])
     create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="همکار متصل",
-        is_supplier=True,
         linked_business=setup["biz_b"],
     )
     # Bypass the service entirely: the database itself must refuse.
@@ -259,18 +236,15 @@ def test_db_constraint_rejects_a_duplicate_partner_link(setup):
         Contact.objects.create(
             business=setup["biz_a"],
             display_name="دور زدن سرویس",
-            is_supplier=True,
             linked_business=setup["biz_b"],
         )
 
 
 def test_two_businesses_may_each_link_the_same_partner(setup):
-    _approve_partnership(setup["biz_a"], setup["biz_b"])
     create_contact(
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="ب از نگاه الف",
-        is_supplier=True,
         linked_business=setup["biz_b"],
     )
     # The constraint is per owning business, not global.
@@ -278,7 +252,6 @@ def test_two_businesses_may_each_link_the_same_partner(setup):
         business=setup["biz_b"],
         membership=setup["m_b"],
         display_name="الف از نگاه ب",
-        is_customer=True,
         linked_business=setup["biz_a"],
     )
     assert contact_b.linked_business_id == setup["biz_a"].id
@@ -290,7 +263,6 @@ def test_cannot_link_self(setup):
             business=setup["biz_a"],
             membership=setup["m_a"],
             display_name="خودم",
-            is_customer=True,
             linked_business=setup["biz_a"],
         )
 
@@ -300,14 +272,12 @@ def test_update_contact_cross_business_blocked(setup):
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="الف",
-        is_customer=True,
     )
     with pytest.raises(ContactError):
         update_contact(
             contact=contact,
             membership=setup["m_b"],
             display_name="نفوذ",
-            is_customer=True,
         )
 
 
@@ -316,7 +286,6 @@ def test_archive_hides_from_default_list(setup):
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="بایگانی‌شونده",
-        is_customer=True,
     )
     archive_contact(contact=contact, membership=setup["m_a"])
     assert list(contacts_for_business(setup["biz_a"])) == []
@@ -328,7 +297,6 @@ def test_view_tenant_isolation_returns_404(client, setup):
         business=setup["biz_a"],
         membership=setup["m_a"],
         display_name="خصوصی الف",
-        is_customer=True,
     )
     client.force_login(setup["owner_b"])
     resp = client.get(f"/app/contacts/{contact.id}/")
@@ -358,3 +326,78 @@ def test_navigation_hides_contacts_from_members_without_the_capability(client, s
     content = viewer_dashboard.content.decode()
     assert contacts_url not in content
     assert "/app/accounting/" not in content
+
+
+def _archived_contact(setup, name="بایگانی‌شده"):
+    contact = create_contact(
+        business=setup["biz_a"],
+        membership=setup["m_a"],
+        display_name=name,
+    )
+    archive_contact(contact=contact, membership=setup["m_a"])
+    return contact
+
+
+def test_archived_contact_is_reachable_through_the_archived_filter(client, setup):
+    contact = _archived_contact(setup, name="سنگ بایگانی")
+    client.force_login(setup["owner_a"])
+
+    default_list = client.get("/app/contacts/")
+    assert contact.display_name not in default_list.content.decode()
+
+    archived_list = client.get("/app/contacts/", {"archived": "1"})
+    assert contact.display_name in archived_list.content.decode()
+
+
+def test_restore_returns_contact_to_the_active_list(client, setup):
+    contact = _archived_contact(setup)
+    client.force_login(setup["owner_a"])
+
+    resp = client.post(f"/app/contacts/{contact.id}/restore/")
+    assert resp.status_code == 302
+
+    contact.refresh_from_db()
+    assert contact.is_active is True
+    assert list(contacts_for_business(setup["biz_a"])) == [contact]
+
+
+def test_restore_rejects_get(client, setup):
+    contact = _archived_contact(setup)
+    client.force_login(setup["owner_a"])
+
+    resp = client.get(f"/app/contacts/{contact.id}/restore/")
+    assert resp.status_code == 405
+
+    contact.refresh_from_db()
+    assert contact.is_active is False
+
+
+def test_restore_is_tenant_scoped(client, setup):
+    contact = _archived_contact(setup)
+    client.force_login(setup["owner_b"])
+
+    resp = client.post(f"/app/contacts/{contact.id}/restore/")
+    assert resp.status_code == 404
+
+    contact.refresh_from_db()
+    assert contact.is_active is False
+
+
+def test_restore_requires_capability(client, setup):
+    contact = _archived_contact(setup)
+    client.force_login(setup["viewer_m"].user)
+
+    resp = client.post(f"/app/contacts/{contact.id}/restore/")
+    assert resp.status_code == 302
+
+    contact.refresh_from_db()
+    assert contact.is_active is False
+
+
+def test_restore_service_refuses_without_capability(setup):
+    contact = _archived_contact(setup)
+    with pytest.raises(ContactError):
+        restore_contact(contact=contact, membership=setup["viewer_m"])
+
+    contact.refresh_from_db()
+    assert contact.is_active is False
