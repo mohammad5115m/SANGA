@@ -1,0 +1,13 @@
+{% comment %}Expects: pr{% endcomment %}
+{% if pr.status == 'sent' %}
+  <span class="badge badge-warn">در انتظار پاسخ</span>
+{% elif pr.status == 'accepted' %}
+  {# Deliberately not "فروخته شد": agreement is not a sale. #}
+  <span class="badge badge-accent">توافق شده — هنوز نهایی نشده</span>
+{% elif pr.status == 'completed' %}
+  <span class="badge badge-success">فروش نهایی شد</span>
+{% elif pr.status == 'rejected' %}
+  <span class="badge badge-danger">رد شده</span>
+{% elif pr.status == 'cancelled' %}
+  <span class="badge badge-muted">لغو شده</span>
+{% endif %}

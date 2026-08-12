@@ -1,0 +1,49 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}نهایی کردن فروش | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">نهایی کردن فروش</h1>
+    <p class="page-lead">به {{ pr.buyer_business.name }}</p>
+  </div>
+
+  {% include "trading/_request_summary.html" %}
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    <div class="alert alert-warn">
+      با نهایی کردن فروش، مبلغ
+      <strong dir="ltr">{{ pr.agreed_total|floatformat:"0g" }} {{ pr.currency }}</strong>
+      به حساب {{ pr.buyer_business.name }} منظور می‌شود.
+    </div>
+
+    {# The two things sellers most often assume happen automatically. #}
+    <p class="muted">
+      موجودی این محصول به‌صورت خودکار کم نمی‌شود؛ اگر لازم است، بعد از ثبت فروش آن را
+      به‌روزرسانی کنید.
+    </p>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    {% for field in form %}
+      <label class="field {% if field.name == 'confirm' %}checkbox-field{% endif %}">
+        {% if field.name == 'confirm' %}
+          {{ field }} <span>{{ field.label }}</span>
+        {% else %}
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+        {% endif %}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">ثبت فروش نهایی</button>
+      <a class="btn btn-ghost" href="{% url 'trading:received_detail' pr.id %}">انصراف</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

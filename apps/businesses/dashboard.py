@@ -22,7 +22,7 @@ from apps.inquiries.models import Inquiry
 from apps.inventory.models import InventoryLot
 from apps.marketplace.selectors import marketplace_lots_for
 from apps.pricing.models import LotPrice
-from apps.purchase_requests.models import PurchaseOffer
+from apps.trading.models import PurchaseRequest
 
 from .models import Business, BusinessMembership
 from .permissions import LEDGER_VIEW
@@ -149,29 +149,34 @@ def _colleague_lots(business: Business):
 
 
 def _pending_work(business: Business) -> dict:
-    """Requests waiting on **this** business: unanswered inquiries, and offers
-    received on its own purchase requests that it has not yet accepted or
-    rejected.
+    """Work waiting on **this** business.
 
-    Offers this business *sent* are not here: they are waiting on somebody else,
-    so they are not a task on this screen.
+    Two queues, both of which are somebody else waiting for an answer from us:
+    customer inquiries nobody has replied to, and colleague purchase requests
+    nobody has accepted or rejected.
+
+    Requests this business *sent* are not here — they are waiting on somebody
+    else, so they are not a task on this screen. Accepted requests are, though:
+    an agreement that has not been finalized is unfinished work, and forgetting
+    it is exactly the failure the accept/finalize split creates.
     """
     inquiries = (
         Inquiry.objects.filter(business=business, status__in=UNANSWERED_INQUIRY_STATUSES)
         .select_related("lot", "lot__product")
         .order_by("-created_at")
     )
-    offers = (
-        PurchaseOffer.objects.filter(
-            purchase_request__business=business,
-            status=PurchaseOffer.Status.SUBMITTED,
+    requests = (
+        PurchaseRequest.objects.filter(
+            seller_business=business,
+            status__in=[PurchaseRequest.Status.SENT, PurchaseRequest.Status.ACCEPTED],
         )
-        .select_related("purchase_request", "seller_business")
+        .select_related("buyer_business", "item", "item__product")
         .order_by("-created_at")
     )
     return {
         "unanswered_inquiry_count": inquiries.count(),
         "unanswered_inquiries": list(inquiries[:PENDING_ROWS]),
-        "unanswered_offer_count": offers.count(),
-        "unanswered_offers": list(offers[:PENDING_ROWS]),
+        "open_request_count": requests.count(),
+        "open_requests": list(requests[:PENDING_ROWS]),
+        "awaiting_finalize_count": requests.filter(status=PurchaseRequest.Status.ACCEPTED).count(),
     }

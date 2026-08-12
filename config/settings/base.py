@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "apps.marketplace",
     "apps.notifications",
     "apps.purchase_requests",
+    "apps.trading",
     "apps.contacts",
     "apps.accounting",
     # Migrations-only apps: they hold no models any more, but their migration

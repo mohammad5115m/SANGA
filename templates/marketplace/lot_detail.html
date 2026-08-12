@@ -44,6 +44,13 @@
     <section class="panel"><p>{{ lot.description|linebreaksbr }}</p></section>
   {% endif %}
 
+  <div class="btn-row">
+    {% if 'purchase.request' in capabilities %}
+      <a class="btn btn-primary" href="{% url 'trading:request_create' lot.id %}">درخواست خرید</a>
+    {% endif %}
+    <a class="btn btn-ghost" href="{% url 'businesses:colleague_detail' supplier.id %}">صفحه همکار</a>
+  </div>
+
   <section class="panel stack-md">
     <h2 class="section-title">تماس با فروشنده</h2>
     <div class="kv"><span>کسب‌وکار</span><strong>{{ supplier.name }}</strong></div>

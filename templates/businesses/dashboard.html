@@ -182,20 +182,25 @@
 
     <div class="stack-sm">
       <div class="kv">
-        <span>پیشنهادهای بی‌پاسخ</span>
-        <strong>{{ unanswered_offer_count }}</strong>
+        <span>درخواست‌های خرید باز</span>
+        <strong>{{ open_request_count }}</strong>
       </div>
+      {% if awaiting_finalize_count %}
+        <div class="alert alert-warn">
+          {{ awaiting_finalize_count }} درخواست توافق شده اما فروش آن نهایی نشده است.
+        </div>
+      {% endif %}
       <div class="list-stack">
-        {% for offer in unanswered_offers %}
-          <a class="list-item" href="{% url 'purchase_requests:detail' offer.purchase_request.id %}">
+        {% for pr in open_requests %}
+          <a class="list-item" href="{% url 'trading:received_detail' pr.id %}">
             <div>
-              <div class="list-title">{{ offer.purchase_request.title }}</div>
-              <div class="muted">{{ offer.seller_business.name }}</div>
+              <div class="list-title">{{ pr.item.product.commercial_name }}</div>
+              <div class="muted">{{ pr.buyer_business.name }} · {{ pr.agreed_qty_sqm }} m²</div>
             </div>
-            <span class="badge">{{ offer.get_status_display }}</span>
+            {% include "trading/_status_badge.html" %}
           </a>
         {% empty %}
-          <div class="empty-state">پیشنهاد بی‌پاسخی روی درخواست‌های خرید شما نیست.</div>
+          <div class="empty-state">درخواست خرید بازی ندارید.</div>
         {% endfor %}
       </div>
     </div>
@@ -204,9 +209,9 @@
   <section class="panel stack-md">
     <h2 class="section-title">اقدام بعدی</h2>
     <div class="btn-row">
-      <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن موجودی</a>
-      <a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">مشاهده موجودی</a>
-      <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
+      <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
+      <a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">موجودی من</a>
+      <a class="btn btn-ghost" href="{% url 'trading:received_list' %}">خرید و فروش</a>
       {% if current_business %}
         <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین</a>
       {% endif %}

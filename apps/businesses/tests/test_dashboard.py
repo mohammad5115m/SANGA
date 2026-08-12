@@ -15,7 +15,7 @@ from apps.contacts.services import archive_contact, create_contact
 from apps.core.testing import expire_stock, make_item, make_product
 from apps.inquiries.models import Inquiry
 from apps.pricing.services import ensure_default_tiers
-from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
+from apps.trading.models import PurchaseRequest
 
 User = get_user_model()
 
@@ -78,14 +78,13 @@ def shop(db):
         phone="09121110001",
         status=Inquiry.Status.CONTACTED,
     )
-    request_ = PurchaseRequest.objects.create(
-        business=business, title="تقاضای مرمریت", required_qty_sqm=Decimal("100")
-    )
-    offer = PurchaseOffer.objects.create(
-        purchase_request=request_,
-        seller_business=colleague,
-        unit_price=Decimal("1200000"),
-        offered_qty_sqm=Decimal("100"),
+    # A colleague asking to buy from us: our task until we answer it.
+    incoming = PurchaseRequest.objects.create(
+        item=priced,
+        seller_business=business,
+        buyer_business=colleague,
+        requested_qty_sqm=Decimal("100"),
+        proposed_unit_price=Decimal("1200000"),
     )
 
     return {
@@ -101,7 +100,7 @@ def shop(db):
         "unpriced": unpriced,
         "stale": stale,
         "priced": priced,
-        "offer": offer,
+        "incoming_request": incoming,
     }
 
 
@@ -258,16 +257,28 @@ def test_pending_work_counts_only_unanswered_items(client, shop):
     # The «تماس گرفته‌شده» inquiry is already being handled.
     assert context["unanswered_inquiry_count"] == 1
     assert [i.name for i in context["unanswered_inquiries"]] == ["مشتری تازه"]
-    assert context["unanswered_offer_count"] == 1
-    assert [o.id for o in context["unanswered_offers"]] == [shop["offer"].id]
+    assert context["open_request_count"] == 1
+    assert [r.id for r in context["open_requests"]] == [shop["incoming_request"].id]
 
 
-def test_an_answered_offer_leaves_the_pending_list(client, shop):
-    offer = shop["offer"]
-    offer.status = PurchaseOffer.Status.ACCEPTED
-    offer.save(update_fields=["status"])
+def test_an_accepted_request_stays_on_the_list_until_the_sale_is_finalized(client, shop):
+    """An agreement nobody finalized is unfinished work, not a closed item."""
+    request_ = shop["incoming_request"]
+    request_.status = PurchaseRequest.Status.ACCEPTED
+    request_.final_unit_price = Decimal("1200000")
+    request_.save(update_fields=["status", "final_unit_price"])
 
-    assert _dashboard(client, shop).context["unanswered_offer_count"] == 0
+    context = _dashboard(client, shop).context
+    assert context["open_request_count"] == 1
+    assert context["awaiting_finalize_count"] == 1
+
+
+def test_a_rejected_request_leaves_the_pending_list(client, shop):
+    request_ = shop["incoming_request"]
+    request_.status = PurchaseRequest.Status.REJECTED
+    request_.save(update_fields=["status"])
+
+    assert _dashboard(client, shop).context["open_request_count"] == 0
 
 
 def test_pending_work_is_tenant_scoped(client, shop):
@@ -275,8 +286,8 @@ def test_pending_work_is_tenant_scoped(client, shop):
     context = client.get(DASHBOARD).context
 
     assert context["unanswered_inquiry_count"] == 0
-    # The offer the colleague *sent* is somebody else's decision, not its own task.
-    assert context["unanswered_offer_count"] == 0
+    # The request the colleague *sent* is somebody else's decision, not its own task.
+    assert context["open_request_count"] == 0
 
 
 # --- empty state and cost ---------------------------------------------------

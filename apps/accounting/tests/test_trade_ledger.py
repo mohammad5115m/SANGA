@@ -27,12 +27,7 @@ from apps.businesses.services import create_business_for_owner
 from apps.contacts.services import ContactError, create_contact
 from apps.core.testing import make_item, make_product
 from apps.pricing.services import ensure_default_tiers
-from apps.purchase_requests.models import PurchaseOffer
-from apps.purchase_requests.services import (
-    create_purchase_request,
-    decide_offer,
-    submit_private_offer,
-)
+from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
 
 User = get_user_model()
 
@@ -91,24 +86,29 @@ def trade(db):
 
 
 def _accepted_offer(trade, *, unit_price=Decimal("1000000"), quantity=Decimal("40")) -> PurchaseOffer:
-    """An accepted offer: the buyer posts demand, the seller quotes, the buyer accepts."""
-    pr = create_purchase_request(
+    """A legacy accepted offer, built straight from the models.
+
+    The demand-board *workflow* was removed in V2, but its rows are still
+    referenced by ``LedgerEntry.related_offer`` and the idempotency constraint
+    built on it. These tests keep guarding that constraint until Phase 5 moves
+    the ledger onto ``trading.Trade``.
+    """
+    pr = PurchaseRequest.objects.create(
         business=trade["buyer"],
-        membership=trade["buyer_m"],
+        created_by=trade["buyer_user"],
         title="نیاز تراورتن پروژه",
         required_qty_sqm=quantity,
+        status=PurchaseRequest.Status.CLOSED,
     )
-    offer = submit_private_offer(
+    return PurchaseOffer.objects.create(
         purchase_request=pr,
         seller_business=trade["seller"],
-        membership=trade["seller_m"],
+        created_by=trade["seller_user"],
+        lot=trade["lot"],
         unit_price=unit_price,
         offered_qty_sqm=quantity,
-        lot=trade["lot"],
+        status=PurchaseOffer.Status.ACCEPTED,
     )
-    decide_offer(offer=offer, membership=trade["buyer_m"], accept=True)
-    offer.refresh_from_db()
-    return offer
 
 
 def _post(trade, offer=None, amount=Decimal("40000000"), **kwargs):
@@ -299,18 +299,19 @@ def test_a_business_outside_the_offer_cannot_attach_it(trade):
 
 
 def test_an_offer_that_was_not_accepted_cannot_be_recorded(trade):
-    pr = create_purchase_request(
+    pr = PurchaseRequest.objects.create(
         business=trade["buyer"],
-        membership=trade["buyer_m"],
+        created_by=trade["buyer_user"],
         title="درخواست باز",
         required_qty_sqm=Decimal("20"),
     )
-    offer = submit_private_offer(
+    offer = PurchaseOffer.objects.create(
         purchase_request=pr,
         seller_business=trade["seller"],
-        membership=trade["seller_m"],
+        created_by=trade["seller_user"],
         unit_price=Decimal("1000000"),
         offered_qty_sqm=Decimal("20"),
+        status=PurchaseOffer.Status.SUBMITTED,
     )
     with pytest.raises(LedgerError):
         _post(trade, offer)

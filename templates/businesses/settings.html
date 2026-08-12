@@ -35,9 +35,8 @@
       <a class="btn btn-ghost" href="{% url 'catalog_manage:inquiries' %}">استعلام‌ها</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'marketplace:home' %}">بازار همکاران</a>
-    {% if 'leads.view' in capabilities %}
-      <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
-      <a class="btn btn-ghost" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
+    {% if 'purchase.request' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'trading:received_list' %}">خرید و فروش</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'notifications:list' %}">اعلان‌ها</a>
     {% if current_business %}
