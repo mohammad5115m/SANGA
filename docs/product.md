@@ -1,182 +1,109 @@
 # Product Definition — سنگا (SANGA)
 
-> Product name: **SANGA / سنگا**  
-> Tagline (product promise): **یک‌بار ثبت موجودی؛ فروش در چند کانال با قیمت و اطلاعات درست برای هر مخاطب**
+> **SANGA / سنگا**
+> Product promise: **محصول را یک‌بار ثبت کنید؛ همکاران و مشتریان آن را با اطلاعات
+> و قیمت درست برای خودشان ببینند — و همیشه معلوم باشد این اطلاعات چقدر تازه است.**
 
-## 1. Mission
+## 1. What SANGA is
 
-SANGA is a production-grade web platform for natural-stone businesses. It is **not** primarily a generic online shop. It is:
+A product discovery, colleague trading, catalog, invoicing and account-ledger
+platform for natural-stone businesses.
 
-1. **Inventory Management System** — register and keep lots accurate  
-2. **Colleague Network («همکاران»)** — every stone business with an account trades
-   with every other, at colleague prices  
-3. **B2C Digital Catalog** — beautiful customer-facing storefronts  
-4. **Demand Board** — purchase requests posted to the network, answered with
-   private offers  
+It helps sellers keep availability and prices reasonably current **without
+pretending to be the authoritative warehouse or payment system**. That caveat is
+the product, not a limitation of it: the alternative is a system that confidently
+reports numbers nobody has checked.
 
-The central promise:
+### Core pillars
 
-> Register inventory once and sell it through multiple channels with the correct information and price for each audience.
+1. Product discovery
+2. B2B colleague marketplace
+3. Public B2C discovery
+4. Product-bound purchase requests
+5. Finalized trades and invoices
+6. Per-colleague account ledger
+7. Dynamic catalogs
+8. Freshness-aware price and stock information
 
-## 2. Problem Statement
+## 2. The problem
 
-Stone sellers today typically:
+Stone sellers keep inventory in Excel, WhatsApp and memory. They quote different
+prices to wholesalers and retail buyers by hand, sometimes send the wrong one,
+and lose trust when a quoted stone turns out to be gone.
 
-- keep inventory in Excel / WhatsApp / memory;
-- quote different prices to wholesalers and retail buyers manually;
-- accidentally share wholesale numbers with consumers;
-- lose trust when stock is outdated;
-- struggle to show attractive catalogs to end customers while protecting B2B margins.
+SANGA makes the product the source of truth, with audience-aware pricing and
+visibility enforced in the backend, and with every quantity and price carrying an
+explicit "we last checked this on…".
 
-SANGA solves this by making **inventory the source of truth**, with audience-aware pricing and visibility enforced in the backend.
+## 3. What SANGA is not
 
-## 3. Non-Goals (Initial Product)
+Not "not yet" — not at all:
 
-Do **not** build in early phases:
+| Not | Because |
+|-----|---------|
+| A payment gateway or escrow | Money moves outside SANGA and is recorded after the fact |
+| A cheque register or bank reconciliation | Half of it produces books that disagree with the real ones |
+| A warehouse management system | SANGA cannot know about the sale made over the phone an hour ago |
+| An ERP or official accounting system | No VAT engine, no tax-authority integration, no fiscal device |
+| A logistics or shipment tracker | Different product |
+| A reverse auction or public demand board | Tried in v1; produced no sale either side could point at |
+| A CRM | `CustomerLead` answers one question and stops |
+| An analytics platform | Reports are tables and totals, not dashboards |
 
-- payment gateway / escrow / invoicing;
-- full logistics / delivery management;
-- public reverse auctions;
-- star-rating reputation systems;
-- AI / image classification / AR;
-- native mobile apps (PWA is enough initially);
-- microservices / Kubernetes / Elasticsearch-first search.
+Also deferred: PDF catalogs, per-colleague custom prices, chat, ratings, AI
+recommendations, image similarity search, native apps.
 
-What *did* get built, and where the line sits: `apps/accounting` is a **ledger of
-record** — the business writes down what a contact owes or is owed («دفتر حساب»),
-including trades it recorded by hand. It moves no money, issues no invoice, and
-settles nothing. Payments are recorded after the fact, as the trader
-already does on paper. See [accounting.md](./accounting.md).
+## 4. Principles
 
-## 4. Target Personas
+**The four lifecycle axes are separate.** Visibility, availability, stock
+freshness and deletion answer four different questions and never share a field.
+«ناموجود» removes a product from every buyer surface; «استعلام موجودی» does not.
+See [inventory.md](./inventory.md).
 
-| Persona | Primary job | Key constraint |
-|--------|-------------|----------------|
-| Business Owner | Run inventory, team, colleagues, ledger overview | Needs overview without clutter |
-| Business Employee | Fast operational work | Permission-scoped tools |
-| Colleague («همکار») | Find stock at colleague price | Any stone business with an account |
-| B2C Customer | Browse beautiful catalog, inquire | Never has an account; must never see B2B price |
-| Platform Admin | Verify businesses, moderate, configure | Django Admin today; custom `platform_admin` UI not built |
+**One eligibility policy.** Every buyer-facing surface asks
+`inventory.policy.eligible_items()`. Three near-copies of that question drifted
+apart in v1 and the drift was a live data leak.
 
-## 5. Core Domain Distinctions
+**One filter schema.** «موجودی من», the marketplace, public search and catalog
+rules share `ItemFilterSpec`, so a rule catalog is literally a saved search.
 
-### Product vs Inventory Lot
+**Current versus historical is a modelling decision.** A catalog always renders
+live data. An invoice never changes. Same products, two representations, on
+purpose.
 
-- **Product**: stable commercial identity of a stone type (name, type, quarry, color, applications, educational copy).  
-- **Inventory Lot**: a physical batch available for sale (quantity, dimensions, grade, prices, warehouse, freshness, visibility).
+**Exactly-once where money is involved.** Finalizing a sale is the single
+authoritative financial event, enforced by a row lock, a pre-check and a database
+constraint.
 
-Never collapse these into one model.
+**Accounts are provisioned, not signed up for.** Only a Platform Admin creates a
+Business or a User. Public customers are never platform Users.
 
-### B2B vs B2C Price
+## 5. Personas
 
-- **B2B price**: for colleagues — any business with an account — and owner/staff
-  with price permission.
-- **B2C price**: for public catalog visitors and retail buyers.
-- **Contact-specific price**: one negotiated number for one contact on one lot,
-  visible only to the business that contact is linked to. It overrides the B2B tier
-  for that colleague and nobody else.
+| Persona | Job | Constraint |
+|---------|-----|-----------|
+| Business Owner | Run products, team, colleagues, money | Overview without clutter |
+| Salesperson | Add products, answer requests, close sales | Cannot post ledger entries or issue invoices by default |
+| Colleague («همکار») | Find stock at colleague prices | Any active business with an account |
+| Browse-only Business | Search and request, cannot sell | Blocked in services, not just navigation |
+| Public customer | Browse and inquire | Never has an account; never sees a B2B price |
+| Platform Admin | Provision businesses and users | Django admin plus two management commands |
 
-Resolution order for any viewer: contact-specific price → the tier their audience is
-allowed to see → «استعلام بگیرید». A missing price is never rendered as zero or blank.
+## 6. Success metrics
 
-B2B prices must never leak into public HTML, APIs, JS payloads, metadata, logs visible to users, or caches. This is a **security requirement**. A contact-specific price is stricter still: it is dropped for every audience except that one colleague.
+Product metrics, not necessarily instrumented yet:
 
-## 6. Product Pillars (Priority Order)
+- active visible products
+- share of products with current stock information
+- share with current price information
+- B2B product views → purchase requests
+- accepted requests → finalized sales
+- public product views → customer inquiries
+- inquiries containing more than one product
+- invoices issued
+- returning marketplace users
+- time to create or update a product
+- products confirmed after a stock inquiry
 
-When trade-offs conflict, prefer this order:
-
-1. Excellent user experience  
-2. Data privacy and pricing security  
-3. Correct / fresh inventory information  
-4. Simplicity for non-technical users  
-5. Business workflow correctness  
-6. Maintainable architecture  
-7. Performance  
-8. Extensibility  
-9. Advanced features  
-
-## 7. Success Metrics
-
-### Primary product metric
-
-**Accepted offers that become recorded trades per week** (demand board → private
-offer → ledger trade), plus catalog → inquiry conversion on the B2C side.
-
-### Supporting metrics
-
-- Fresh inventory percentage  
-- Active lots  
-- Search → inquiry conversion  
-- Demand posted → private offer conversion  
-- Accepted offer → recorded trade conversion  
-- Catalog views and catalog → inquiry conversion  
-- Weekly active sellers / returning B2B users  
-- Average inventory creation time (target: 60–90 seconds for skilled users)
-
-## 8. Language & Market
-
-- Primary UI language: **Persian (fa)** with full **RTL**  
-- Architecture must support future English via Django i18n  
-- Demo data uses realistic Iranian stone names but is clearly fictional  
-
-## 9. UX Principles
-
-- Mobile-first, touch-friendly, image-focused  
-- Not Django Admin; not a generic developer dashboard  
-- Most frequent ops = 1–2 obvious actions  
-- Inventory registration wizard, not a giant form  
-- Trust signals based on operational facts (verified, recently confirmed), not vanity ratings  
-
-## 10. Visibility Channels (Owner-Controlled)
-
-Each lot can appear in:
-
-Exactly three levels:
-
-| Visibility | Persian | Audience |
-|-----------|---------|----------|
-| `private` | داخلی | Owner business only |
-| `colleagues` | همکاران | Every business with an account, at B2B prices |
-| `public` | عمومی | Colleagues **and** the public storefront, at B2C prices there |
-
-Enforcement must be at query/service level, not only UI.
-
-There is no per-lot allowlist and no partnership: having an *active* account *is*
-being a colleague. A `private` lot is invisible to every other business, in the
-list and by direct UUID, and a business never sees its own lots in the marketplace.
-A suspended business is out of the network in both directions: it browses nothing
-and nothing of its own is listed.
-
-## 11. Trust & Verification
-
-Business states: `unverified` → `pending` → `verified` / `rejected` / `suspended`
-
-Prefer objective signals. Built today: **Verified Business**
-(`Business.verification_status`) and **Recently Confirmed Inventory**
-(`InventoryLot.freshness`). Still intended but not built: average response time,
-completed-trade count, inventory-accuracy score.
-
-## 12. Open Product Risks (Tracked)
-
-| Risk | Mitigation |
-|------|------------|
-| B2B price leakage | Dedicated pricing service + audience serializers + authz tests |
-| Stale inventory damages trust | Freshness engine + reminders + auto-hide |
-| Overbuilding CRM/accounting | CRM stays a flat contact list of همکاران with no relationship types; the ledger stays a record of debts, with no payments, invoices, or double-entry |
-| A suspended business still trading in the network | The marketplace selector requires an active business on both sides, so suspension takes effect in the same query that enforces visibility |
-| Archiving a contact quietly erasing their debt | Financial reports keep any archived contact whose balance is not zero, marked «بایگانی‌شده» |
-| One colleague's balance splitting across two contacts | A business can be linked to at most one contact per business, enforced by a DB constraint |
-| An open network exposing private data | Contacts, ledger, private lots, inquiries and offers are scoped by owning business, independent of who can see the marketplace; covered by `apps/marketplace/tests/test_network_privacy.py` |
-| A wrong ledger amount becoming permanent | Entries are immutable; a reversal frees the trade slot so the correct amount can be re-recorded |
-| Complex permissions confuse staff | Sensible role defaults + clear Persian labels |
-| Public caching of prices/stock | No aggressive PWA cache for inventory/pricing |
-
-## 13. Related Docs
-
-- [architecture.md](./architecture.md)  
-- [data-model.md](./data-model.md)  
-- [permissions.md](./permissions.md)  
-- [user-flows.md](./user-flows.md)  
-- [roadmap.md](./roadmap.md)  
-- [pricing.md](./pricing.md)  
-- [accounting.md](./accounting.md)  
+The v1 metrics were about demand-board posts and offers. Those measured activity
+on a feature nobody completed a sale through.

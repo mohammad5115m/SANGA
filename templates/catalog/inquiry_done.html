@@ -18,7 +18,7 @@
       {% if inquiry.business.phone %}
         <div class="kv"><span>تلفن فروشنده</span><strong dir="ltr">{{ inquiry.business.phone }}</strong></div>
       {% endif %}
-      <div class="kv"><span>محصولات</span><strong>{{ inquiry.items.count }} مورد</strong></div>
+      <div class="kv"><span>محصولات</span><strong>{{ inquiry.items.all|length }} مورد</strong></div>
       <ul class="stack-sm">
         {% for line in inquiry.items.all %}
           <li>

@@ -207,75 +207,67 @@ dropped off the buyer-facing surfaces.
 - Embedding B2B in `data-*` attributes for public pages.  
 - Returning unused B2B fields “for convenience” in public JSON.
 
-## 7. Colleague Access
+## 7. Colleague access
 
-The marketplace requires:
+The marketplace and the colleague directory require:
 
-1. Authenticated user  
-2. Active business membership  
-3. An **active** business on both sides (§5)  
+1. an authenticated user,
+2. an active business membership,
+3. an **active** business on both sides.
 
 That is the whole gate. There is no partnership to request or approve: every
-active business with an account sees every other active business's `colleagues`
-and `public` lots and their B2B prices. B2B prices are prefetched only for lots that pass the
-visibility gate, and a viewer never sees their own lots in the marketplace.
+active business sees every other active business's published products and their
+B2B prices, and never its own in the marketplace.
 
-What stays private between businesses regardless: `private` lots, contacts, the
-ledger and everything derived from it (balances, statements, financial summary,
-aging report), inquiries, and purchase offers. None of these was ever gated by a
-partnership — they are scoped by `business` and by `ledger.*` / `customers.manage`
-capabilities — so opening the network did not widen them.
+What stays private between businesses regardless: unpublished products, the
+ledger and everything derived from it (balances, statements, summaries, aging),
+customer inquiries and leads, and purchase requests the business is not a party
+to. None of these was ever gated by a partnership — they are scoped by
+`business` and by capability — so opening the network did not widen them.
 
-Purchase requests are visible to the network when the buyer marks them public;
-offers on them stay private between the two parties.
+### The colleague *is* the Business
 
-### Contact links
+There is no `Contact` to create, link or maintain. A colleague is a Business, so
+two people at the same company cannot become two different debtors, and there is
+nothing to keep in sync.
 
-`contacts.Contact.linked_business` may point at any other **active** business, and
-at most one contact per business may point at a given business
-(`uniq_linked_business_per_business`, re-checked in `contacts.services` with a
-Persian error). Without that rule one colleague's balance could silently split
-across two ledgers, and a contact-specific price could become ambiguous. Linking
-is one-sided bookkeeping: it grants the linked business nothing.
+`contacts.Contact` survives only as a target for pre-V2 ledger rows whose
+counterparty could not be mapped. It has no UI. See
+[accounting.md](./accounting.md) §2.
 
-## 8. Demand & Trade Authorization
+## 8. Buying and selling authorization
 
-Purchase requests are the **buyer** side and use `inquiries.*`:
+| Action | Capability | Plan entitlement |
+|--------|-----------|------------------|
+| Send a purchase request | `purchase.request` | none — browse-only accounts can buy |
+| Answer a request (accept / reject / adjust) | `purchase.request` | `receive_purchase_requests` |
+| Finalize a sale | `sale.finalize` | `finalize_sales` |
+| Post the sale's ledger entry | `sale.finalize` | `finalize_sales` |
+| Post a manual ledger entry | `ledger.manage` | `manage_ledger` |
+| Issue an invoice | `invoice.manage` | `issue_invoices` |
 
-| Action | Capability |
-|--------|------------|
-| Browse own purchase requests / the demand board | `inquiries.view` |
-| Create or cancel a purchase request | `inquiries.respond` |
-| Submit or update a private offer | `inquiries.respond` |
-| Accept or reject an offer on your own request | `inquiries.respond` |
-| Record the trade of an accepted offer in the ledger | `ledger.manage` |
+The sale's ledger entry is authorized by `sale.finalize`, **not** `ledger.manage`.
+It is a consequence of the sale the user just completed, not bookkeeping they are
+authoring — requiring `ledger.manage` would mean no salesperson could complete a
+sale. Manual entries still require it.
 
-Accepting an offer holds no stock and moves no quantity: it records the decision,
-rejects the competing offers, and notifies the seller. Settling the trade is a
-separate, deliberate ledger action — see [accounting.md](./accounting.md).
+Accepting a request holds no stock and moves no money. Finalizing is a separate,
+deliberate action. See [trading.md](./trading.md).
 
-Every one of these is enforced in `purchase_requests.services` (or
-`accounting.services`), with the view decorators as a second layer.
+### Both sides must be active
 
-### Active business on both sides
+Same rule as the marketplace: a suspended business neither sends nor receives.
+`eligible_items()` refuses a suspended viewer and hides a suspended seller, and
+the plan is re-read from the locked row at finalization time, so a subscription
+that lapsed while the page was open still blocks the sale.
 
-The demand board follows the same rule as the marketplace (§5): **both businesses
-must be `Business.Status.ACTIVE`**. `purchase_requests.selectors.network_purchase_requests`
-returns nothing to a suspended viewer — an empty board and no by-UUID fetch through
-`get_network_request` — and filters out requests owned by a suspended business, so a
-suspended buyer's demand is shown to nobody. The owner side is a join on the requesting
-business, not a per-row lookup. `purchase_requests.services` re-checks both sides where
-a business commits to a counterparty: `submit_private_offer` refuses a suspended seller
-and a suspended requester, and `decide_offer` refuses when either side has been suspended
-since the offer was made.
+A suspended business keeps full access to its own data — its products, its own
+records and its ledger are untouched. The gate is on **participation in the
+shared network**.
 
-This gates **participation in the shared network only**. A suspended business keeps full
-access to its own data: `my_purchase_requests` / `get_own_request`, its inventory and its
-ledger are untouched, and it may still close its own request.
-
-Lots attachable to an offer, a ledger entry, or a custom catalog are restricted to
-the acting business's own un-archived lots, in the form *and* again in the service;
-a crafted lot UUID is rejected rather than silently ignored.
+Products attachable to a request, a ledger entry or a catalog are restricted to
+the acting business's own non-deleted products, in the form *and* again in the
+service. A crafted UUID is rejected rather than silently ignored.
 
 ## 9. Platform Admin
 
@@ -292,10 +284,15 @@ a crafted lot UUID is rejected rather than silently ignored.
 `apps.businesses.context_processors.business_context` exposes `capabilities`, the
 frozen set of codes the current membership actually holds (derived from
 `has_capability`, so owner bypass and suspended memberships behave identically to
-the server-side checks). Templates use it only to hide links that would end in
-«دسترسی ندارید» — «مخاطبین» needs `customers.manage`, «دفتر حساب» needs
-`ledger.view`, «کاتالوگ‌ها» needs `catalog.manage`. It is **never** a substitute
-for the decorator and the service check; it injects no prices and no tenant data.
+the server-side checks). It also exposes `entitlements`, the plan's set.
+
+Templates use both **only** to hide links that would end in «دسترسی ندارید» —
+«دفتر حساب» needs `ledger.view`, «کاتالوگ‌ها» needs `catalog.manage`,
+«خرید و فروش» needs `purchase.request`. Neither is a substitute for the decorator
+and the service check, and neither injects prices or tenant data.
+
+A browse-only account stopped by a missing menu item is not stopped at all: the
+form still posts. That is why every plan gate is also in the service.
 
 The dashboard follows the same rule the other way round: its financial sections
 (خلاصه مالی and the largest debtors/creditors) are decided in
@@ -308,9 +305,10 @@ let alone rendered and hidden — and still sees the rest of the dashboard.
 
 For each new endpoint/page:
 
-- [ ] Audience resolved  
-- [ ] Tenant scoped  
-- [ ] Capability checked  
-- [ ] Visibility applied in queryset  
-- [ ] Price fields filtered  
-- [ ] Negative authz test added when security-sensitive  
+- [ ] Audience resolved
+- [ ] Tenant scoped
+- [ ] Capability checked in the **service**, not only the view
+- [ ] Plan entitlement checked where the action is a seller action
+- [ ] Buyer-facing reads go through `eligible_items()`
+- [ ] Price fields filtered by audience
+- [ ] Negative authorization test added when security-sensitive
