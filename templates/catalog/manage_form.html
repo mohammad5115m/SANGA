@@ -4,23 +4,67 @@
 {% block content %}
 <section class="stack-lg">
   <h1 class="page-title">{% if mode == 'create' %}کاتالوگ جدید{% else %}ویرایش کاتالوگ{% endif %}</h1>
-  <form method="post" class="panel stack-md" novalidate>
+
+  <form method="post" class="stack-lg" novalidate x-data="{ mode: '{{ form.mode.value|default:'manual' }}' }">
     {% csrf_token %}
-    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
-    {% for field in form %}
-      {% if field.name != 'lots' %}
-      <label class="field">
-        <span class="field-label">{{ field.label }}</span>
-        {{ field }}
-        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-      </label>
+
+    <section class="panel stack-md">
+      {% if form.non_field_errors %}
+        <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
       {% endif %}
-    {% endfor %}
-    <fieldset class="stack-sm">
-      <legend class="section-title">انتخاب محصولات</legend>
+      {% for field in form %}
+        {% if field.name != 'lots' and field.name != 'mode' %}
+          <label class="field">
+            <span class="field-label">{{ field.label }}</span>
+            {{ field }}
+            {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+          </label>
+        {% endif %}
+      {% endfor %}
+
+      <fieldset class="field">
+        <legend class="field-label">{{ form.mode.label }}</legend>
+        {% for choice in form.mode %}
+          <label class="chip chip-choice" @change="mode = $event.target.value">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
+        {% endfor %}
+        <p class="field-help">
+          کاتالوگ فیلتری همیشه به‌روز است: محصول جدیدی که با فیلتر بخواند، خودش اضافه می‌شود.
+        </p>
+      </fieldset>
+    </section>
+
+    <section class="panel stack-md" x-show="mode !== 'rule'" x-cloak>
+      <h2 class="section-title">انتخاب دستی محصولات</h2>
       <div class="lot-pick-list">{{ form.lots }}</div>
-    </fieldset>
-    <button class="btn btn-primary" type="submit">ذخیره</button>
+    </section>
+
+    <section class="panel stack-md" x-show="mode !== 'manual'" x-cloak>
+      <h2 class="section-title">فیلتر محصولات</h2>
+      <p class="muted">
+        هر محصولی که با این فیلترها بخواند، در کاتالوگ نمایش داده می‌شود — همان
+        فیلترهایی که در جستجو استفاده می‌کنید.
+      </p>
+      <div class="filter-grid">
+        {% for field in rule_form %}
+          {% if field.name != 'sort' and field.name != 'applications' %}
+            <label class="field">
+              <span class="field-label">{{ field.label }}</span>
+              {{ field }}
+            </label>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <fieldset class="field">
+        <legend class="field-label">{{ rule_form.applications.label }}</legend>
+        <div class="chip-row">
+          {% for choice in rule_form.applications %}
+            <label class="chip chip-choice">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+    </section>
+
+    <button class="btn btn-primary btn-block" type="submit">ذخیره</button>
   </form>
 </section>
 {% endblock %}

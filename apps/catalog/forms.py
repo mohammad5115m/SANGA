@@ -66,7 +66,7 @@ class InquiryForm(forms.Form):
 
 class CustomCatalogForm(forms.ModelForm):
     lots = forms.ModelMultipleChoiceField(
-        label="محصولات",
+        label="محصولات (انتخاب دستی)",
         queryset=InventoryLot.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple,
@@ -74,9 +74,10 @@ class CustomCatalogForm(forms.ModelForm):
 
     class Meta:
         model = CustomCatalog
-        fields = ("title", "customer_name", "custom_message", "expires_at", "is_active")
+        fields = ("title", "mode", "customer_name", "custom_message", "expires_at", "is_active")
         widgets = {
             "title": forms.TextInput(attrs={"class": "field-input"}),
+            "mode": forms.RadioSelect(attrs={"class": "field-checkbox"}),
             "customer_name": forms.TextInput(attrs={"class": "field-input"}),
             "custom_message": forms.Textarea(attrs={"class": "field-input", "rows": 3}),
             "expires_at": forms.DateTimeInput(attrs={"class": "field-input", "type": "datetime-local"}),
@@ -96,4 +97,8 @@ class CustomCatalogForm(forms.ModelForm):
                 .order_by("-updated_at")
             )
         if self.instance and self.instance.pk:
-            self.fields["lots"].initial = self.instance.items.values_list("lot_id", flat=True)
+            # Only the manual includes: exclusions are managed on the detail page,
+            # where the seller can see what the rule is currently selecting.
+            self.fields["lots"].initial = self.instance.items.filter(
+                inclusion="include"
+            ).values_list("lot_id", flat=True)

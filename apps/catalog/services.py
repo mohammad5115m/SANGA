@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.businesses.entitlements import MANAGE_CATALOGS, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import CATALOG_MANAGE
+from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.freshness import stock_view
 from apps.inventory.models import InventoryLot
 from apps.pricing.services import resolve_visible_prices
@@ -83,6 +84,8 @@ def create_custom_catalog(
     custom_message: str = "",
     lot_ids: list | None = None,
     expires_at=None,
+    mode: str = CustomCatalog.Mode.MANUAL,
+    rules: dict | None = None,
 ) -> CustomCatalog:
     _require_catalog_manage(membership)
     if membership.business_id != business.id:
@@ -90,6 +93,8 @@ def create_custom_catalog(
     title = (title or "").strip()
     if len(title) < 2:
         raise CatalogError("عنوان کاتالوگ خیلی کوتاه است.")
+    if mode not in set(CustomCatalog.Mode.values):
+        raise CatalogError("نوع کاتالوگ نامعتبر است.")
 
     catalog = CustomCatalog.objects.create(
         business=business,
@@ -97,10 +102,140 @@ def create_custom_catalog(
         customer_name=(customer_name or "").strip(),
         custom_message=(custom_message or "").strip(),
         expires_at=expires_at,
+        mode=mode,
+        rules=_clean_rules(rules, mode),
     )
     if lot_ids:
         set_catalog_lots(catalog=catalog, membership=membership, lot_ids=lot_ids)
     return catalog
+
+
+def _clean_rules(rules: dict | None, mode: str) -> dict:
+    """Normalize incoming rule JSON through the shared filter schema.
+
+    Round-tripping through :class:`ItemFilterSpec` means a stored rule is always
+    in the same vocabulary the search bar produces, and unknown or unparseable
+    keys are dropped rather than persisted to fail later.
+    """
+    if mode == CustomCatalog.Mode.MANUAL:
+        return {}
+    spec = ItemFilterSpec.from_dict(rules or {})
+    if spec.is_empty:
+        raise CatalogError("برای کاتالوگ فیلتری، حداقل یک فیلتر انتخاب کنید.")
+    return spec.to_dict()
+
+
+@transaction.atomic
+def update_catalog(
+    *,
+    catalog: CustomCatalog,
+    membership: BusinessMembership,
+    title: str | None = None,
+    customer_name: str | None = None,
+    custom_message: str | None = None,
+    expires_at=...,
+    is_active: bool | None = None,
+    mode: str | None = None,
+    rules: dict | None = None,
+) -> CustomCatalog:
+    _require_catalog_manage(membership)
+    if catalog.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
+
+    if title is not None:
+        title = title.strip()
+        if len(title) < 2:
+            raise CatalogError("عنوان کاتالوگ خیلی کوتاه است.")
+        catalog.title = title
+    if customer_name is not None:
+        catalog.customer_name = customer_name.strip()
+    if custom_message is not None:
+        catalog.custom_message = custom_message.strip()
+    if expires_at is not ...:
+        catalog.expires_at = expires_at
+    if is_active is not None:
+        catalog.is_active = is_active
+    if mode is not None:
+        if mode not in set(CustomCatalog.Mode.values):
+            raise CatalogError("نوع کاتالوگ نامعتبر است.")
+        catalog.mode = mode
+    if mode is not None or rules is not None:
+        catalog.rules = _clean_rules(rules if rules is not None else catalog.rules, catalog.mode)
+
+    catalog.save()
+    return catalog
+
+
+@transaction.atomic
+def set_catalog_exclusions(
+    *,
+    catalog: CustomCatalog,
+    membership: BusinessMembership,
+    lot_ids: list,
+) -> CustomCatalog:
+    """Replace the "not this one" overrides on a rule-based catalog.
+
+    Separate from the includes because a rule that has to encode its own
+    exceptions stops being readable — «همه تراورتن‌های عباس‌آباد، غیر از این
+    یکی» is two ideas, and the seller should be able to see both.
+    """
+    _require_catalog_manage(membership)
+    if catalog.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
+
+    owned = _owned_ids(catalog, lot_ids)
+    catalog.items.filter(inclusion=CustomCatalogItem.Inclusion.EXCLUDE).delete()
+    # A product cannot be both added and removed by hand — the two instructions
+    # contradict each other. Excluding wins, because it is the one the seller
+    # just gave.
+    catalog.items.filter(lot_id__in=owned).delete()
+    CustomCatalogItem.objects.bulk_create(
+        [
+            CustomCatalogItem(
+                catalog=catalog,
+                lot_id=lot_id,
+                inclusion=CustomCatalogItem.Inclusion.EXCLUDE,
+                sort_order=index,
+            )
+            for index, lot_id in enumerate(owned)
+        ]
+    )
+    catalog.save(update_fields=["updated_at"])
+    return catalog
+
+
+def _owned_ids(catalog: CustomCatalog, lot_ids: list) -> list:
+    """Validate that every id belongs to this catalog's business.
+
+    Rejects rather than silently drops: an id this business does not own must
+    never be accepted as a no-op, or a crafted request looks like it worked.
+    """
+    requested = [lot_id for lot_id in (lot_ids or []) if lot_id is not None]
+    if not requested:
+        return []
+    try:
+        owned = list(
+            InventoryLot.objects.filter(
+                business=catalog.business,
+                id__in=requested,
+                deleted_at__isnull=True,
+            ).values_list("id", flat=True)
+        )
+    except (DjangoValidationError, TypeError, ValueError) as exc:
+        raise CatalogError("محصول انتخاب‌شده معتبر نیست.") from exc
+
+    if len(owned) != len({str(lot_id) for lot_id in requested}):
+        raise CatalogError("یک یا چند محصول انتخاب‌شده متعلق به کسب‌وکار شما نیست.")
+
+    owned_ids = {str(lot_id) for lot_id in owned}
+    ordered: list = []
+    seen: set[str] = set()
+    for lot_id in requested:
+        key = str(lot_id)
+        if key in owned_ids and key not in seen:
+            seen.add(key)
+            ordered.append(lot_id)
+    return ordered
 
 
 @transaction.atomic
@@ -125,36 +260,22 @@ def set_catalog_lots(
     if catalog.business_id != membership.business_id:
         raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
 
-    requested = [lot_id for lot_id in (lot_ids or []) if lot_id is not None]
-    try:
-        owned = list(
-            InventoryLot.objects.filter(
-                business=catalog.business,
-                id__in=requested,
-                deleted_at__isnull=True,
-            ).values_list("id", flat=True)
-        )
-    except (DjangoValidationError, TypeError, ValueError) as exc:
-        raise CatalogError("محصول انتخاب‌شده معتبر نیست.") from exc
+    valid_ids = _owned_ids(catalog, lot_ids)
 
-    # Reject rather than silently drop: an id this business does not own must
-    # never be accepted as a no-op, or a crafted request looks like it worked.
-    if len(owned) != len({str(lot_id) for lot_id in requested}):
-        raise CatalogError("یک یا چند محصول انتخاب‌شده متعلق به کسب‌وکار شما نیست.")
-
-    owned_ids = {str(lot_id) for lot_id in owned}
-    valid_ids: list = []
-    seen: set[str] = set()
-    for lot_id in requested:
-        key = str(lot_id)
-        if key in owned_ids and key not in seen:
-            seen.add(key)
-            valid_ids.append(lot_id)
-
-    catalog.items.all().delete()
+    # Only the includes are replaced; exclusions on a hybrid catalog are managed
+    # separately and must survive an edit to the manual selection. An id that is
+    # currently excluded and is now being included drops its exclusion, since the
+    # two cannot both hold.
+    catalog.items.filter(inclusion=CustomCatalogItem.Inclusion.INCLUDE).delete()
+    catalog.items.filter(lot_id__in=valid_ids).delete()
     CustomCatalogItem.objects.bulk_create(
         [
-            CustomCatalogItem(catalog=catalog, lot_id=lot_id, sort_order=index)
+            CustomCatalogItem(
+                catalog=catalog,
+                lot_id=lot_id,
+                inclusion=CustomCatalogItem.Inclusion.INCLUDE,
+                sort_order=index,
+            )
             for index, lot_id in enumerate(valid_ids)
         ]
     )

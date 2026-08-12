@@ -15,22 +15,13 @@
     {% if catalog.custom_message %}<p>{{ catalog.custom_message }}</p>{% endif %}
   </div>
 
+  {% include "catalog/_selection_bar.html" %}
+
   <div class="catalog-grid">
     {% for card in cards %}
-      <a class="catalog-card" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">
-        <div class="catalog-card-media">
-          {% if card.primary_media %}
-            <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
-          {% else %}
-            <div class="lot-thumb-fallback"></div>
-          {% endif %}
-        </div>
-        <div class="catalog-card-body">
-          <div class="list-title">{{ card.product.commercial_name }}</div>
-          <div class="catalog-price">{{ card.price.label }}</div>
-          {% if card.note %}<div class="muted">{{ card.note }}</div>{% endif %}
-        </div>
-      </a>
+      {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" with show_select=True %}
+      {% if card.note %}<div class="muted card-note">{{ card.note }}</div>{% endif %}
     {% empty %}
       <div class="empty-state">موردی برای نمایش نیست.</div>
     {% endfor %}
@@ -53,6 +44,6 @@
     </form>
   </section>
 
-  <button class="btn btn-ghost" type="button" data-share-url="{{ share_url }}" onclick="navigator.clipboard.writeText(this.dataset.shareUrl); this.textContent='لینک کپی شد';">کپی لینک اشتراک</button>
+  {% include "catalog/_share_actions.html" %}
 </section>
 {% endblock %}

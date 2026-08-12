@@ -15,6 +15,7 @@ from apps.inventory.forms import ItemFilterForm
 from . import cart
 from .forms import InquiryForm
 from .selectors import (
+    catalog_notes,
     filter_public_lots,
     get_public_item_by_token,
     get_public_lot,
@@ -195,11 +196,20 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
                 {"business": catalog.business, "catalog": catalog},
             )
 
-    # get_shareable_catalog already intersected the selection with the public
-    # eligibility queryset, so everything here is showable. Re-filtering in the
-    # template layer is what let a private item slip through before.
-    items = getattr(catalog, "prefetched_items", [])
-    cards = [{**public_lot_card(item.lot), "note": item.note} for item in items]
+    # resolve_catalog already intersected the rules and the manual overrides with
+    # the public eligibility queryset, so everything here is showable.
+    # Re-filtering in the template layer is what let a private item slip through
+    # before.
+    notes = catalog_notes(catalog)
+    selected = set(cart.selected_ids(request))
+    cards = [
+        {
+            **public_lot_card(item),
+            "note": notes.get(str(item.pk), ""),
+            "is_selected": str(item.pk) in selected,
+        }
+        for item in getattr(catalog, "resolved_items", [])
+    ]
 
     return render(
         request,
@@ -210,6 +220,7 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
             "cards": cards,
             "inquiry_form": form,
             "share_url": request.build_absolute_uri(),
+            "selection_count": cart.count(request),
         },
     )
 
