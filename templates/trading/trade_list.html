@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+{% load money %}
 
 {% block title %}فروش‌های نهایی | سنگا{% endblock %}
 
@@ -22,8 +23,8 @@
           <div class="list-title">{{ trade.product_name }}</div>
           <div class="muted">{{ trade.counterparty_label }} · {{ trade.finalized_at|date:"Y/m/d" }}</div>
           <div class="muted" dir="ltr">
-            {{ trade.quantity_sqm }} m² × {{ trade.unit_price|floatformat:"0g" }} =
-            {{ trade.total_amount|floatformat:"0g" }} {{ trade.currency }}
+            {{ trade.quantity_sqm }} m² × {{ trade.unit_price|rial }} =
+            {{ trade.total_amount|rial }} {{ trade.currency }}
           </div>
         </div>
       </a>

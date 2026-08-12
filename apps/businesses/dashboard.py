@@ -15,7 +15,7 @@ from django.db.models import Count, Exists, OuterRef, Q
 
 from apps.accounting.selectors import (
     business_financial_summary,
-    contact_balances,
+    counterparty_balances,
     describe_balance,
 )
 from apps.inquiries.models import Inquiry
@@ -67,11 +67,11 @@ def dashboard_data(*, business: Business, membership: BusinessMembership | None)
 def _top_balances(business: Business, state: str) -> list[dict]:
     """The few largest balances on one side of the books, largest first.
 
-    ``contact_balances`` already sums and sorts in the database and already
-    decides which archived contacts still count, so this only labels the rows.
+    ``counterparty_balances`` already sums and sorts in the database, so this
+    only labels the rows.
     """
-    rows = contact_balances(business, state=state, sort=state)[:TOP_BALANCE_ROWS]
-    return [{"contact": contact, "balance": describe_balance(contact.balance)} for contact in rows]
+    rows = counterparty_balances(business, state=state, sort=state)[:TOP_BALANCE_ROWS]
+    return [{"colleague": row, "balance": describe_balance(row.balance)} for row in rows]
 
 
 def _lots_needing_attention(business: Business) -> dict:

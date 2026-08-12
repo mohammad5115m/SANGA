@@ -1,0 +1,51 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}فاکتور جدید | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">فاکتور جدید</h1>
+    <p class="page-lead">برای یک همکار یا یک مشتری عادی</p>
+  </div>
+
+  <form method="post" class="stack-lg" novalidate>
+    {% csrf_token %}
+
+    <section class="panel stack-md">
+      <h2 class="section-title">خریدار</h2>
+      {% if form.non_field_errors %}
+        <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+      {% endif %}
+      {% for field in form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+        </label>
+      {% endfor %}
+      <p class="muted">مشتری عادی حساب کاربری سنگا ندارد و برای او حسابی ساخته نمی‌شود.</p>
+    </section>
+
+    <section class="panel stack-md">
+      <h2 class="section-title">ردیف‌های فاکتور</h2>
+      {{ formset.management_form }}
+      {% for line in formset %}
+        <fieldset class="invoice-line-fields">
+          <legend class="field-label">ردیف {{ forloop.counter }}</legend>
+          {% for field in line %}
+            <label class="field">
+              <span class="field-label">{{ field.label }}</span>
+              {{ field }}
+              {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+            </label>
+          {% endfor %}
+        </fieldset>
+      {% endfor %}
+      <p class="muted">ردیف‌های خالی نادیده گرفته می‌شوند.</p>
+    </section>
+
+    <button class="btn btn-primary btn-block" type="submit">صدور فاکتور</button>
+  </form>
+</section>
+{% endblock %}

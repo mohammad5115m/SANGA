@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+{% load money %}
 
 {% block title %}معامله | سنگا{% endblock %}
 
@@ -23,11 +24,11 @@
     <div class="kv"><span>متراژ</span><strong>{{ trade.quantity_sqm }} m²</strong></div>
     <div class="kv">
       <span>قیمت واحد</span>
-      <strong dir="ltr">{{ trade.unit_price|floatformat:"0g" }} {{ trade.currency }}</strong>
+      <strong dir="ltr">{{ trade.unit_price|rial }} {{ trade.currency }}</strong>
     </div>
     <div class="kv">
       <span>مبلغ کل</span>
-      <strong dir="ltr">{{ trade.total_amount|floatformat:"0g" }} {{ trade.currency }}</strong>
+      <strong dir="ltr">{{ trade.total_amount|rial }} {{ trade.currency }}</strong>
     </div>
     {% if trade.note %}<div class="kv"><span>توضیح</span><strong>{{ trade.note }}</strong></div>{% endif %}
   </section>

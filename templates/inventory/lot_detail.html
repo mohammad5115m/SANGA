@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+{% load money %}
 
 {% block title %}{{ lot.product.commercial_name }} | سنگا{% endblock %}
 
@@ -108,7 +109,7 @@
     <div class="kv">
       <span>قیمت همکار</span>
       <strong dir="ltr">
-        {% if prices.b2b and prices.b2b.amount %}{{ prices.b2b.amount|floatformat:"0g" }} {{ prices.b2b.currency }}
+        {% if prices.b2b and prices.b2b.amount %}{{ prices.b2b.amount|rial }} {{ prices.b2b.currency }}
         {% elif prices.b2b %}استعلام قیمت{% else %}—{% endif %}
       </strong>
     </div>
@@ -116,7 +117,7 @@
     <div class="kv">
       <span>قیمت مشتری</span>
       <strong dir="ltr">
-        {% if prices.b2c and prices.b2c.amount %}{{ prices.b2c.amount|floatformat:"0g" }} {{ prices.b2c.currency }}
+        {% if prices.b2c and prices.b2c.amount %}{{ prices.b2c.amount|rial }} {{ prices.b2c.currency }}
         {% elif prices.b2c %}استعلام قیمت{% else %}—{% endif %}
       </strong>
     </div>

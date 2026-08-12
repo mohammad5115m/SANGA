@@ -1,3 +1,4 @@
+{% load money %}
 {% comment %}
 Shared body of the two purchase-request tabs.
 
@@ -19,7 +20,7 @@ Expects: requests, status, status_filters, detail_url_name, counterparty_attr
           · {{ pr.agreed_qty_sqm }} m²
         </div>
         {% if pr.agreed_total %}
-          <div class="muted" dir="ltr">{{ pr.agreed_total|floatformat:"0g" }} {{ pr.currency }}</div>
+          <div class="muted" dir="ltr">{{ pr.agreed_total|rial }} {{ pr.currency }}</div>
         {% endif %}
         <div class="badge-row">{% include "trading/_status_badge.html" %}</div>
       </div>

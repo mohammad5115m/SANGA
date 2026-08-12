@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+{% load money %}
 
 {% block title %}موجودی من | سنگا{% endblock %}
 
@@ -44,8 +45,8 @@
           <div class="muted">{{ row.stock.label }}</div>
           {% if can_view_prices %}
             <div class="price-inline muted">
-              {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount|default:"استعلام"|floatformat:"0g" }}{% endif %}
-              {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount|default:"استعلام"|floatformat:"0g" }}{% endif %}
+              {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount|default:"استعلام"|rial }}{% endif %}
+              {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount|default:"استعلام"|rial }}{% endif %}
             </div>
           {% endif %}
         </div>

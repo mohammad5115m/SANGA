@@ -1,3 +1,4 @@
+{% load money %}
 {% comment %}
 The commercial facts of one purchase request.
 
@@ -15,7 +16,7 @@ Expects: pr
   {% if pr.proposed_unit_price %}
     <div class="kv">
       <span>قیمت پیشنهادی خریدار</span>
-      <strong dir="ltr">{{ pr.proposed_unit_price|floatformat:"0g" }} {{ pr.currency }}</strong>
+      <strong dir="ltr">{{ pr.proposed_unit_price|rial }} {{ pr.currency }}</strong>
     </div>
   {% endif %}
 
@@ -27,7 +28,7 @@ Expects: pr
     {% if pr.final_unit_price %}
       <div class="kv">
         <span>قیمت نهایی</span>
-        <strong dir="ltr">{{ pr.final_unit_price|floatformat:"0g" }} {{ pr.currency }}</strong>
+        <strong dir="ltr">{{ pr.final_unit_price|rial }} {{ pr.currency }}</strong>
       </div>
     {% endif %}
   {% endif %}
@@ -35,7 +36,7 @@ Expects: pr
   {% if pr.agreed_total %}
     <div class="kv">
       <span>مبلغ کل</span>
-      <strong dir="ltr">{{ pr.agreed_total|floatformat:"0g" }} {{ pr.currency }}</strong>
+      <strong dir="ltr">{{ pr.agreed_total|rial }} {{ pr.currency }}</strong>
     </div>
   {% endif %}
 

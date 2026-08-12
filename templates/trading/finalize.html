@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+{% load money %}
 
 {% block title %}نهایی کردن فروش | سنگا{% endblock %}
 
@@ -15,7 +16,7 @@
     {% csrf_token %}
     <div class="alert alert-warn">
       با نهایی کردن فروش، مبلغ
-      <strong dir="ltr">{{ pr.agreed_total|floatformat:"0g" }} {{ pr.currency }}</strong>
+      <strong dir="ltr">{{ pr.agreed_total|rial }} {{ pr.currency }}</strong>
       به حساب {{ pr.buyer_business.name }} منظور می‌شود.
     </div>
 

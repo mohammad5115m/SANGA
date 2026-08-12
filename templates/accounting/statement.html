@@ -1,33 +1,33 @@
 {% extends "layouts/app_shell.html" %}
-{% load humanize %}
-{% block title %}دفتر حساب {{ contact.display_name }} | سنگا{% endblock %}
+{% load money %}
+{% block title %}دفتر حساب {{ colleague.name }} | سنگا{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar">
     <div>
       <h1 class="page-title">صورت‌حساب</h1>
-      <p class="page-lead">{{ contact.display_name }}</p>
+      <p class="page-lead">{{ colleague.name }}</p>
     </div>
     <div class="btn-row">
       {% if can_manage %}
-        <a class="btn btn-primary btn-sm" href="{% url 'accounting:add_entry' contact.id %}">ثبت سند</a>
+        <a class="btn btn-primary btn-sm" href="{% url 'accounting:add_entry' colleague.id %}">ثبت سند</a>
       {% endif %}
-      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:print' contact.id %}" target="_blank" rel="noopener">چاپ صورت‌حساب</a>
-      <a class="btn btn-ghost btn-sm" href="{% url 'contacts:detail' contact.id %}">بازگشت</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:print' colleague.id %}" target="_blank" rel="noopener">چاپ صورت‌حساب</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'businesses:colleague_detail' colleague.id %}">بازگشت</a>
     </div>
   </div>
 
   <section class="panel balance-card balance-{{ balance.state }}">
     <div class="balance-label">مانده حساب</div>
-    <div class="balance-amount">{{ balance.amount|intcomma }} <span class="balance-unit">ریال</span></div>
+    <div class="balance-amount">{{ balance.amount|rial }} <span class="balance-unit">ریال</span></div>
     <div class="balance-state">{{ balance.label }}</div>
     {% if balance.state == 'settled' %}
-      <div class="muted">حساب این مخاطب تسویه است.</div>
+      <div class="muted">حساب این همکار تسویه است.</div>
     {% elif balance.state == 'debtor' %}
-      <div class="muted">این مبلغ جزو مطالبات شما از این مخاطب است.</div>
+      <div class="muted">این مبلغ جزو مطالبات شما از این همکار است.</div>
     {% else %}
-      <div class="muted">این مبلغ جزو دیون شما به این مخاطب است.</div>
+      <div class="muted">این مبلغ جزو دیون شما به این همکار است.</div>
     {% endif %}
   </section>
 
@@ -53,7 +53,7 @@
     </div>
     <div class="btn-row">
       <button class="btn btn-secondary btn-sm" type="submit">اعمال فیلتر</button>
-      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:statement' contact.id %}">حذف فیلتر</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:statement' colleague.id %}">حذف فیلتر</a>
     </div>
   </form>
 
@@ -81,9 +81,9 @@
               {% if entry.id in reversed_ids %}<span class="badge badge-muted">برگشت‌خورده</span>{% endif %}
             </td>
             <td>{{ entry.reference|default:"—" }}</td>
-            <td class="num">{% if entry.is_debit %}{{ entry.amount|intcomma }}{% else %}—{% endif %}</td>
-            <td class="num">{% if entry.is_credit %}{{ entry.amount|intcomma }}{% else %}—{% endif %}</td>
-            <td class="num">{{ entry.balance_after|intcomma }}</td>
+            <td class="num">{% if entry.is_debit %}{{ entry.amount|rial }}{% else %}—{% endif %}</td>
+            <td class="num">{% if entry.is_credit %}{{ entry.amount|rial }}{% else %}—{% endif %}</td>
+            <td class="num">{{ entry.balance_after|rial }}</td>
             {% if can_manage %}
               <td>
                 {% if entry.entry_type != 'reversal' and entry.id not in reversed_ids %}
@@ -104,15 +104,15 @@
         <tfoot>
           <tr>
             <th colspan="3">جمع دوره</th>
-            <td class="num">{{ totals.debit|intcomma }}</td>
-            <td class="num">{{ totals.credit|intcomma }}</td>
+            <td class="num">{{ totals.debit|rial }}</td>
+            <td class="num">{{ totals.credit|rial }}</td>
             <td class="num">—</td>
             {% if can_manage %}<td></td>{% endif %}
           </tr>
           <tr>
             <th colspan="3">مانده پایان دوره</th>
             <td class="num" colspan="{% if can_manage %}4{% else %}3{% endif %}">
-              {{ totals.closing_balance.amount|intcomma }} ریال · {{ totals.closing_balance.label }}
+              {{ totals.closing_balance.amount|rial }} ریال · {{ totals.closing_balance.label }}
             </td>
           </tr>
         </tfoot>
@@ -131,18 +131,41 @@
         {% for bucket in aging.rows %}
           <div class="aging-cell">
             <div class="metric-label">{{ bucket.label }}</div>
-            <div class="aging-amount">{{ bucket.amount|intcomma }}</div>
+            <div class="aging-amount">{{ bucket.amount|rial }}</div>
           </div>
         {% endfor %}
       </div>
-      <div class="kv"><span>جمع مطالبات معوق</span><strong>{{ aging.total|intcomma }} ریال</strong></div>
+      <div class="kv"><span>جمع مطالبات معوق</span><strong>{{ aging.total|rial }} ریال</strong></div>
     {% elif aging.unapplied_credit %}
       <p class="muted">
-        مطالبه‌ای از این مخاطب باقی نمانده؛ حساب او {{ aging.unapplied_credit|intcomma }} ریال بستانکار است.
+        مطالبه‌ای از این همکار باقی نمانده؛ حساب او {{ aging.unapplied_credit|rial }} ریال بستانکار است.
       </p>
     {% else %}
-      <p class="muted">مطالبه‌ای از این مخاطب باقی نمانده است.</p>
+      <p class="muted">مطالبه‌ای از این همکار باقی نمانده است.</p>
     {% endif %}
+  </section>
+
+  <section class="panel stack-md">
+    <div class="toolbar">
+      <h2 class="section-title">فاکتورهای این همکار</h2>
+      <a class="btn btn-ghost btn-sm" href="{% url 'invoicing:list' %}?q={{ colleague.name|urlencode }}">همه فاکتورها</a>
+    </div>
+    <div class="list-stack">
+      {% for invoice in invoices %}
+        <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
+          <div>
+            <div class="list-title" dir="ltr">{{ invoice.number }}</div>
+            <div class="muted">{{ invoice.issue_date }} · {{ invoice.buyer_name }}</div>
+          </div>
+          <div class="ledger-amounts">
+            <strong dir="ltr">{{ invoice.total_amount|rial }} ریال</strong>
+            <span class="badge">{{ invoice.get_status_display }}</span>
+          </div>
+        </a>
+      {% empty %}
+        <div class="empty-state">فاکتوری با این همکار رد و بدل نشده است.</div>
+      {% endfor %}
+    </div>
   </section>
 </section>
 {% endblock %}

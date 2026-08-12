@@ -1,0 +1,44 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}فاکتور {{ invoice.number }} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">فاکتور {{ invoice.number }}</h1>
+      <p class="page-lead">{{ invoice.buyer_name }}</p>
+    </div>
+    <div class="btn-row">
+      <a class="btn btn-secondary" href="{% url 'invoicing:print' invoice.id %}" target="_blank" rel="noopener">
+        چاپ
+      </a>
+      {% if is_seller and can_manage %}
+        {% if invoice.status == 'draft' %}
+          <form method="post" action="{% url 'invoicing:issue' invoice.id %}">
+            {% csrf_token %}<button class="btn btn-primary" type="submit">صدور فاکتور</button>
+          </form>
+        {% elif invoice.status == 'issued' %}
+          <form method="post" action="{% url 'invoicing:cancel' invoice.id %}">
+            {% csrf_token %}<button class="btn btn-ghost" type="submit">ابطال</button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="panel invoice-sheet">
+    {% include "invoicing/_invoice_body.html" %}
+  </div>
+
+  {# Both of these are consequences the seller might otherwise assume. #}
+  <p class="muted">
+    صدور یا ابطال فاکتور، مانده حساب را تغییر نمی‌دهد. مانده حساب هنگام نهایی شدن فروش
+    ثبت شده است؛ برای اصلاح آن از «برگشت سند» در دفتر حساب استفاده کنید.
+  </p>
+
+  {% if invoice.trade %}
+    <a class="btn btn-ghost" href="{% url 'trading:trade_detail' invoice.trade.id %}">مشاهده معامله</a>
+  {% endif %}
+</section>
+{% endblock %}

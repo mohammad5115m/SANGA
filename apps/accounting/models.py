@@ -9,25 +9,31 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 # Entry types that represent a real trade (as opposed to money movement, a manual
-# adjustment, or a correction). A trade started from an accepted offer may be
-# recorded at most once per offer per business — enforced by
-# ``uniq_trade_entry_per_offer``.
+# adjustment, or a correction). A finalized Trade may be recorded at most once per
+# business — enforced by ``uniq_trade_entry_per_trade``.
 TRADE_ENTRY_TYPES: tuple[str, ...] = ("sale", "purchase")
 
 
 class LedgerEntry(models.Model):
-    """An immutable financial ledger entry for a contact.
+    """An immutable financial ledger entry against one counterparty.
 
     Balance convention (owning business's books, standard bookkeeping terms):
-      balance > 0  ⇒ the contact is «بدهکار» — a receivable of the business
-      balance < 0  ⇒ the contact is «بستانکار» — a payable of the business
+      balance > 0  ⇒ the counterparty is «بدهکار» — a receivable of the business
+      balance < 0  ⇒ the counterparty is «بستانکار» — a payable of the business
       balance == 0 ⇒ «تسویه»
 
     ``amount`` is always a positive magnitude. ``balance_delta`` is the signed
     effect on the running balance and is the single source of truth for balance
     math. ``balance_after`` is the running balance immediately after this entry,
-    computed under a per-contact row lock at posting time. Entries are never
-    edited or deleted after posting; corrections are made with reversal entries.
+    computed under a row lock at posting time. Entries are never edited or
+    deleted after posting; corrections are made with reversal entries.
+
+    **Counterparty identity.** V2 keys the ledger on the colleague's *Business*
+    rather than on a hand-typed Contact, so two people at the same company can no
+    longer become two different debtors. Rows that predate V2 and could not be
+    mapped to a Business keep ``contact`` and carry the contact's name in
+    ``legacy_counterparty_name``; they stay readable and are never posted to
+    again. See docs/accounting.md.
     """
 
     class Type(models.TextChoices):
@@ -45,11 +51,26 @@ class LedgerEntry(models.Model):
         on_delete=models.CASCADE,
         related_name="ledger_entries",
     )
+    counterparty_business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="counterparty_ledger_entries",
+        verbose_name="همکار",
+    )
+    # Legacy only. Kept so pre-V2 rows whose Contact had no linked Business stay
+    # queryable under the name they were filed under; guessing a Business for
+    # them would corrupt a real balance.
     contact = models.ForeignKey(
         "contacts.Contact",
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name="ledger_entries",
     )
+    legacy_counterparty_name = models.CharField(max_length=200, blank=True)
+
     entry_type = models.CharField(max_length=20, choices=Type.choices)
     amount = models.DecimalField(
         "مبلغ",
@@ -71,9 +92,18 @@ class LedgerEntry(models.Model):
         blank=True,
         related_name="ledger_entries",
     )
-    # Set only when the trade was recorded from an accepted purchase offer. A
-    # manually recorded trade leaves it null and is therefore not deduplicated —
-    # nothing outside the ledger identifies an offline trade.
+    # The authoritative link for a V2 sale. Set when the entry was posted by
+    # finalizing a Trade, which is the one event that may move the books; the
+    # unique constraint below hangs off it.
+    related_trade = models.ForeignKey(
+        "trading.Trade",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ledger_entries",
+    )
+    # Legacy: set when a trade was recorded from an accepted demand-board offer.
+    # The workflow is gone but the rows and their idempotency slot remain.
     related_offer = models.ForeignKey(
         "purchase_requests.PurchaseOffer",
         on_delete=models.SET_NULL,
@@ -132,10 +162,28 @@ class LedgerEntry(models.Model):
                 ),
                 name="uniq_trade_entry_per_offer",
             ),
+            # The V2 equivalent, and the reason finalizing a sale twice cannot
+            # double-post: one Trade yields at most one *live* trade entry in a
+            # given business's ledger, however many times the request is
+            # retried. Scoped by business so both sides could record their own.
+            # ``reversed_at__isnull=True`` frees the slot after a reversal, so a
+            # corrected trade can be re-recorded with its link intact.
+            models.UniqueConstraint(
+                fields=["business", "related_trade"],
+                condition=models.Q(
+                    entry_type__in=TRADE_ENTRY_TYPES,
+                    related_trade__isnull=False,
+                    reversed_at__isnull=True,
+                ),
+                name="uniq_trade_entry_per_trade",
+            ),
         ]
         indexes = [
+            models.Index(
+                fields=["business", "counterparty_business", "created_at"],
+                name="accounting__biz_cpty_idx",
+            ),
             models.Index(fields=["business", "contact", "created_at"]),
-            models.Index(fields=["contact", "created_at"]),
             models.Index(fields=["business", "occurred_on"]),
         ]
 
@@ -150,6 +198,13 @@ class LedgerEntry(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("سند حسابداری قابل حذف نیست؛ برای اصلاح از «برگشت سند» استفاده کنید.")
+
+    @property
+    def counterparty_label(self) -> str:
+        """Who this entry is against, however the row was filed."""
+        if self.counterparty_business_id:
+            return self.counterparty_business.name
+        return self.legacy_counterparty_name or "—"
 
     @property
     def is_debit(self) -> bool:

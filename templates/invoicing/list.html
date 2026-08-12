@@ -1,0 +1,52 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}فاکتورها | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">فاکتورها</h1>
+      <p class="page-lead">فاکتورهای صادرشده و دریافتی</p>
+    </div>
+    {% if can_manage %}
+      <a class="btn btn-primary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
+    {% endif %}
+  </div>
+
+  <form method="get" class="panel filter-bar">
+    <label class="field field-grow">
+      <span class="field-label">جستجو</span>
+      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="شماره فاکتور یا نام خریدار">
+    </label>
+    <label class="field">
+      <span class="field-label">وضعیت</span>
+      <select class="field-input" name="status">
+        <option value="">همه</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-secondary" type="submit">اعمال</button>
+  </form>
+
+  <div class="list-stack">
+    {% for invoice in invoices %}
+      <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
+        <div>
+          <div class="list-title" dir="ltr">{{ invoice.number }}</div>
+          <div class="muted">{{ invoice.buyer_name }} · {{ invoice.issue_date }}</div>
+        </div>
+        <div class="ledger-amounts">
+          <strong dir="ltr">{{ invoice.total_amount|rial }} ریال</strong>
+          <span class="badge">{{ invoice.get_status_display }}</span>
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state">فاکتوری ثبت نشده است.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

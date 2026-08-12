@@ -1,4 +1,5 @@
 {% extends "inventory/wizard/_shell.html" %}
+{% load money %}
 {% block wizard_title %}عکس و انتشار{% endblock %}
 
 {% block content %}
@@ -15,14 +16,14 @@
     <div class="kv">
       <span>قیمت همکار</span>
       <strong dir="ltr">
-        {% if prices.b2b.amount %}{{ prices.b2b.amount|floatformat:"0g" }} {{ prices.b2b.currency }}
+        {% if prices.b2b.amount %}{{ prices.b2b.amount|rial }} {{ prices.b2b.currency }}
         {% else %}استعلام قیمت{% endif %}
       </strong>
     </div>
     <div class="kv">
       <span>قیمت مشتری</span>
       <strong dir="ltr">
-        {% if prices.b2c.amount %}{{ prices.b2c.amount|floatformat:"0g" }} {{ prices.b2c.currency }}
+        {% if prices.b2c.amount %}{{ prices.b2c.amount|rial }} {{ prices.b2c.currency }}
         {% else %}استعلام قیمت{% endif %}
       </strong>
     </div>

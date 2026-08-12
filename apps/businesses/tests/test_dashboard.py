@@ -11,8 +11,7 @@ from django.urls import reverse
 from apps.accounting.services import post_entry
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import create_business_for_owner
-from apps.contacts.services import archive_contact, create_contact
-from apps.core.testing import expire_stock, make_item, make_product
+from apps.core.testing import expire_stock, make_business, make_item, make_product
 from apps.inquiries.models import Inquiry
 from apps.pricing.services import ensure_default_tiers
 from apps.trading.models import PurchaseRequest
@@ -49,19 +48,19 @@ def shop(db):
         colleague, product=colleague_product, lot_code="COL-PRIV", is_visible=False
     )
 
-    debtor = create_contact(business=business, membership=membership, display_name="بدهکار بزرگ")
-    creditor = create_contact(business=business, membership=membership, display_name="بستانکار بزرگ")
+    debtor = make_business(name="بدهکار بزرگ", owner_phone="09127770101")
+    creditor = make_business(name="بستانکار بزرگ", owner_phone="09127770102")
     post_entry(
         business=business,
-        contact=debtor,
+        counterparty=debtor,
         membership=membership,
-        entry_type="sale",
+        entry_type="adjust_debit",
         amount=Decimal("5000000"),
         description="فروش",
     )
     post_entry(
         business=business,
-        contact=creditor,
+        counterparty=creditor,
         membership=membership,
         entry_type="payment_received",
         amount=Decimal("2000000"),
@@ -131,22 +130,24 @@ def test_the_financial_summary_is_the_ledger_summary(client, shop):
 
 def test_top_debtors_and_creditors_are_labeled_and_linked(client, shop):
     context = _dashboard(client, shop).context
-    assert [row["contact"].id for row in context["top_debtors"]] == [shop["debtor"].id]
+    assert [row["colleague"].id for row in context["top_debtors"]] == [shop["debtor"].id]
     assert context["top_debtors"][0]["balance"]["label"] == "بدهکار"
-    assert [row["contact"].id for row in context["top_creditors"]] == [shop["creditor"].id]
+    assert [row["colleague"].id for row in context["top_creditors"]] == [shop["creditor"].id]
     assert context["top_creditors"][0]["balance"]["label"] == "بستانکار"
 
     body = _dashboard(client, shop).content.decode()
-    assert reverse("accounting:statement", kwargs={"contact_id": shop["debtor"].id}) in body
+    assert reverse("accounting:statement", kwargs={"business_id": shop["debtor"].id}) in body
     assert "بستانکار" in body
 
 
-def test_an_archived_debtor_is_still_listed_and_marked(client, shop):
-    archive_contact(contact=shop["debtor"], membership=shop["membership"])
+def test_a_suspended_debtor_is_still_listed(client, shop):
+    """Suspending a colleague does not settle what they owe."""
+    shop["debtor"].status = "suspended"
+    shop["debtor"].save(update_fields=["status"])
 
     response = _dashboard(client, shop)
-    assert [row["contact"].id for row in response.context["top_debtors"]] == [shop["debtor"].id]
-    assert "بایگانی‌شده" in response.content.decode()
+    assert [row["colleague"].id for row in response.context["top_debtors"]] == [shop["debtor"].id]
+    assert response.context["finance"]["receivable_total"] > 0
 
 
 def test_a_member_without_ledger_view_gets_no_financial_data(client, shop):

@@ -40,14 +40,19 @@ INSTALLED_APPS = [
     "apps.notifications",
     "apps.purchase_requests",
     "apps.trading",
-    "apps.contacts",
+    "apps.invoicing",
     "apps.accounting",
-    # Migrations-only apps: they hold no models any more, but their migration
-    # history is still needed. partners.0002 drops the partnership tables and
-    # hands SavedSearch to apps.marketplace; reservations.0002 and matching.0003
-    # drop their tables, and accounting.0001 still references
-    # reservations.Reservation when a fresh database replays the history.
-    # Delete once every environment has applied these and the history is squashed.
+    # Retired apps that must stay installed.
+    #
+    # apps.contacts still owns a table: LedgerEntry.contact is a PROTECT FK
+    # holding pre-V2 rows whose counterparty could not be mapped to a Business.
+    # Those rows are read-only history — see docs/accounting.md. Its UI is gone.
+    "apps.contacts",
+    # The rest hold no models at all, only migration history that other apps
+    # depend on. Removing them breaks `migrate` on an empty database:
+    # partners.0002 hands SavedSearch to apps.marketplace, accounting.0001
+    # references reservations.Reservation, and pricing.0002 references
+    # contacts.Contact.
     "apps.partners",
     "apps.matching",
     "apps.reservations",

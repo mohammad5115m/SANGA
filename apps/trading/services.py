@@ -14,6 +14,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounting.services import post_trade_for_sale
 from apps.businesses.entitlements import (
     FINALIZE_SALES,
     RECEIVE_PURCHASE_REQUESTS,
@@ -24,6 +25,7 @@ from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
 from apps.inventory.models import InventoryLot
 from apps.inventory.policy import get_eligible_item
+from apps.invoicing.services import safe_create_invoice_for_trade
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_user
 
@@ -296,6 +298,12 @@ def finalize_sale(
 
     locked.status = PurchaseRequest.Status.COMPLETED
     locked.save(update_fields=["status", "updated_at"])
+
+    # One transaction covers: create Trade → post the ledger → link an invoice.
+    # If the ledger post fails, the whole finalization rolls back rather than
+    # leaving a sale that never reached the books.
+    post_trade_for_sale(trade=trade, membership=membership)
+    safe_create_invoice_for_trade(trade=trade, membership=membership)
 
     _notify_business(
         locked.buyer_business,

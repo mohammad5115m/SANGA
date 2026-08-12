@@ -1,0 +1,281 @@
+"""Issuing invoices.
+
+Two rules shape this module.
+
+**An invoice never posts to the ledger.** The books move exactly once, when a
+sale is finalized. Issuing or printing the invoice afterwards is a document
+operation. Wiring a second posting point here is how a business ends up with
+every sale counted twice.
+
+**Numbers are allocated under a lock.** ``count() + 1`` looks obviously correct
+and produces duplicate invoice numbers the first time two salespeople issue at
+the same moment.
+"""
+
+from __future__ import annotations
+
+import logging
+from decimal import Decimal, InvalidOperation
+
+from django.db import IntegrityError, transaction
+from django.db.models import Max
+from django.utils import timezone
+
+from apps.businesses.entitlements import ISSUE_INVOICES, EntitlementError, require_entitlement
+from apps.businesses.models import Business, BusinessMembership
+from apps.businesses.permissions import INVOICE_MANAGE
+
+from .models import SalesInvoice, SalesInvoiceItem
+
+logger = logging.getLogger(__name__)
+
+
+class InvoiceError(Exception):
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+def _require_manage(business: Business, membership: BusinessMembership) -> None:
+    if membership is None or not membership.has_capability(INVOICE_MANAGE):
+        raise InvoiceError("اجازه صدور فاکتور را ندارید.")
+    if membership.business_id != business.id:
+        raise InvoiceError("دسترسی نامعتبر است.")
+    try:
+        require_entitlement(business, ISSUE_INVOICES)
+    except EntitlementError as exc:
+        raise InvoiceError(exc.message) from exc
+
+
+def _quantize(value, places: str = "0.01") -> Decimal:
+    try:
+        return Decimal(str(value)).quantize(Decimal(places))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise InvoiceError("مقدار واردشده معتبر نیست.") from exc
+
+
+def allocate_number(business: Business) -> str:
+    """Next invoice number for this seller.
+
+    Called inside the caller's transaction with the seller's Business row
+    already locked, so the read-then-write below cannot interleave with another
+    allocation. Derived from MAX rather than COUNT so cancelling an invoice
+    never causes a number to be reused.
+    """
+    highest = (
+        SalesInvoice.objects.filter(seller_business=business)
+        .annotate(numeric=Max("number"))
+        .values_list("number", flat=True)
+    )
+    largest = 0
+    for number in highest:
+        try:
+            largest = max(largest, int(str(number).split("-")[-1]))
+        except (TypeError, ValueError):
+            continue
+    return f"{largest + 1:05d}"
+
+
+@transaction.atomic
+def create_invoice_for_trade(
+    *,
+    trade,
+    membership: BusinessMembership,
+    notes: str = "",
+    issue: bool = True,
+) -> SalesInvoice:
+    """Turn a finalized Trade into an invoice.
+
+    Idempotent by lookup rather than by constraint: a trade may legitimately be
+    invoiced once, and asking twice should hand back the same document rather
+    than fail. Nothing here touches the ledger — that already happened when the
+    trade was finalized.
+    """
+    business = trade.seller_business
+    _require_manage(business, membership)
+
+    existing = SalesInvoice.objects.filter(seller_business=business, trade=trade).first()
+    if existing is not None:
+        return existing
+
+    # Lock the seller so the number allocation below is serialized.
+    Business.objects.select_for_update().get(pk=business.pk)
+
+    invoice = SalesInvoice.objects.create(
+        seller_business=business,
+        number=allocate_number(business),
+        counterparty_type=(
+            SalesInvoice.Counterparty.BUSINESS
+            if trade.buyer_business_id
+            else SalesInvoice.Counterparty.CUSTOMER
+        ),
+        buyer_business=trade.buyer_business,
+        customer_name=trade.customer_name,
+        customer_phone=trade.customer_phone,
+        buyer_name=trade.counterparty_label,
+        trade=trade,
+        issue_date=timezone.localdate(),
+        status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
+        total_amount=trade.total_amount,
+        currency=trade.currency,
+        notes=(notes or "").strip(),
+        created_by=membership.user,
+    )
+    SalesInvoiceItem.objects.create(
+        invoice=invoice,
+        item=trade.item,
+        product_name=trade.product_name,
+        stone_type=trade.stone_type,
+        grade=trade.grade,
+        quantity=trade.quantity_sqm,
+        unit_price=trade.unit_price,
+        line_total=trade.total_amount,
+    )
+    logger.info("Invoice %s created for trade %s", invoice.number, trade.id)
+    return invoice
+
+
+@transaction.atomic
+def create_manual_invoice(
+    *,
+    business: Business,
+    membership: BusinessMembership,
+    lines: list[dict],
+    buyer_business: Business | None = None,
+    customer_name: str = "",
+    customer_phone: str = "",
+    notes: str = "",
+    issue_date=None,
+    issue: bool = True,
+) -> SalesInvoice:
+    """An invoice typed by hand, for a colleague or a walk-in customer.
+
+    Each line carries its own snapshot. ``item`` may be supplied for navigation,
+    but the name, grade and price stored on the line are what the document shows
+    forever after.
+    """
+    _require_manage(business, membership)
+
+    if buyer_business is not None:
+        if buyer_business.id == business.id:
+            raise InvoiceError("نمی‌توانید برای کسب‌وکار خودتان فاکتور صادر کنید.")
+        counterparty_type = SalesInvoice.Counterparty.BUSINESS
+        buyer_name = buyer_business.name
+        customer_name = ""
+        customer_phone = ""
+    else:
+        counterparty_type = SalesInvoice.Counterparty.CUSTOMER
+        customer_name = (customer_name or "").strip()
+        if not customer_name:
+            raise InvoiceError("نام خریدار را وارد کنید.")
+        buyer_name = customer_name
+
+    cleaned = [_clean_line(line) for line in (lines or []) if line]
+    if not cleaned:
+        raise InvoiceError("حداقل یک ردیف به فاکتور اضافه کنید.")
+
+    Business.objects.select_for_update().get(pk=business.pk)
+
+    invoice = SalesInvoice.objects.create(
+        seller_business=business,
+        number=allocate_number(business),
+        counterparty_type=counterparty_type,
+        buyer_business=buyer_business,
+        customer_name=customer_name,
+        customer_phone=(customer_phone or "").strip(),
+        buyer_name=buyer_name,
+        issue_date=issue_date or timezone.localdate(),
+        status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
+        total_amount=sum((line["line_total"] for line in cleaned), Decimal("0")),
+        notes=(notes or "").strip(),
+        created_by=membership.user,
+    )
+    SalesInvoiceItem.objects.bulk_create(
+        [
+            SalesInvoiceItem(
+                invoice=invoice,
+                item=line["item"],
+                product_name=line["product_name"],
+                stone_type=line["stone_type"],
+                grade=line["grade"],
+                quantity=line["quantity"],
+                unit_price=line["unit_price"],
+                line_total=line["line_total"],
+                sort_order=index,
+            )
+            for index, line in enumerate(cleaned)
+        ]
+    )
+    return invoice
+
+
+def _clean_line(line: dict) -> dict:
+    item = line.get("item")
+    name = (line.get("product_name") or "").strip()
+    if not name and item is not None:
+        name = item.product.commercial_name
+    if not name:
+        raise InvoiceError("نام محصول هر ردیف را وارد کنید.")
+
+    quantity = _quantize(line.get("quantity"), "0.001")
+    if quantity <= 0:
+        raise InvoiceError("مقدار هر ردیف باید بزرگ‌تر از صفر باشد.")
+    unit_price = _quantize(line.get("unit_price"))
+    if unit_price < 0:
+        raise InvoiceError("قیمت نمی‌تواند منفی باشد.")
+
+    return {
+        "item": item,
+        "product_name": name,
+        "stone_type": (line.get("stone_type") or (item.product.stone_type if item else "")),
+        "grade": (line.get("grade") or (item.grade if item else "")),
+        "quantity": quantity,
+        "unit_price": unit_price,
+        "line_total": (quantity * unit_price).quantize(Decimal("0.01")),
+    }
+
+
+@transaction.atomic
+def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+    """Move a draft to issued.
+
+    Explicitly does **not** post to the ledger. The sale already did that when it
+    was finalized; posting here would double every sale in the books.
+    """
+    _require_manage(invoice.seller_business, membership)
+    if invoice.status == SalesInvoice.Status.ISSUED:
+        return invoice
+    if invoice.status == SalesInvoice.Status.CANCELLED:
+        raise InvoiceError("فاکتور باطل‌شده قابل صدور نیست.")
+
+    invoice.status = SalesInvoice.Status.ISSUED
+    invoice.save(update_fields=["status", "updated_at"])
+    return invoice
+
+
+@transaction.atomic
+def cancel_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+    """Void the document without deleting it or reusing its number.
+
+    Cancelling changes no balance: if the sale itself was wrong, the ledger entry
+    is reversed separately. Keeping the two apart is what stops "I fixed the
+    invoice" from quietly meaning "I moved money".
+    """
+    _require_manage(invoice.seller_business, membership)
+    invoice.status = SalesInvoice.Status.CANCELLED
+    invoice.save(update_fields=["status", "updated_at"])
+    return invoice
+
+
+def safe_create_invoice_for_trade(*, trade, membership: BusinessMembership) -> SalesInvoice | None:
+    """Best-effort invoice creation from the sale-finalization flow.
+
+    Returns ``None`` instead of raising when the business is not entitled to
+    issue invoices or a race produced the row first: failing to create a
+    convenience document must never roll back a completed sale.
+    """
+    try:
+        return create_invoice_for_trade(trade=trade, membership=membership)
+    except (InvoiceError, IntegrityError):
+        logger.info("Invoice not created for trade %s", trade.id, exc_info=True)
+        return None
