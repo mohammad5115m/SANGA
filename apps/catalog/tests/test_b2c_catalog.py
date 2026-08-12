@@ -3,254 +3,318 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.businesses.models import BusinessMembership
-from apps.businesses.services import add_warehouse, create_business_for_owner
 from apps.catalog.models import CustomCatalog
-from apps.catalog.services import (
-    CatalogError,
-    b2c_price_context,
-    create_custom_catalog,
-    set_catalog_lots,
+from apps.catalog.services import CatalogError, b2c_price_context, create_custom_catalog, set_catalog_lots
+from apps.core.testing import (
+    expire_price,
+    expire_stock,
+    make_business,
+    make_item,
+    make_product,
+    owner_membership,
 )
 from apps.inquiries.models import Inquiry
-from apps.inventory.models import InventoryLot, Product
-from apps.pricing.services import ensure_default_tiers, set_lot_prices
+from apps.inventory.models import InventoryLot
+from apps.pricing.services import ensure_default_tiers
 
-User = get_user_model()
+B2B = "1111111"
+B2C = "2222222"
+PRIVATE_B2B = "3333333"
+PRIVATE_B2C = "4444444"
 
 
 @pytest.fixture
 def seller_setup(db):
-    owner = User.objects.create_user(phone="09125550001", full_name="فروشنده")
-    business = create_business_for_owner(owner=owner, name="سنگسرا دمو", city="اصفهان")
-    warehouse = add_warehouse(business=business, name="انبار ۱", is_default=True)
-    membership = BusinessMembership.objects.get(user=owner, business=business)
     ensure_default_tiers()
-    product = Product.objects.create(
-        business=business,
+    business = make_business(name="سنگسرا دمو", owner_phone="09125550001", city="اصفهان")
+    product = make_product(
+        business,
         commercial_name="تراورتن کرم دمو",
-        stone_type="تراورتن",
-        primary_color="کرم",
         description_public="مناسب نما و کف",
     )
-    public_lot = InventoryLot.objects.create(
-        business=business,
+    public_item = make_item(business, product=product, lot_code="PUB-1", b2b=B2B, b2c=B2C)
+    hidden_item = make_item(
+        business,
         product=product,
-        warehouse=warehouse,
-        lot_code="PUB-1",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.PUBLIC,
-        available_sqm=Decimal("90"),
-        original_sqm=Decimal("90"),
-        inventory_confirmed_at=timezone.now(),
-    )
-    private_lot = InventoryLot.objects.create(
-        business=business,
-        product=product,
-        warehouse=warehouse,
         lot_code="PRIV-1",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.PRIVATE,
-        available_sqm=Decimal("40"),
-        original_sqm=Decimal("40"),
-        inventory_confirmed_at=timezone.now(),
-    )
-    set_lot_prices(
-        lot=public_lot,
-        b2b_amount=Decimal("1111111"),
-        b2c_amount=Decimal("2222222"),
-    )
-    set_lot_prices(
-        lot=private_lot,
-        b2b_amount=Decimal("3333333"),
-        b2c_amount=Decimal("4444444"),
+        is_visible=False,
+        b2b=PRIVATE_B2B,
+        b2c=PRIVATE_B2C,
     )
     return {
-        "owner": owner,
         "business": business,
-        "membership": membership,
-        "public_lot": public_lot,
-        "private_lot": private_lot,
+        "membership": owner_membership(business),
+        "public_lot": public_item,
+        "private_lot": hidden_item,
     }
+
+
+def _body(client, url) -> str:
+    return client.get(url).content.decode("utf-8")
+
+
+def _no_commas(text: str) -> str:
+    return text.replace(",", "")
+
+
+# --- price payload safety -----------------------------------------------------
 
 
 @pytest.mark.django_db
 def test_b2c_price_context_never_includes_b2b(seller_setup):
     ctx = b2c_price_context(seller_setup["public_lot"])
     assert ctx["has_price"] is True
-    assert ctx["amount"] == Decimal("2222222")
+    assert ctx["amount"] == Decimal(B2C)
     assert "b2b" not in ctx
-    assert "1111111" not in str(ctx)
+    assert B2B not in str(ctx)
 
 
 @pytest.mark.django_db
-def test_storefront_hides_private_and_b2b_price(client, seller_setup):
-    business = seller_setup["business"]
-    url = reverse("catalog:storefront", kwargs={"business_slug": business.slug})
-    response = client.get(url)
-    assert response.status_code == 200
-    content = response.content.decode("utf-8")
+def test_storefront_hides_hidden_items_and_b2b_price(client, seller_setup):
+    url = reverse("catalog:storefront", kwargs={"business_slug": seller_setup["business"].slug})
+    content = _no_commas(_body(client, url))
     assert "تراورتن کرم دمو" in content
-    assert "2222222" in content.replace(",", "")
-    assert "1111111" not in content.replace(",", "")
+    assert B2C in content
+    assert B2B not in content
     assert "PRIV-1" not in content
 
 
 @pytest.mark.django_db
-def test_public_lot_detail_rejects_private_lot(client, seller_setup):
-    business = seller_setup["business"]
-    private = seller_setup["private_lot"]
+def test_public_detail_rejects_a_hidden_item(client, seller_setup):
     url = reverse(
         "catalog:lot_detail",
-        kwargs={"business_slug": business.slug, "lot_id": private.id},
+        kwargs={"business_slug": seller_setup["business"].slug, "lot_id": seller_setup["private_lot"].id},
     )
     response = client.get(url)
     assert response.status_code == 404
-    content = response.content.decode("utf-8")
-    assert "3333333" not in content
-    assert "4444444" not in content
+    content = _no_commas(response.content.decode("utf-8"))
+    assert PRIVATE_B2B not in content
+    assert PRIVATE_B2C not in content
 
 
 @pytest.mark.django_db
-def test_public_lot_detail_shows_only_b2c_and_accepts_inquiry(client, seller_setup):
+def test_public_detail_shows_only_b2c_and_accepts_an_inquiry(client, seller_setup):
     business = seller_setup["business"]
     lot = seller_setup["public_lot"]
     url = reverse("catalog:lot_detail", kwargs={"business_slug": business.slug, "lot_id": lot.id})
-    response = client.get(url)
-    assert response.status_code == 200
-    content = response.content.decode("utf-8")
-    assert "2222222" in content.replace(",", "")
-    assert "1111111" not in content.replace(",", "")
-    assert "قیمت همکار" not in content
-    assert "B2B" not in content
 
-    post = client.post(
-        url,
-        {"name": "مشتری تست", "phone": "09123334455", "message": "لطفاً تماس بگیرید"},
-    )
+    content = _no_commas(_body(client, url))
+    assert B2C in content
+    assert B2B not in content
+    assert "قیمت همکار" not in content
+
+    post = client.post(url, {"name": "مشتری تست", "phone": "09123334455", "message": "لطفاً تماس بگیرید"})
     assert post.status_code == 200
     assert Inquiry.objects.filter(business=business, lot=lot, phone="09123334455").exists()
 
 
+# --- public search ------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_public_search_needs_no_login_and_spans_sellers(client, seller_setup):
+    other = make_business(name="سنگ دیگر", owner_phone="09125550009", city="یزد")
+    make_item(other, product=make_product(other, commercial_name="گرانیت نطنز"), lot_code="OTH-1", b2c="900000")
+
+    content = _body(client, reverse("catalog:public_search"))
+    assert "تراورتن کرم دمو" in content
+    assert "گرانیت نطنز" in content
+    assert "PRIV-1" not in content
+
+
+@pytest.mark.django_db
+def test_public_search_filters_by_stone_type(client, seller_setup):
+    other = make_business(name="سنگ دیگر", owner_phone="09125550010")
+    make_item(
+        other,
+        product=make_product(other, commercial_name="گرانیت نطنز", stone_type="گرانیت"),
+        lot_code="OTH-1",
+        b2c="900000",
+    )
+    content = _body(client, reverse("catalog:public_search") + "?stone_type=گرانیت")
+    assert "گرانیت نطنز" in content
+    assert "تراورتن کرم دمو" not in content
+
+
+# --- per-product share links --------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_share_link_works_without_authentication(client, seller_setup):
+    lot = seller_setup["public_lot"]
+    response = client.get(f"/p/{lot.public_token}/")
+    assert response.status_code == 200
+    content = _no_commas(response.content.decode("utf-8"))
+    assert "تراورتن کرم دمو" in content
+    assert B2C in content
+    assert B2B not in content
+
+
+@pytest.mark.django_db
+def test_share_link_of_a_colleague_never_shows_b2b_even_when_logged_in(client, seller_setup):
+    """A share URL is B2C-safe by construction, whoever opens it."""
+    colleague = make_business(name="همکار", owner_phone="09125550020")
+    client.force_login(colleague.memberships.get(role="owner").user)
+
+    content = _no_commas(_body(client, f"/p/{seller_setup['public_lot'].public_token}/"))
+    assert B2B not in content
+    assert B2C in content
+
+
+@pytest.mark.django_db
+def test_share_link_of_a_hidden_item_is_not_found(client, seller_setup):
+    response = client.get(f"/p/{seller_setup['private_lot'].public_token}/")
+    assert response.status_code == 404
+    assert PRIVATE_B2C not in _no_commas(response.content.decode("utf-8"))
+
+
+@pytest.mark.django_db
+def test_share_link_of_an_unavailable_item_offers_no_purchase(client, seller_setup):
+    lot = seller_setup["public_lot"]
+    lot.availability_status = InventoryLot.Availability.UNAVAILABLE
+    lot.save()
+
+    response = client.get(f"/p/{lot.public_token}/")
+    assert response.status_code == 404
+    body = response.content.decode("utf-8")
+    assert "موجود نیست" in body
+    assert "درخواست استعلام" not in body
+
+
+@pytest.mark.django_db
+def test_share_link_of_a_deleted_item_leaks_nothing(client, seller_setup):
+    lot = seller_setup["public_lot"]
+    lot.deleted_at = timezone.now()
+    lot.save()
+
+    response = client.get(f"/p/{lot.public_token}/")
+    assert response.status_code == 404
+    assert "تراورتن کرم دمو" not in response.content.decode("utf-8")
+
+
+@pytest.mark.django_db
+def test_share_page_shows_stock_and_price_inquiry_when_stale(client, seller_setup):
+    lot = seller_setup["public_lot"]
+    expire_stock(lot)
+    expire_price(lot, "b2c")
+
+    content = _no_commas(_body(client, f"/p/{lot.public_token}/"))
+    assert "استعلام موجودی" in content
+    assert "استعلام قیمت" in content
+    assert B2C not in content
+
+
+@pytest.mark.django_db
+def test_open_graph_metadata_is_b2c_safe(client, seller_setup):
+    content = _no_commas(_body(client, f"/p/{seller_setup['public_lot'].public_token}/"))
+    assert 'property="og:title"' in content
+    assert B2B not in content
+
+
+# --- shared catalogs ----------------------------------------------------------
+
+
 @pytest.mark.django_db
 def test_shared_catalog_is_b2c_safe(client, seller_setup):
-    business = seller_setup["business"]
-    membership = seller_setup["membership"]
-    lot = seller_setup["public_lot"]
     catalog = create_custom_catalog(
-        business=business,
-        membership=membership,
+        business=seller_setup["business"],
+        membership=seller_setup["membership"],
         title="کاتالوگ نمای پروژه",
         customer_name="آقای رضایی",
-        lot_ids=[lot.id],
+        lot_ids=[seller_setup["public_lot"].id],
     )
     url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
-    response = client.get(url)
-    assert response.status_code == 200
-    content = response.content.decode("utf-8")
+    content = _no_commas(_body(client, url))
     assert "کاتالوگ نمای پروژه" in content
-    assert "2222222" in content.replace(",", "")
-    assert "1111111" not in content.replace(",", "")
+    assert B2C in content
+    assert B2B not in content
     catalog.refresh_from_db()
     assert catalog.view_count == 1
 
 
 @pytest.mark.django_db
-def test_shared_catalog_never_exposes_a_private_lot(client, seller_setup):
-    """P0 regression: a curated share link must not widen visibility.
-
-    Attaching a lot to a catalog used to bypass the visibility check entirely,
-    because the share view filtered on ``status`` but never on ``visibility``.
-    """
-    business = seller_setup["business"]
-    membership = seller_setup["membership"]
-    private = seller_setup["private_lot"]
-
+def test_shared_catalog_never_exposes_a_hidden_item(client, seller_setup):
+    """P0 regression: a curated share link must not widen visibility."""
     catalog = create_custom_catalog(
-        business=business,
-        membership=membership,
+        business=seller_setup["business"],
+        membership=seller_setup["membership"],
         title="کاتالوگ نشتی",
-        lot_ids=[seller_setup["public_lot"].id, private.id],
+        lot_ids=[seller_setup["public_lot"].id, seller_setup["private_lot"].id],
     )
-    # The seller may curate whatever they own; the public link is what must be safe.
+    # Curating is a management action, so the seller may select either item.
     assert catalog.items.count() == 2
 
     url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
-    content = client.get(url).content.decode("utf-8")
-
+    content = _no_commas(_body(client, url))
     assert "PRIV-1" not in content
-    assert "4444444" not in content.replace(",", "")
-    assert "3333333" not in content.replace(",", "")
-    assert "2222222" in content.replace(",", "")
+    assert PRIVATE_B2C not in content
+    assert PRIVATE_B2B not in content
+    assert B2C in content
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "field,value",
+    "mutate",
     [
-        ("status", InventoryLot.Status.HIDDEN),
-        ("status", InventoryLot.Status.DRAFT),
-        ("status", InventoryLot.Status.SOLD),
-        ("visibility", InventoryLot.Visibility.PRIVATE),
-        ("visibility", InventoryLot.Visibility.COLLEAGUES),
+        pytest.param(lambda lot: setattr(lot, "is_visible", False), id="hidden"),
+        pytest.param(
+            lambda lot: setattr(lot, "availability_status", InventoryLot.Availability.UNAVAILABLE),
+            id="unavailable",
+        ),
+        pytest.param(lambda lot: setattr(lot, "status", InventoryLot.Status.DRAFT), id="draft"),
+        pytest.param(lambda lot: setattr(lot, "deleted_at", timezone.now()), id="deleted"),
     ],
 )
-def test_shared_catalog_drops_lots_the_storefront_would_hide(client, seller_setup, field, value):
+def test_catalog_drops_items_the_storefront_would_hide(client, seller_setup, mutate):
     """The share link and the storefront must agree on every exclusion rule."""
-    business = seller_setup["business"]
-    lot = seller_setup["public_lot"]
-    catalog = create_custom_catalog(
-        business=business,
-        membership=seller_setup["membership"],
-        title="کاتالوگ بررسی",
-        lot_ids=[lot.id],
-    )
-
-    setattr(lot, field, value)
-    lot.save(update_fields=[field, "updated_at"])
-
-    url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
-    content = client.get(url).content.decode("utf-8")
-    assert "PUB-1" not in content
-    assert "2222222" not in content.replace(",", "")
-
-
-@pytest.mark.django_db
-def test_shared_catalog_drops_archived_lots(client, seller_setup):
     lot = seller_setup["public_lot"]
     catalog = create_custom_catalog(
         business=seller_setup["business"],
         membership=seller_setup["membership"],
-        title="کاتالوگ بایگانی",
+        title="کاتالوگ بررسی",
         lot_ids=[lot.id],
     )
-    lot.archived_at = timezone.now()
-    lot.save(update_fields=["archived_at", "updated_at"])
+    mutate(lot)
+    lot.save()
 
     url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
-    content = client.get(url).content.decode("utf-8")
+    content = _no_commas(_body(client, url))
     assert "PUB-1" not in content
+    assert B2C not in content
 
 
 @pytest.mark.django_db
-def test_catalog_refuses_a_lot_belonging_to_another_business(seller_setup):
-    intruder_owner = User.objects.create_user(phone="09125550002", full_name="مزاحم")
-    intruder = create_business_for_owner(owner=intruder_owner, name="سنگ مزاحم", city="تهران")
-    intruder_lot = InventoryLot.objects.create(
-        business=intruder,
-        product=Product.objects.create(
-            business=intruder, commercial_name="گرانیت مزاحم", stone_type="گرانیت"
-        ),
-        warehouse=add_warehouse(business=intruder, name="انبار مزاحم", is_default=True),
-        lot_code="INT-1",
-        status=InventoryLot.Status.AVAILABLE,
-        available_sqm=Decimal("10"),
-        original_sqm=Decimal("10"),
+def test_an_item_returns_to_the_catalog_when_it_becomes_available_again(client, seller_setup):
+    """Catalog membership is evaluated live, so nothing has to be re-curated."""
+    lot = seller_setup["public_lot"]
+    catalog = create_custom_catalog(
+        business=seller_setup["business"],
+        membership=seller_setup["membership"],
+        title="کاتالوگ برگشتی",
+        lot_ids=[lot.id],
     )
+    url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
+
+    lot.availability_status = InventoryLot.Availability.UNAVAILABLE
+    lot.save()
+    assert "PUB-1" not in _body(client, url)
+
+    lot.availability_status = InventoryLot.Availability.AVAILABLE
+    lot.save()
+    assert "تراورتن کرم دمو" in _body(client, url)
+
+
+# --- tenant isolation on curation ---------------------------------------------
+
+
+@pytest.mark.django_db
+def test_catalog_refuses_an_item_belonging_to_another_business(seller_setup):
+    intruder = make_business(name="سنگ مزاحم", owner_phone="09125550002", city="تهران")
+    intruder_item = make_item(intruder, lot_code="INT-1")
+
     catalog = create_custom_catalog(
         business=seller_setup["business"],
         membership=seller_setup["membership"],
@@ -258,18 +322,17 @@ def test_catalog_refuses_a_lot_belonging_to_another_business(seller_setup):
         lot_ids=[seller_setup["public_lot"].id],
     )
 
-    # A crafted lot id must be refused outright, not quietly dropped.
     with pytest.raises(CatalogError):
         set_catalog_lots(
             catalog=catalog,
             membership=seller_setup["membership"],
-            lot_ids=[seller_setup["public_lot"].id, intruder_lot.id],
+            lot_ids=[seller_setup["public_lot"].id, intruder_item.id],
         )
     assert list(catalog.items.values_list("lot_id", flat=True)) == [seller_setup["public_lot"].id]
 
 
 @pytest.mark.django_db
-def test_catalog_refuses_a_malformed_lot_id(seller_setup):
+def test_catalog_refuses_a_malformed_item_id(seller_setup):
     catalog = create_custom_catalog(
         business=seller_setup["business"],
         membership=seller_setup["membership"],
@@ -277,34 +340,20 @@ def test_catalog_refuses_a_malformed_lot_id(seller_setup):
         lot_ids=[seller_setup["public_lot"].id],
     )
     with pytest.raises(CatalogError):
-        set_catalog_lots(
-            catalog=catalog,
-            membership=seller_setup["membership"],
-            lot_ids=["not-a-uuid"],
-        )
+        set_catalog_lots(catalog=catalog, membership=seller_setup["membership"], lot_ids=["not-a-uuid"])
     assert catalog.items.count() == 1
 
 
 @pytest.mark.django_db
-def test_creating_a_catalog_with_a_foreign_lot_is_refused(seller_setup):
-    intruder_owner = User.objects.create_user(phone="09125550003", full_name="مزاحم دوم")
-    intruder = create_business_for_owner(owner=intruder_owner, name="سنگ مزاحم ۲", city="تهران")
-    intruder_lot = InventoryLot.objects.create(
-        business=intruder,
-        product=Product.objects.create(
-            business=intruder, commercial_name="گرانیت مزاحم", stone_type="گرانیت"
-        ),
-        warehouse=add_warehouse(business=intruder, name="انبار مزاحم ۲", is_default=True),
-        lot_code="INT-2",
-        status=InventoryLot.Status.AVAILABLE,
-        available_sqm=Decimal("10"),
-        original_sqm=Decimal("10"),
-    )
+def test_creating_a_catalog_with_a_foreign_item_is_refused(seller_setup):
+    intruder = make_business(name="سنگ مزاحم ۲", owner_phone="09125550003", city="تهران")
+    intruder_item = make_item(intruder, lot_code="INT-2")
+
     with pytest.raises(CatalogError):
         create_custom_catalog(
             business=seller_setup["business"],
             membership=seller_setup["membership"],
             title="کاتالوگ آلوده",
-            lot_ids=[intruder_lot.id],
+            lot_ids=[intruder_item.id],
         )
     assert not CustomCatalog.objects.filter(title="کاتالوگ آلوده").exists()

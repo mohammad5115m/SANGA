@@ -9,62 +9,129 @@
       <h1 class="page-title">{{ lot.product.commercial_name }}</h1>
       <p class="page-lead" dir="ltr">{{ lot.lot_code }}</p>
     </div>
-    <a class="btn btn-secondary" href="{% url 'inventory:lot_edit' lot.id %}">ویرایش</a>
+    <div class="btn-row">
+      <a class="btn btn-secondary" href="{% url 'inventory:lot_edit' lot.id %}">ویرایش</a>
+      <a class="btn btn-ghost" href="{% url 'inventory:lot_media' lot.id %}">عکس و ویدیو</a>
+    </div>
   </div>
 
-  <div class="gallery">
-    {% for media in media_items %}
-      {% if media.kind == 'image' %}
-        <img src="{{ media.file.url }}" alt="{{ media.caption|default:lot.product.commercial_name }}" loading="lazy">
-      {% endif %}
-    {% empty %}
-      <div class="empty-state">تصویری ثبت نشده است.</div>
-    {% endfor %}
-  </div>
+  {% include "inventory/_gallery.html" %}
 
   <div class="badge-row">
-    <span class="badge">{{ lot.get_status_display }}</span>
-    <span class="badge">{{ lot.get_visibility_display }}</span>
-    <span class="badge badge-accent">{{ freshness.label }}</span>
+    {% if lot.status == 'draft' %}<span class="badge">پیش‌نویس</span>{% endif %}
+    {% if lot.is_visible %}
+      <span class="badge badge-accent">منتشر شده</span>
+    {% else %}
+      <span class="badge">منتشر نشده</span>
+    {% endif %}
+    {% if lot.is_unavailable %}<span class="badge badge-danger">ناموجود</span>{% endif %}
+    {% if stock.needs_confirmation %}<span class="badge badge-warn">نیاز به تأیید موجودی</span>{% endif %}
     {% if lot.is_urgent_sale %}<span class="badge badge-danger">فروش فوری</span>{% endif %}
   </div>
 
-  <section class="panel stack-sm">
-    <div class="muted">آخرین تأیید موجودی: {{ freshness.human_confirmed }}</div>
-    <form method="post" action="{% url 'inventory:lot_confirm' lot.id %}">
-      {% csrf_token %}
-      <button class="btn btn-secondary" type="submit">تأیید موجودی الان</button>
-    </form>
+  {# The four lifecycle actions a seller reaches for most, kept out of menus. #}
+  <section class="panel stack-md">
+    <h2 class="section-title">وضعیت محصول</h2>
+    <div class="kv"><span>موجودی</span><strong>{{ stock.label }}</strong></div>
+    <div class="kv"><span>آخرین تأیید موجودی</span><strong>{{ stock.human_confirmed }}</strong></div>
+
+    <div class="btn-row">
+      <a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' lot.id %}">
+        تأیید / بروزرسانی موجودی
+      </a>
+
+      <form method="post" action="{% url 'inventory:lot_set_availability' lot.id %}">
+        {% csrf_token %}
+        {% if lot.is_unavailable %}
+          <input type="hidden" name="available" value="1">
+          <button class="btn btn-secondary" type="submit">موجود کردن</button>
+        {% else %}
+          <input type="hidden" name="available" value="0">
+          <button class="btn btn-ghost" type="submit">ناموجود کردن</button>
+        {% endif %}
+      </form>
+
+      <form method="post" action="{% url 'inventory:lot_set_visibility' lot.id %}">
+        {% csrf_token %}
+        {% if lot.is_visible %}
+          <input type="hidden" name="visible" value="0">
+          <button class="btn btn-ghost" type="submit">توقف انتشار</button>
+        {% else %}
+          <input type="hidden" name="visible" value="1">
+          <button class="btn btn-primary" type="submit">انتشار</button>
+        {% endif %}
+      </form>
+    </div>
+  </section>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">اشتراک‌گذاری</h2>
+    <p class="muted">این لینک اطلاعات مشتری‌پسند را نشان می‌دهد و قیمت همکار در آن دیده نمی‌شود.</p>
+    <div class="field"><input class="field-input" dir="ltr" readonly value="{{ share_url }}"></div>
+    {% with product=lot.product %}{% include "catalog/_share_actions.html" %}{% endwith %}
   </section>
 
   <section class="panel stack-sm">
     <h2 class="section-title">جزئیات</h2>
-    <div class="kv"><span>انبار</span><strong>{{ lot.warehouse.name }}</strong></div>
-    <div class="kv"><span>متراژ</span><strong>{{ lot.available_sqm }} m²</strong></div>
     <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
     <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
-    <div class="kv"><span>ابعاد</span><strong>{% if lot.length_cm %}{{ lot.length_cm }}×{{ lot.width_cm }} cm{% else %}—{% endif %}{% if lot.thickness_mm %} / {{ lot.thickness_mm }} mm{% endif %}</strong></div>
-    {% if lot.description %}<p>{{ lot.description }}</p>{% endif %}
+    <div class="kv">
+      <span>ابعاد</span>
+      <strong>
+        {% if lot.length_cm %}{{ lot.length_cm }}×{{ lot.width_cm }} cm{% else %}—{% endif %}
+        {% if lot.thickness_mm %} / {{ lot.thickness_mm }} mm{% endif %}
+      </strong>
+    </div>
+    <div class="kv">
+      <span>محل بار</span>
+      <strong>{{ lot.location_city|default:"—" }}{% if lot.location_province %} · {{ lot.location_province }}{% endif %}</strong>
+    </div>
+    {% if lot.location_address %}
+      <div class="kv"><span>آدرس دقیق</span><strong>{{ lot.location_address }}</strong></div>
+      <p class="muted">آدرس دقیق فقط برای شما نمایش داده می‌شود.</p>
+    {% endif %}
+    {% if lot.product.applications.all %}
+      <div class="kv">
+        <span>کاربردها</span>
+        <strong>{% for a in lot.product.applications.all %}{{ a.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong>
+      </div>
+    {% endif %}
+    {% if lot.description %}<p>{{ lot.description|linebreaksbr }}</p>{% endif %}
+    {% if lot.defect_notes %}
+      <div class="kv"><span>یادداشت ایراد (داخلی)</span><strong>{{ lot.defect_notes }}</strong></div>
+    {% endif %}
   </section>
 
   {% if can_view_prices %}
   <section class="panel stack-sm">
     <h2 class="section-title">قیمت‌ها</h2>
-    <div class="kv"><span>همکار (B2B)</span><strong dir="ltr">{% if prices.b2b %}{{ prices.b2b.amount|floatformat:"0g" }} {{ prices.b2b.currency }}{% else %}—{% endif %}</strong></div>
-    <div class="kv"><span>مشتری (B2C)</span><strong dir="ltr">{% if prices.b2c %}{{ prices.b2c.amount|floatformat:"0g" }} {{ prices.b2c.currency }}{% else %}—{% endif %}</strong></div>
+    <div class="kv">
+      <span>قیمت همکار</span>
+      <strong dir="ltr">
+        {% if prices.b2b and prices.b2b.amount %}{{ prices.b2b.amount|floatformat:"0g" }} {{ prices.b2b.currency }}
+        {% elif prices.b2b %}استعلام قیمت{% else %}—{% endif %}
+      </strong>
+    </div>
+    {% if prices.b2b.expired %}<p class="muted">قیمت همکار منقضی شده و به مشتری نمایش داده نمی‌شود.</p>{% endif %}
+    <div class="kv">
+      <span>قیمت مشتری</span>
+      <strong dir="ltr">
+        {% if prices.b2c and prices.b2c.amount %}{{ prices.b2c.amount|floatformat:"0g" }} {{ prices.b2c.currency }}
+        {% elif prices.b2c %}استعلام قیمت{% else %}—{% endif %}
+      </strong>
+    </div>
+    {% if prices.b2c.expired %}<p class="muted">قیمت مشتری منقضی شده و به مشتری نمایش داده نمی‌شود.</p>{% endif %}
     {% if can_edit_prices %}
-      <div class="btn-row">
-        <a class="btn btn-secondary btn-sm" href="{% url 'inventory:lot_partner_prices' lot.id %}">قیمت اختصاصی همکاران</a>
-      </div>
+      <a class="btn btn-secondary btn-sm" href="{% url 'inventory:lot_edit' lot.id %}">بروزرسانی قیمت</a>
     {% endif %}
   </section>
   {% endif %}
 
   <div class="btn-row">
-    <form method="post" action="{% url 'inventory:lot_duplicate' lot.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit">کپی</button></form>
-    <form method="post" action="{% url 'inventory:lot_mark_sold' lot.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit">فروخته شد</button></form>
-    <form method="post" action="{% url 'inventory:lot_hide' lot.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit">مخفی</button></form>
-    <form method="post" action="{% url 'inventory:lot_archive' lot.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit">بایگانی</button></form>
+    <form method="post" action="{% url 'inventory:lot_duplicate' lot.id %}">
+      {% csrf_token %}<button class="btn btn-ghost" type="submit">کپی</button>
+    </form>
+    <a class="btn btn-danger" href="{% url 'inventory:lot_delete' lot.id %}">حذف محصول</a>
   </div>
 </section>
 {% endblock %}

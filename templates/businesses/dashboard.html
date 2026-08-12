@@ -89,16 +89,16 @@
 
   <section class="panel stack-md">
     <div class="toolbar">
-      <h2 class="section-title">محموله‌های نیازمند رسیدگی</h2>
+      <h2 class="section-title">محصولات نیازمند رسیدگی</h2>
       <a class="btn btn-ghost btn-sm" href="{% url 'inventory:lot_list' %}">همه موجودی</a>
     </div>
     <div class="metric-grid">
       <div class="metric">
-        <div class="metric-label">محموله فعال</div>
+        <div class="metric-label">محصول فعال</div>
         <div class="metric-value">{{ lot_totals.active }}</div>
       </div>
       <a class="metric metric-link {% if lot_totals.needs_confirmation %}metric-warn{% endif %}"
-         href="{% url 'inventory:lot_list' %}?freshness=needs_confirmation">
+         href="{% url 'inventory:lot_list' %}?state=needs_stock">
         <div class="metric-label">نیاز به تأیید</div>
         <div class="metric-value">{{ lot_totals.needs_confirmation }}</div>
       </a>
@@ -121,9 +121,9 @@
       {% empty %}
         <div class="empty-state">
           {% if lot_totals.active %}
-            همه محموله‌های فعال تأیید شده‌اند و قیمت دارند.
+            همه محصولات فعال تأیید شده‌اند و قیمت دارند.
           {% else %}
-            هنوز محموله‌ای ثبت نکرده‌اید. با «افزودن موجودی» شروع کنید.
+            هنوز محصولی ثبت نکرده‌اید. با «افزودن محصول» شروع کنید.
           {% endif %}
         </div>
       {% endfor %}
@@ -132,7 +132,7 @@
 
   <section class="panel stack-md">
     <div class="toolbar">
-      <h2 class="section-title">تازه‌ترین محموله‌های همکاران</h2>
+      <h2 class="section-title">تازه‌ترین محصولات همکاران</h2>
       <a class="btn btn-ghost btn-sm" href="{% url 'marketplace:home' %}">بازار همکاران</a>
     </div>
     <div class="list-stack">
@@ -140,12 +140,12 @@
         <a class="list-item" href="{% url 'marketplace:lot_detail' lot.id %}">
           <div>
             <div class="list-title">{{ lot.product.commercial_name }}</div>
-            <div class="muted">{{ lot.business.name }}{% if lot.warehouse.city %} · {{ lot.warehouse.city }}{% endif %}</div>
+            <div class="muted">{{ lot.business.name }}{% if lot.location_city %} · {{ lot.location_city }}{% endif %}</div>
           </div>
           <div class="muted">{{ lot.available_sqm|floatformat:0 }} متر</div>
         </a>
       {% empty %}
-        <div class="empty-state">هنوز محموله‌ای از همکاران منتشر نشده است.</div>
+        <div class="empty-state">هنوز محصولی از همکاران منتشر نشده است.</div>
       {% endfor %}
     </div>
   </section>

@@ -3,69 +3,39 @@ from __future__ import annotations
 from django.db.models import Prefetch, Q, QuerySet
 
 from apps.businesses.models import Business
-from apps.core.persian import normalize_persian_text
+from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
+from apps.inventory.policy import eligible_items, get_eligible_item
 from apps.pricing.models import LotPrice
 
 from .models import CustomCatalog, CustomCatalogItem
 
 
-def _b2c_price_prefetch() -> Prefetch:
-    # No to_attr: this populates lot.prices.all() with ONLY B2C rows, so B2B
-    # prices are never even loaded on public pages (defense in depth).
-    return Prefetch(
-        "prices",
-        queryset=LotPrice.objects.select_related("tier").filter(tier__code="b2c", tier__is_active=True),
-    )
-
-
 def public_catalog_lots(business: Business) -> QuerySet[InventoryLot]:
-    """Lots visible on the B2C storefront. Prefetches only B2C tier prices."""
-    return (
-        InventoryLot.objects.filter(
-            business=business,
-            archived_at__isnull=True,
-            status__in=[
-                InventoryLot.Status.AVAILABLE,
-                InventoryLot.Status.NEEDS_CONFIRMATION,
-                InventoryLot.Status.PARTIALLY_SOLD,
-            ],
-            visibility=InventoryLot.Visibility.PUBLIC,
-        )
-        .select_related("product", "warehouse")
-        .prefetch_related(_b2c_price_prefetch(), "media")
-        .order_by("-is_urgent_sale", "-updated_at")
-    )
+    """Items on one seller's public storefront.
+
+    Thin by design: the eligibility rules live in
+    :func:`apps.inventory.policy.eligible_items` so the storefront, share links,
+    the marketplace and catalogs cannot disagree about what is public.
+    """
+    return eligible_items(audience="public", seller_business=business)
+
+
+def public_items() -> QuerySet[InventoryLot]:
+    """Everything publicly discoverable, across all sellers."""
+    return eligible_items(audience="public")
 
 
 def get_public_lot(business: Business, lot_id) -> InventoryLot | None:
-    return public_catalog_lots(business).filter(pk=lot_id).first()
+    return get_eligible_item(audience="public", seller_business=business, item_id=lot_id)
 
 
-def filter_public_lots(
-    qs: QuerySet[InventoryLot],
-    *,
-    q: str = "",
-    stone_type: str = "",
-    color: str = "",
-    only_urgent: bool = False,
-) -> QuerySet[InventoryLot]:
-    if q:
-        term = normalize_persian_text(q)
-        qs = qs.filter(
-            Q(product__commercial_name__icontains=term)
-            | Q(product__stone_type__icontains=term)
-            | Q(product__primary_color__icontains=term)
-            | Q(lot_code__icontains=term)
-            | Q(processing_type__icontains=term)
-        )
-    if stone_type:
-        qs = qs.filter(product__stone_type__icontains=normalize_persian_text(stone_type))
-    if color:
-        qs = qs.filter(product__primary_color__icontains=normalize_persian_text(color))
-    if only_urgent:
-        qs = qs.filter(is_urgent_sale=True)
-    return qs
+def get_public_item_by_token(token: str) -> InventoryLot | None:
+    return get_eligible_item(audience="public", public_token=token)
+
+
+def filter_public_lots(qs: QuerySet[InventoryLot], *, spec: ItemFilterSpec) -> QuerySet[InventoryLot]:
+    return spec.apply(qs, audience="public")
 
 
 def related_public_lots(lot: InventoryLot, *, limit: int = 4) -> list[InventoryLot]:
@@ -84,17 +54,22 @@ def get_shareable_catalog(token: str) -> CustomCatalog | None:
     catalog = CustomCatalog.objects.select_related("business").filter(share_token=token).first()
     if catalog is None or not catalog.is_publicly_accessible:
         return None
+    catalog.prefetched_items = list(resolve_catalog_items(catalog))
+    return catalog
 
-    # A curated share link must never widen visibility. Intersecting with the
-    # storefront queryset means the two surfaces cannot drift apart again: a lot
-    # that is private, hidden, sold or archived is excluded here for exactly the
-    # same reason it is excluded from /s/<business>/, and any future rule added
-    # to public_catalog_lots applies to share links automatically.
-    publishable = public_catalog_lots(catalog.business).order_by().values("pk")
 
-    items = (
+def resolve_catalog_items(catalog: CustomCatalog) -> QuerySet[CustomCatalogItem]:
+    """Manually-selected catalog entries that are currently publicly showable.
+
+    Intersecting with the public eligibility queryset is what stops a curated
+    link from widening visibility. A hidden, unavailable or deleted item drops
+    out of the catalog the moment it changes, without anyone editing the
+    catalog.
+    """
+    publishable = eligible_items(audience="public", seller_business=catalog.business).order_by().values("pk")
+    return (
         CustomCatalogItem.objects.filter(catalog=catalog, lot__in=publishable)
-        .select_related("lot__product", "lot__warehouse")
+        .select_related("lot__product", "lot__business")
         .prefetch_related(
             Prefetch(
                 "lot__prices",
@@ -104,8 +79,6 @@ def get_shareable_catalog(token: str) -> CustomCatalog | None:
         )
         .order_by("sort_order")
     )
-    catalog.prefetched_items = list(items)
-    return catalog
 
 
 def catalogs_for_business(business: Business) -> QuerySet[CustomCatalog]:

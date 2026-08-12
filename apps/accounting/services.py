@@ -159,7 +159,7 @@ def _default_trade_description(entry_type: str, related_offer: PurchaseOffer | N
     if related_offer is None:
         return ""
     side = "فروش" if entry_type == LedgerEntry.Type.SALE else "خرید"
-    lot_part = f"محموله {related_offer.lot.lot_code} · " if related_offer.lot_id else ""
+    lot_part = f"محصول {related_offer.lot.lot_code} · " if related_offer.lot_id else ""
     return (
         f"{side} بر اساس پیشنهاد پذیرفته‌شده «{related_offer.purchase_request.title}» · "
         f"{lot_part}{_format_quantity(related_offer.offered_qty_sqm)} مترمربع"

@@ -168,16 +168,11 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
-CELERY_BEAT_SCHEDULE = {
-    "evaluate-inventory-freshness": {
-        "task": "apps.inventory.tasks.evaluate_inventory_freshness",
-        "schedule": 60 * 60,  # hourly
-    },
-    "match-saved-searches": {
-        "task": "apps.marketplace.tasks.match_saved_searches",
-        "schedule": 60 * 30,  # every 30 minutes
-    },
-}
+# Deliberately empty. Stock and price freshness are derived from timestamps at
+# read time, so nothing needs to sweep rows on a schedule. The Celery wiring is
+# kept because notifications and future async work will want it; an idle broker
+# costs nothing, whereas re-introducing the plumbing later is disruptive.
+CELERY_BEAT_SCHEDULE: dict[str, dict] = {}
 
 SMS_PROVIDER = env("SMS_PROVIDER", default="console")
 OTP_EXPIRY_SECONDS = env.int("OTP_EXPIRY_SECONDS", default=300)

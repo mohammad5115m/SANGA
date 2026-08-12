@@ -7,26 +7,6 @@ from apps.inventory.models import InventoryLot
 from .models import CustomCatalog
 
 
-class StorefrontFilterForm(forms.Form):
-    q = forms.CharField(
-        required=False,
-        widget=forms.TextInput(attrs={"class": "field-input", "placeholder": "جستجوی سنگ، رنگ، نوع..."}),
-    )
-    stone_type = forms.CharField(
-        required=False,
-        widget=forms.TextInput(attrs={"class": "field-input", "placeholder": "نوع سنگ"}),
-    )
-    color = forms.CharField(
-        required=False,
-        widget=forms.TextInput(attrs={"class": "field-input", "placeholder": "رنگ"}),
-    )
-    only_urgent = forms.BooleanField(
-        required=False,
-        label="فقط فروش فوری",
-        widget=forms.CheckboxInput(attrs={"class": "field-checkbox"}),
-    )
-
-
 class InquiryForm(forms.Form):
     name = forms.CharField(
         label="نام",
@@ -51,7 +31,7 @@ class InquiryForm(forms.Form):
 
 class CustomCatalogForm(forms.ModelForm):
     lots = forms.ModelMultipleChoiceField(
-        label="محموله‌ها",
+        label="محصولات",
         queryset=InventoryLot.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple,
@@ -71,9 +51,14 @@ class CustomCatalogForm(forms.ModelForm):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         if business is not None:
-            self.fields["lots"].queryset = InventoryLot.objects.filter(
-                business=business,
-                archived_at__isnull=True,
-            ).select_related("product").order_by("-updated_at")
+            # Everything the seller owns is selectable, including items that are
+            # currently hidden or unavailable: curating is a management action.
+            # Whether a selected item actually renders is decided at read time by
+            # apps.inventory.policy, not here.
+            self.fields["lots"].queryset = (
+                InventoryLot.objects.filter(business=business, deleted_at__isnull=True)
+                .select_related("product")
+                .order_by("-updated_at")
+            )
         if self.instance and self.instance.pk:
             self.fields["lots"].initial = self.instance.items.values_list("lot_id", flat=True)

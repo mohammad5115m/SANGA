@@ -5,65 +5,21 @@
 <section class="stack-lg">
   <div class="toolbar">
     <div>
-      <h1 class="page-title">بازار همکاران</h1>
-      <p class="page-lead">موجودی شبکه B2B با قیمت همکار</p>
-    </div>
-    <div class="btn-row">
-      <a class="btn btn-secondary" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
+      <h1 class="page-title">بازار</h1>
+      <p class="page-lead">محصولات همکاران، با قیمت همکار</p>
     </div>
   </div>
 
-  <form method="get" class="panel filter-bar">
-    <label class="field"><span class="field-label">جستجو</span>{{ filter_form.q }}</label>
-    <label class="field"><span class="field-label">نوع</span>{{ filter_form.stone_type }}</label>
-    <label class="field"><span class="field-label">رنگ</span>{{ filter_form.color }}</label>
-    <label class="field"><span class="field-label">حداقل متراژ</span>{{ filter_form.min_qty }}</label>
-    <label class="field checkbox-field">{{ filter_form.only_urgent }} <span>{{ filter_form.only_urgent.label }}</span></label>
-    <button class="btn btn-secondary" type="submit">اعمال</button>
-  </form>
-
-  <form method="post" action="{% url 'marketplace:save_search' %}" class="panel stack-md">
-    {% csrf_token %}
-    <h2 class="section-title">ذخیره این جستجو</h2>
-    <input type="hidden" name="q" value="{{ filter_form.q.value|default:'' }}">
-    <input type="hidden" name="stone_type" value="{{ filter_form.stone_type.value|default:'' }}">
-    <input type="hidden" name="color" value="{{ filter_form.color.value|default:'' }}">
-    <input type="hidden" name="min_qty" value="{{ filter_form.min_qty.value|default:'' }}">
-    {% if filter_form.only_urgent.value %}<input type="hidden" name="only_urgent" value="on">{% endif %}
-    <label class="field"><span class="field-label">{{ save_form.name.label }}</span>{{ save_form.name }}</label>
-    <label class="field checkbox-field">{{ save_form.notify_enabled }} <span>{{ save_form.notify_enabled.label }}</span></label>
-    <button class="btn btn-ghost" type="submit">ذخیره جستجو</button>
-  </form>
-
-  {% if saved_searches %}
-  <div class="chip-row">
-    {% for s in saved_searches %}
-      <span class="chip">{{ s.name }}</span>
-    {% endfor %}
-  </div>
-  {% endif %}
+  {% include "inventory/_filter_bar.html" %}
 
   <div class="catalog-grid">
     {% for card in cards %}
-      <a class="catalog-card" href="{% url 'marketplace:lot_detail' card.lot.id %}">
-        <div class="catalog-card-media">
-          {% if card.primary_media %}
-            <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
-          {% else %}
-            <div class="lot-thumb-fallback"></div>
-          {% endif %}
-          {% if card.lot.is_urgent_sale %}<span class="card-flag">فوری</span>{% endif %}
-        </div>
-        <div class="catalog-card-body">
-          <div class="list-title">{{ card.product.commercial_name }}</div>
-          <div class="muted">{{ card.supplier.name }}</div>
-          <div class="catalog-price">{{ card.price.label }}</div>
-          {# The lot's visibility is the supplier's internal distribution choice: never shown to other businesses. #}
-          <div class="muted">{{ card.lot.available_sqm }} m²</div>
-        </div>
-      </a>
+      {% url 'marketplace:lot_detail' card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" %}
     {% empty %}
-      <div class="empty-state">موردی در شبکه همکاران یافت نشد. فیلترها را تغییر دهید یا بعداً دوباره سر بزنید.</div>
+      <div class="empty-state">
+        محصولی با این فیلترها پیدا نشد. فیلترها را ساده‌تر کنید یا بعداً دوباره سر بزنید.
+      </div>
     {% endfor %}
   </div>
 </section>

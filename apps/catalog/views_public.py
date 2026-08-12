@@ -10,13 +10,16 @@ from django.views.decorators.http import require_http_methods
 from apps.businesses.models import Business
 from apps.inquiries.models import Inquiry
 from apps.inquiries.services import InquiryError, create_inquiry
+from apps.inventory.forms import ItemFilterForm
 
-from .forms import InquiryForm, StorefrontFilterForm
+from .forms import InquiryForm
 from .selectors import (
     filter_public_lots,
+    get_public_item_by_token,
     get_public_lot,
     get_shareable_catalog,
     public_catalog_lots,
+    public_items,
     related_public_lots,
 )
 from .services import b2c_price_context, public_lot_card, record_catalog_view
@@ -24,6 +27,7 @@ from .services import b2c_price_context, public_lot_card, record_catalog_view
 logger = logging.getLogger(__name__)
 
 COMPARE_SESSION_KEY = "b2c_compare_lot_ids"
+MAX_CARDS = 60
 
 
 def _business_or_404(slug: str) -> Business:
@@ -36,19 +40,24 @@ def _compare_ids(request: HttpRequest) -> list[str]:
 
 
 @require_http_methods(["GET"])
+def public_search(request: HttpRequest) -> HttpResponse:
+    """Login-free product discovery across every eligible seller."""
+    form = ItemFilterForm(request.GET or None)
+    qs = filter_public_lots(public_items(), spec=form.to_spec())
+    cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
+    return render(
+        request,
+        "catalog/public_search.html",
+        {"filter_form": form, "cards": cards, "compare_ids": _compare_ids(request)},
+    )
+
+
+@require_http_methods(["GET"])
 def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
     business = _business_or_404(business_slug)
-    form = StorefrontFilterForm(request.GET or None)
-    qs = public_catalog_lots(business)
-    if form.is_valid():
-        qs = filter_public_lots(
-            qs,
-            q=form.cleaned_data.get("q", ""),
-            stone_type=form.cleaned_data.get("stone_type", ""),
-            color=form.cleaned_data.get("color", ""),
-            only_urgent=bool(form.cleaned_data.get("only_urgent")),
-        )
-    cards = [public_lot_card(lot) for lot in qs[:60]]
+    form = ItemFilterForm(request.GET or None)
+    qs = filter_public_lots(public_catalog_lots(business), spec=form.to_spec())
+    cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
     return render(
         request,
         "catalog/storefront.html",
@@ -92,9 +101,8 @@ def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse
                 {"business": business, "lot": lot},
             )
 
-    related = [public_lot_card(item) for item in related_public_lots(lot)]
-    price = b2c_price_context(lot)
-    # Hard guarantee for templates/tests: never pass a prices dict that could include b2b.
+    from apps.inventory.freshness import stock_view
+
     return render(
         request,
         "catalog/lot_detail.html",
@@ -102,11 +110,43 @@ def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse
             "business": business,
             "lot": lot,
             "product": lot.product,
-            "price": price,
-            "media_items": [m for m in lot.media.all() if m.kind == "image"],
-            "related_cards": related,
+            "price": b2c_price_context(lot),
+            "stock": stock_view(lot),
+            "media_items": list(lot.media.all()),
+            "related_cards": [public_lot_card(item) for item in related_public_lots(lot)],
             "inquiry_form": form,
             "compare_ids": _compare_ids(request),
+            "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
+        },
+    )
+
+
+@require_http_methods(["GET"])
+def shared_item(request: HttpRequest, public_token: str) -> HttpResponse:
+    """The stable per-product share link, `/p/<token>/`.
+
+    B2C-safe by construction: it resolves through the public audience even when
+    the visitor happens to be a logged-in colleague, so pasting a share URL into
+    a colleague's browser cannot surface a B2B price.
+    """
+    lot = get_public_item_by_token(public_token)
+    if lot is None:
+        # Hidden, unavailable and deleted all land here. Distinguishing them
+        # would tell a stranger which products a seller has withdrawn.
+        return render(request, "catalog/item_unavailable.html", status=404)
+
+    from apps.inventory.freshness import stock_view
+
+    return render(
+        request,
+        "catalog/shared_item.html",
+        {
+            "business": lot.business,
+            "lot": lot,
+            "product": lot.product,
+            "price": b2c_price_context(lot),
+            "stock": stock_view(lot),
+            "media_items": list(lot.media.all()),
             "share_url": request.build_absolute_uri(),
         },
     )
@@ -142,9 +182,9 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
                 {"business": catalog.business, "catalog": catalog},
             )
 
-    # get_shareable_catalog already intersected the items with the storefront
-    # queryset, so everything reaching here is publicly showable. Re-filtering by
-    # status in the template layer is what let a private lot slip through before.
+    # get_shareable_catalog already intersected the selection with the public
+    # eligibility queryset, so everything here is showable. Re-filtering in the
+    # template layer is what let a private item slip through before.
     items = getattr(catalog, "prefetched_items", [])
     cards = [{**public_lot_card(item.lot), "note": item.note} for item in items]
 
@@ -189,12 +229,10 @@ def compare_view(request: HttpRequest, business_slug: str) -> HttpResponse:
     business = _business_or_404(business_slug)
     ids = _compare_ids(request)
     lots = list(public_catalog_lots(business).filter(id__in=ids))
-    # Preserve session order
     order = {lid: idx for idx, lid in enumerate(ids)}
     lots.sort(key=lambda lot: order.get(str(lot.id), 99))
-    cards = [public_lot_card(lot) for lot in lots]
     return render(
         request,
         "catalog/compare.html",
-        {"business": business, "cards": cards},
+        {"business": business, "cards": [public_lot_card(lot) for lot in lots]},
     )

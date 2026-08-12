@@ -14,7 +14,7 @@
       <h2 class="section-title">خلاصه پیشنهاد پذیرفته‌شده</h2>
       <div class="kv"><span>درخواست</span><strong>{{ offer.purchase_request.title }}</strong></div>
       {% if offer.lot %}
-        <div class="kv"><span>محموله</span><strong dir="ltr">{{ offer.lot.lot_code }}</strong></div>
+        <div class="kv"><span>محصول</span><strong dir="ltr">{{ offer.lot.lot_code }}</strong></div>
         <div class="kv"><span>محصول</span><strong>{{ offer.lot.product.commercial_name }}</strong></div>
       {% endif %}
       <div class="kv"><span>متراژ</span><strong>{{ offer.offered_qty_sqm }} m²</strong></div>

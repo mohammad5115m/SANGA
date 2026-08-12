@@ -8,10 +8,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.services import add_warehouse, create_business_for_owner
-from apps.inventory.models import InventoryLot, Product
+from apps.businesses.services import create_business_for_owner
+from apps.core.testing import make_item, make_product
 from apps.marketplace.selectors import marketplace_lots_for
-from apps.pricing.services import ensure_default_tiers, set_lot_prices
+from apps.pricing.services import ensure_default_tiers
 from apps.purchase_requests.models import PurchaseOffer
 from apps.purchase_requests.selectors import (
     get_network_request,
@@ -39,27 +39,22 @@ def demand_setup(db):
     seller_m = BusinessMembership.objects.get(user=seller_user, business=seller)
     other_m = BusinessMembership.objects.get(user=other_seller_user, business=other)
 
-    wh = add_warehouse(business=seller, name="انبار", city="محلات", is_default=True)
-    product = Product.objects.create(
-        business=seller,
+    product = make_product(
+        seller,
         commercial_name="تراورتن سفید تقاضا",
         stone_type="تراورتن",
         primary_color="سفید",
     )
-    lot = InventoryLot.objects.create(
-        business=seller,
+    lot = make_item(
+        seller,
         product=product,
-        warehouse=wh,
         lot_code="DEM-1",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.COLLEAGUES,
-        available_sqm=Decimal("200"),
-        original_sqm=Decimal("200"),
+        available_sqm="200",
         thickness_mm=Decimal("20"),
         grade="ممتاز",
-        inventory_confirmed_at=timezone.now(),
+        b2b="1800000",
+        b2c="2500000",
     )
-    set_lot_prices(lot=lot, b2b_amount=Decimal("1800000"), b2c_amount=Decimal("2500000"))
     return {
         "buyer": buyer,
         "seller": seller,
@@ -145,19 +140,19 @@ def test_buyer_finds_supply_from_another_business_in_the_marketplace(demand_setu
 
 
 @pytest.mark.django_db
-def test_a_lot_turned_private_leaves_the_marketplace_immediately(demand_setup):
+def test_an_unpublished_item_leaves_the_marketplace_immediately(demand_setup):
     lot = demand_setup["lot"]
-    lot.visibility = InventoryLot.Visibility.PRIVATE
-    lot.save(update_fields=["visibility"])
+    lot.is_visible = False
+    lot.save(update_fields=["is_visible"])
 
     assert lot.id not in {item.id for item in marketplace_lots_for(demand_setup["buyer"])}
 
 
 @pytest.mark.django_db
-def test_an_archived_lot_leaves_the_marketplace_immediately(demand_setup):
+def test_a_deleted_item_leaves_the_marketplace_immediately(demand_setup):
     lot = demand_setup["lot"]
-    lot.archived_at = timezone.now()
-    lot.save(update_fields=["archived_at"])
+    lot.deleted_at = timezone.now()
+    lot.save(update_fields=["deleted_at"])
 
     assert lot.id not in {item.id for item in marketplace_lots_for(demand_setup["buyer"])}
 

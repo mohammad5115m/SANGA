@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 
-from .models import Business, BusinessMembership, Warehouse
+from .models import Business, BusinessMembership
 from .permissions import BUSINESS_SETTINGS, TEAM_MANAGE, defaults_for_role
 
 logger = logging.getLogger(__name__)
@@ -56,35 +56,6 @@ def create_business_for_owner(
     )
     logger.info("Business provisioned id=%s owner=%s", business.id, owner.id)
     return business
-
-
-@transaction.atomic
-def add_warehouse(
-    *,
-    business: Business,
-    name: str,
-    city: str = "",
-    address: str = "",
-    is_default: bool = False,
-) -> Warehouse:
-    name = (name or "").strip()
-    if not name:
-        raise BusinessServiceError("نام انبار الزامی است.")
-    if Warehouse.objects.filter(business=business, name=name).exists():
-        raise BusinessServiceError("انباری با این نام از قبل وجود دارد.")
-
-    make_default = is_default or not Warehouse.objects.filter(business=business).exists()
-    warehouse = Warehouse.objects.create(
-        business=business,
-        name=name,
-        city=city.strip() or business.city,
-        address=address.strip(),
-        is_default=make_default,
-    )
-    if business.onboarding_step < 3:
-        business.onboarding_step = 3
-        business.save(update_fields=["onboarding_step", "updated_at"])
-    return warehouse
 
 
 def update_business_profile(

@@ -4,12 +4,12 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import INQUIRIES_RESPOND
-from apps.businesses.services import add_warehouse, create_business_for_owner
-from apps.inventory.models import InventoryLot, Product
+from apps.businesses.services import create_business_for_owner
+from apps.core.testing import make_item, make_product
+from apps.inventory.models import InventoryLot
 from apps.notifications.models import Notification
 from apps.purchase_requests.forms import PurchaseOfferForm
 from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
@@ -43,21 +43,8 @@ def demand(db):
         status=BusinessMembership.Status.ACTIVE,
     )
 
-    warehouse = add_warehouse(business=seller, name="انبار", is_default=True)
-    product = Product.objects.create(
-        business=seller, commercial_name="تراورتن", stone_type="تراورتن"
-    )
-    lot = InventoryLot.objects.create(
-        business=seller,
-        product=product,
-        warehouse=warehouse,
-        lot_code="PR-1",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.PUBLIC,
-        available_sqm=Decimal("100"),
-        original_sqm=Decimal("100"),
-        inventory_confirmed_at=timezone.now(),
-    )
+    product = make_product(seller, commercial_name="تراورتن")
+    lot = make_item(seller, product=product, lot_code="PR-1")
     return {
         "buyer": buyer,
         "seller": seller,
@@ -164,7 +151,7 @@ def test_accepting_an_offer_holds_no_stock_and_notifies_the_seller(demand):
 
     demand["lot"].refresh_from_db()
     assert demand["lot"].available_sqm == available_before
-    assert demand["lot"].status == InventoryLot.Status.AVAILABLE
+    assert demand["lot"].availability_status == InventoryLot.Availability.AVAILABLE
     assert Notification.objects.filter(
         user=demand["seller_user"], title="پیشنهاد شما پذیرفته شد"
     ).exists()
@@ -264,16 +251,10 @@ def test_a_suspended_sellers_offer_cannot_be_accepted(demand):
 
 
 def test_offer_form_only_offers_the_sellers_own_lots(demand):
-    buyer_lot = InventoryLot.objects.create(
-        business=demand["buyer"],
-        product=Product.objects.create(
-            business=demand["buyer"], commercial_name="سنگ خریدار", stone_type="گرانیت"
-        ),
-        warehouse=add_warehouse(business=demand["buyer"], name="انبار خریدار", is_default=True),
+    buyer_lot = make_item(
+        demand["buyer"],
+        product=make_product(demand["buyer"], commercial_name="سنگ خریدار", stone_type="گرانیت"),
         lot_code="BUY-1",
-        status=InventoryLot.Status.AVAILABLE,
-        available_sqm=Decimal("10"),
-        original_sqm=Decimal("10"),
     )
     form = PurchaseOfferForm(
         {"unit_price": "900000", "offered_qty_sqm": "60", "lot": str(buyer_lot.id)},
@@ -291,16 +272,10 @@ def test_offer_form_only_offers_the_sellers_own_lots(demand):
 
 def test_service_refuses_a_lot_the_seller_does_not_own(demand):
     pr = _make_request(demand)
-    buyer_lot = InventoryLot.objects.create(
-        business=demand["buyer"],
-        product=Product.objects.create(
-            business=demand["buyer"], commercial_name="سنگ خریدار", stone_type="گرانیت"
-        ),
-        warehouse=add_warehouse(business=demand["buyer"], name="انبار خریدار", is_default=True),
+    buyer_lot = make_item(
+        demand["buyer"],
+        product=make_product(demand["buyer"], commercial_name="سنگ خریدار", stone_type="گرانیت"),
         lot_code="BUY-2",
-        status=InventoryLot.Status.AVAILABLE,
-        available_sqm=Decimal("10"),
-        original_sqm=Decimal("10"),
     )
     with pytest.raises(PurchaseRequestError):
         _make_offer(demand, pr, lot=buyer_lot)

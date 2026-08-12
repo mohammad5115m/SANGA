@@ -23,10 +23,10 @@ from apps.accounting.services import (
     reverse_entry,
 )
 from apps.businesses.models import BusinessMembership
-from apps.businesses.services import add_warehouse, create_business_for_owner
+from apps.businesses.services import create_business_for_owner
 from apps.contacts.services import ContactError, create_contact
-from apps.inventory.models import InventoryLot, Product
-from apps.pricing.services import ensure_default_tiers, set_lot_prices
+from apps.core.testing import make_item, make_product
+from apps.pricing.services import ensure_default_tiers
 from apps.purchase_requests.models import PurchaseOffer
 from apps.purchase_requests.services import (
     create_purchase_request,
@@ -63,22 +63,8 @@ def trade(db):
         status=BusinessMembership.Status.ACTIVE,
     )
 
-    warehouse = add_warehouse(business=seller, name="انبار محلات", city="محلات", is_default=True)
-    product = Product.objects.create(
-        business=seller, commercial_name="تراورتن عباس‌آباد", stone_type="تراورتن"
-    )
-    lot = InventoryLot.objects.create(
-        business=seller,
-        product=product,
-        warehouse=warehouse,
-        lot_code="TRD-1",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.COLLEAGUES,
-        available_sqm=Decimal("100"),
-        original_sqm=Decimal("100"),
-        inventory_confirmed_at=timezone.now(),
-    )
-    set_lot_prices(lot=lot, b2b_amount=Decimal("1000000"), b2c_amount=Decimal("1500000"))
+    product = make_product(seller, commercial_name="تراورتن عباس‌آباد")
+    lot = make_item(seller, product=product, lot_code="TRD-1", b2b="1000000", b2c="1500000")
 
     seller_contact = create_contact(
         business=seller, membership=seller_m, display_name="سنگ خریدار"
@@ -174,16 +160,10 @@ def test_manual_trades_are_deliberately_not_deduplicated(trade):
 
 
 def test_a_related_lot_of_another_business_is_refused(trade):
-    foreign_lot = InventoryLot.objects.create(
-        business=trade["buyer"],
-        product=Product.objects.create(
-            business=trade["buyer"], commercial_name="سنگ خریدار", stone_type="گرانیت"
-        ),
-        warehouse=add_warehouse(business=trade["buyer"], name="انبار خریدار", is_default=True),
+    foreign_lot = make_item(
+        trade["buyer"],
+        product=make_product(trade["buyer"], commercial_name="سنگ خریدار", stone_type="گرانیت"),
         lot_code="BUY-9",
-        status=InventoryLot.Status.AVAILABLE,
-        available_sqm=Decimal("10"),
-        original_sqm=Decimal("10"),
     )
     with pytest.raises(LedgerError):
         _post(trade, related_lot=foreign_lot)

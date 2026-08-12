@@ -3,45 +3,52 @@
 
 {% block content %}
 <section class="stack-lg">
-  <div class="gallery gallery-lg">
-    {% for media in media_items %}
-      <img src="{{ media.file.url }}" alt="{{ product.commercial_name }}" loading="lazy">
-    {% empty %}
-      <div class="empty-state">تصویر ندارد</div>
-    {% endfor %}
-  </div>
+  {% include "inventory/_gallery.html" %}
 
   <div>
     <h1 class="page-title">{{ product.commercial_name }}</h1>
     <p class="page-lead">{{ supplier.name }}{% if supplier.city %} · {{ supplier.city }}{% endif %}</p>
     <div class="catalog-price catalog-price-lg">{{ price.label }}</div>
-    <div class="muted">قیمت همکار (B2B) · موجودی {{ lot.available_sqm }} m²</div>
+    <div class="muted">قیمت همکار</div>
+    {% if price.is_special and price.special_until %}
+      <div class="badge badge-special">فروش ویژه تا {{ price.special_until|date:"Y/m/d" }}</div>
+    {% endif %}
   </div>
 
   <section class="panel stack-sm">
-    <div class="kv"><span>کد محموله</span><strong dir="ltr">{{ lot.lot_code }}</strong></div>
-    <div class="kv"><span>نوع</span><strong>{{ product.stone_type|default:"—" }}</strong></div>
+    <div class="kv">
+      <span>موجودی</span>
+      <strong>{{ stock.label }}</strong>
+    </div>
+    {% if stock.confirmed_at %}
+      <div class="kv"><span>آخرین تأیید موجودی</span><strong>{{ stock.human_confirmed }}</strong></div>
+    {% endif %}
+    <div class="kv"><span>کد محصول</span><strong dir="ltr">{{ lot.lot_code }}</strong></div>
+    <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone_type|default:"—" }}</strong></div>
     <div class="kv"><span>رنگ</span><strong>{{ product.primary_color|default:"—" }}</strong></div>
+    <div class="kv"><span>معدن/منطقه</span><strong>{{ product.quarry_region|default:"—" }}</strong></div>
     <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
     <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
-    <div class="kv"><span>تازگی موجودی</span><strong>{% if lot.inventory_confirmed_at %}{{ lot.inventory_confirmed_at }}{% else %}—{% endif %}</strong></div>
+    {% if lot.thickness_mm %}<div class="kv"><span>ضخامت</span><strong>{{ lot.thickness_mm }} mm</strong></div>{% endif %}
+    {# City only: the exact address is the seller's private information. #}
+    <div class="kv"><span>محل بار</span><strong>{{ lot.location_city|default:"—" }}</strong></div>
+    {% if product.applications.all %}
+      <div class="kv">
+        <span>کاربردها</span>
+        <strong>{% for a in product.applications.all %}{{ a.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong>
+      </div>
+    {% endif %}
   </section>
 
+  {% if lot.description %}
+    <section class="panel"><p>{{ lot.description|linebreaksbr }}</p></section>
+  {% endif %}
+
   <section class="panel stack-md">
-    <h2 class="section-title">استعلام از تأمین‌کننده</h2>
-    <form method="post" class="stack-md" novalidate>
-      {% csrf_token %}
-      {% if inquiry_form.non_field_errors %}
-        <div class="alert alert-error">{{ inquiry_form.non_field_errors|striptags }}</div>
-      {% endif %}
-      {% for field in inquiry_form %}
-        <label class="field">
-          <span class="field-label">{{ field.label }}</span>
-          {{ field }}
-        </label>
-      {% endfor %}
-      <button class="btn btn-primary" type="submit">ارسال استعلام</button>
-    </form>
+    <h2 class="section-title">تماس با فروشنده</h2>
+    <div class="kv"><span>کسب‌وکار</span><strong>{{ supplier.name }}</strong></div>
+    {% if supplier.phone %}<div class="kv"><span>تلفن</span><strong dir="ltr">{{ supplier.phone }}</strong></div>{% endif %}
+    {% if supplier.city %}<div class="kv"><span>شهر</span><strong>{{ supplier.city }}</strong></div>{% endif %}
   </section>
 </section>
 {% endblock %}

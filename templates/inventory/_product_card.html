@@ -1,0 +1,32 @@
+{% comment %}
+One product card, used by the marketplace, public search and catalogs.
+
+The card renders only what the calling view put in `card.price` and `card.stock`,
+both of which are already audience-filtered by the services that built them.
+There is deliberately no access to `card.lot.prices` here: a template must never
+be in a position to pick the wrong tier.
+
+Expects: card = {lot, product, price, stock, primary_media, supplier?}, card_url
+{% endcomment %}
+<a class="catalog-card" href="{{ card_url }}">
+  <div class="catalog-card-media">
+    {% if card.primary_media %}
+      <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
+    {% else %}
+      <div class="lot-thumb-fallback"></div>
+    {% endif %}
+    {% if card.price.is_special %}<span class="card-flag card-flag-special">فروش ویژه</span>{% endif %}
+    {% if card.lot.is_urgent_sale %}<span class="card-flag">فوری</span>{% endif %}
+  </div>
+  <div class="catalog-card-body">
+    <div class="list-title">{{ card.product.commercial_name }}</div>
+    {% if card.supplier %}<div class="muted">{{ card.supplier.name }}</div>{% endif %}
+    <div class="muted">
+      {{ card.product.stone_type }}{% if card.product.primary_color %} · {{ card.product.primary_color }}{% endif %}
+    </div>
+    <div class="catalog-price">{{ card.price.label }}</div>
+    <div class="muted stock-line{% if card.stock.is_inquiry %} stock-line-inquiry{% endif %}">
+      {{ card.stock.label }}
+    </div>
+  </div>
+</a>

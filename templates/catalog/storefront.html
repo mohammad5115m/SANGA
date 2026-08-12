@@ -1,6 +1,6 @@
 {% extends "layouts/storefront_shell.html" %}
 
-{% block title %}{{ business.name }} | کاتالوگ سنگا{% endblock %}
+{% block title %}{{ business.name }} | سنگا{% endblock %}
 
 {% block storefront_actions %}
   {% if compare_ids %}
@@ -15,34 +15,14 @@
     <p class="page-lead">انتخاب سنگ با قیمت مشتری و موجودی به‌روز</p>
   </div>
 
-  <form method="get" class="panel filter-bar">
-    <label class="field"><span class="field-label">جستجو</span>{{ filter_form.q }}</label>
-    <label class="field"><span class="field-label">نوع</span>{{ filter_form.stone_type }}</label>
-    <label class="field"><span class="field-label">رنگ</span>{{ filter_form.color }}</label>
-    <label class="field checkbox-field">{{ filter_form.only_urgent }} <span>{{ filter_form.only_urgent.label }}</span></label>
-    <button class="btn btn-secondary" type="submit">فیلتر</button>
-  </form>
+  {% include "inventory/_filter_bar.html" %}
 
   <div class="catalog-grid">
     {% for card in cards %}
-      <a class="catalog-card" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">
-        <div class="catalog-card-media">
-          {% if card.primary_media %}
-            <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
-          {% else %}
-            <div class="lot-thumb-fallback"></div>
-          {% endif %}
-          {% if card.lot.is_urgent_sale %}<span class="card-flag">فروش فوری</span>{% endif %}
-        </div>
-        <div class="catalog-card-body">
-          <div class="list-title">{{ card.product.commercial_name }}</div>
-          <div class="muted">{{ card.product.stone_type|default:"" }} {% if card.product.primary_color %}· {{ card.product.primary_color }}{% endif %}</div>
-          <div class="catalog-price">{{ card.price.label }}</div>
-          <div class="muted">{{ card.lot.available_sqm }} متر مربع</div>
-        </div>
-      </a>
+      {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" %}
     {% empty %}
-      <div class="empty-state">فعلاً سنگی برای نمایش عمومی ثبت نشده است.</div>
+      <div class="empty-state">محصولی با این فیلترها پیدا نشد.</div>
     {% endfor %}
   </div>
 </section>

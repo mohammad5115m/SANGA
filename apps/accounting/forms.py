@@ -69,7 +69,7 @@ class LedgerEntryForm(forms.Form):
     def __init__(self, *args, business: Business, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.fields["related_lot"].queryset = InventoryLot.objects.filter(
-            business=business, archived_at__isnull=True
+            business=business, deleted_at__isnull=True
         ).order_by("-updated_at")
 
     def clean(self):
@@ -146,7 +146,7 @@ class TradeEntryForm(forms.Form):
         # Only the acting business's own lots are selectable; the service checks
         # ownership again so a hand-crafted POST cannot attach a foreign lot.
         self.fields["related_lot"].queryset = InventoryLot.objects.filter(
-            business=business, archived_at__isnull=True
+            business=business, deleted_at__isnull=True
         ).order_by("-updated_at")
         self.fields["confirm"].required = require_confirm
 

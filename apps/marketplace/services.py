@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-from django.db import transaction
-
-from apps.businesses.models import Business
+from apps.inventory.freshness import stock_view
 from apps.inventory.models import InventoryLot
-from apps.pricing.services import CONTACT_TIER_CODE, effective_price, resolve_prices_for_viewer
-
-from .models import SavedSearch
+from apps.pricing.services import effective_price, resolve_prices_for_viewer
 
 
 class MarketplaceError(Exception):
@@ -16,23 +12,22 @@ class MarketplaceError(Exception):
 
 
 def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
-    """Partner marketplace price payload: B2B only.
+    """Colleague-facing price payload: B2B tier only.
 
-    When ``viewer_business`` is given and the lot's owner has set a
-    partner-specific price for the contact linked to that business, the override
-    is shown instead of the plain B2B tier. Without a viewer there is no
-    override — the payload degrades to the tier price.
+    Returns a flat dict with no tier keys, so a template cannot walk it to find
+    the B2C number, and an expired or inquiry-mode price arrives already
+    reduced to «استعلام قیمت» with no amount attached.
     """
     prices = resolve_prices_for_viewer(lot, "b2b_partner", viewer_business=viewer_business)
     price = effective_price(prices, "b2b_partner")
-    if price is None or price.display_as_inquiry or price.amount is None:
+    if price is None or price.amount is None:
         return {
             "has_price": False,
             "amount": None,
             "currency": None,
             "unit": None,
-            "label": "استعلام بگیرید",
-            "is_partner_price": False,
+            "label": "استعلام قیمت",
+            "is_special": False,
         }
     return {
         "has_price": True,
@@ -40,29 +35,9 @@ def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
         "currency": price.currency,
         "unit": price.unit,
         "label": f"{price.amount:,.0f} {price.currency}",
-        "is_partner_price": price.tier_code == CONTACT_TIER_CODE,
+        "is_special": price.is_special,
+        "special_until": price.special_until,
     }
-
-
-@transaction.atomic
-def save_search(
-    *,
-    business: Business,
-    user,
-    name: str,
-    query: dict,
-    notify_enabled: bool = True,
-) -> SavedSearch:
-    name = (name or "").strip()
-    if len(name) < 2:
-        raise MarketplaceError("نام جستجو خیلی کوتاه است.")
-    return SavedSearch.objects.create(
-        business=business,
-        user=user,
-        name=name,
-        query=query or {},
-        notify_enabled=notify_enabled,
-    )
 
 
 def marketplace_lot_card(lot: InventoryLot, viewer_business=None) -> dict:
@@ -72,5 +47,6 @@ def marketplace_lot_card(lot: InventoryLot, viewer_business=None) -> dict:
         "product": lot.product,
         "supplier": lot.business,
         "price": b2b_price_context(lot, viewer_business),
+        "stock": stock_view(lot),
         "primary_media": primary,
     }

@@ -9,7 +9,6 @@ from django.views.decorators.http import require_http_methods
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import CUSTOMERS_MANAGE
-from apps.pricing.selectors import contact_price_count_for_contact
 
 from .forms import ContactForm
 from .models import Contact
@@ -55,22 +54,16 @@ def contact_detail(request: HttpRequest, contact_id) -> HttpResponse:
     # Financial summary is only exposed to members with the ledger.view
     # capability; contact management alone must not reveal balances.
     from apps.accounting.selectors import current_balance, describe_balance
-    from apps.businesses.permissions import LEDGER_VIEW, PRICES_VIEW
-    from apps.pricing.selectors import contact_prices_for_contact
+    from apps.businesses.permissions import LEDGER_VIEW
 
     balance = None
     if request.membership.has_capability(LEDGER_VIEW):
         balance = describe_balance(current_balance(request.business, contact))
 
-    # Read-only here: overrides are created and removed on the lot's price screen.
-    contact_prices = None
-    if request.membership.has_capability(PRICES_VIEW):
-        contact_prices = contact_prices_for_contact(request.business, contact)
-
     return render(
         request,
         "contacts/detail.html",
-        {"contact": contact, "balance": balance, "contact_prices": contact_prices},
+        {"contact": contact, "balance": balance},
     )
 
 
@@ -152,16 +145,7 @@ def contact_archive(request: HttpRequest, contact_id) -> HttpResponse:
         messages.success(request, "مخاطب بایگانی شد.")
         return redirect("contacts:list")
 
-    # Only the number is shown, not the amounts, so this is not gated behind
-    # prices.view: whoever archives has to see the consequence of archiving.
-    return render(
-        request,
-        "contacts/confirm_archive.html",
-        {
-            "contact": contact,
-            "contact_price_count": contact_price_count_for_contact(request.business, contact),
-        },
-    )
+    return render(request, "contacts/confirm_archive.html", {"contact": contact})
 
 
 @business_login_required

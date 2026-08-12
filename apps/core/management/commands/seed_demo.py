@@ -8,9 +8,19 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.businesses.models import BusinessMembership
-from apps.businesses.services import add_warehouse, complete_onboarding, create_business_for_owner
-from apps.inventory.models import InventoryLot, Product
-from apps.pricing.services import ensure_default_tiers, set_lot_prices
+from apps.businesses.services import complete_onboarding, create_business_for_owner
+from apps.inventory.models import Application, InventoryLot, Product
+from apps.pricing.services import ensure_default_tiers, set_lot_price
+
+#: name, stone, colour, quarry, sqm, b2b, b2c, application codes
+SAMPLES = [
+    ("تراورتن عباس‌آباد (فرضی)", "تراورتن", "کرم", "عباس‌آباد", "120.000", "1850000", "2600000",
+     ["exterior-facade", "floor"]),
+    ("مرمریت لاشتر روشن (فرضی)", "مرمریت", "کرم روشن", "اصفهان", "80.500", "2100000", "2950000",
+     ["interior-wall", "counter"]),
+    ("چینی الیگودرز (فرضی)", "چینی", "سفید", "الیگودرز", "45.000", "3200000", "4200000",
+     ["bathroom", "floor"]),
+]
 
 
 class Command(BaseCommand):
@@ -24,16 +34,10 @@ class Command(BaseCommand):
             phone="09121111111",
             defaults={"full_name": "مالک دمو (فرضی)"},
         )
-        if not owner.full_name:
-            owner.full_name = "مالک دمو (فرضی)"
-            owner.save(update_fields=["full_name"])
 
         membership = BusinessMembership.objects.filter(user=owner, role=BusinessMembership.Role.OWNER).first()
         if membership:
             business = membership.business
-            warehouse = business.warehouses.filter(is_default=True).first() or business.warehouses.first()
-            if warehouse is None:
-                warehouse = add_warehouse(business=business, name="انبار مرکزی", city="محلات", is_default=True)
         else:
             business = create_business_for_owner(
                 owner=owner,
@@ -42,15 +46,9 @@ class Command(BaseCommand):
                 province="مرکزی",
                 phone="09121111111",
             )
-            warehouse = add_warehouse(business=business, name="انبار مرکزی", city="محلات", is_default=True)
             complete_onboarding(business)
 
-        samples = [
-            ("تراورتن عباس‌آباد (فرضی)", "تراورتن", "کرم", "محلات", "120.000", "1850000", "2600000"),
-            ("مرمریت لاشتر روشن (فرضی)", "مرمریت", "کرم روشن", "اصفهان", "80.500", "2100000", "2950000"),
-            ("چینی الیگودرز (فرضی)", "چینی", "سفید", "الیگودرز", "45.000", "3200000", "4200000"),
-        ]
-        for idx, (name, stone, color, region, qty, b2b, b2c) in enumerate(samples, start=1):
+        for idx, (name, stone, color, region, qty, b2b, b2c, apps) in enumerate(SAMPLES, start=1):
             product, _ = Product.objects.get_or_create(
                 business=business,
                 commercial_name=name,
@@ -61,45 +59,49 @@ class Command(BaseCommand):
                     "description_public": "نمونه فرضی توسعه سنگا — داده واقعی نیست.",
                 },
             )
+            product.applications.set(Application.objects.filter(code__in=apps))
+
             code = f"DEMO-{idx:03d}"
-            lot, created = InventoryLot.objects.get_or_create(
+            item, created = InventoryLot.objects.get_or_create(
                 business=business,
                 lot_code=code,
                 defaults={
                     "product": product,
-                    "warehouse": warehouse,
-                    "status": InventoryLot.Status.AVAILABLE,
-                    "visibility": InventoryLot.Visibility.PUBLIC,
+                    "status": InventoryLot.Status.ACTIVE,
+                    "is_visible": True,
+                    "availability_status": InventoryLot.Availability.AVAILABLE,
+                    "stock_mode": InventoryLot.StockMode.EXACT,
                     "available_sqm": Decimal(qty),
                     "original_sqm": Decimal(qty),
+                    "stock_confirmed_at": timezone.now(),
+                    "location_city": "محلات",
+                    "location_province": "مرکزی",
                     "grade": "ممتاز",
                     "processing_type": "صیقلی",
-                    "inventory_confirmed_at": timezone.now(),
                     "description": "داده دمو فرضی برای تست سنگا",
                 },
             )
-            if created or not lot.prices.exists():
-                set_lot_prices(
-                    lot=lot,
-                    b2b_amount=Decimal(b2b),
-                    b2c_amount=Decimal(b2c),
-                    currency="IRR",
-                )
-            # Keep one demo lot colleagues-only so the marketplace/storefront
-            # split is visible locally.
-            if code == "DEMO-002" and lot.visibility != InventoryLot.Visibility.COLLEAGUES:
-                lot.visibility = InventoryLot.Visibility.COLLEAGUES
-                lot.save(update_fields=["visibility", "updated_at"])
+            if created or not item.prices.exists():
+                set_lot_price(lot=item, tier_code="b2b", amount=Decimal(b2b))
+                set_lot_price(lot=item, tier_code="b2c", amount=Decimal(b2c))
+
+        # One item left unpublished so the «موجودی من» / «بازار» split is visible
+        # locally, and one on inquiry stock so the freshness wording shows up.
+        hidden = InventoryLot.objects.filter(business=business, lot_code="DEMO-002").first()
+        if hidden is not None and hidden.is_visible:
+            hidden.is_visible = False
+            hidden.save(update_fields=["is_visible", "updated_at"])
+
+        inquiry_item = InventoryLot.objects.filter(business=business, lot_code="DEMO-003").first()
+        if inquiry_item is not None:
+            inquiry_item.stock_mode = InventoryLot.StockMode.INQUIRY
+            inquiry_item.save()
 
         partner_owner, _ = User.objects.get_or_create(
             phone="09122222222",
             defaults={"full_name": "شریک دمو (فرضی)"},
         )
-        has_partner_business = BusinessMembership.objects.filter(
-            user=partner_owner,
-            role=BusinessMembership.Role.OWNER,
-        ).exists()
-        if not has_partner_business:
+        if not BusinessMembership.objects.filter(user=partner_owner, role=BusinessMembership.Role.OWNER).exists():
             partner_business = create_business_for_owner(
                 owner=partner_owner,
                 name="بازرگانی سنگ پارس (دمو ـ فرضی)",
@@ -107,10 +109,8 @@ class Command(BaseCommand):
                 province="تهران",
                 phone="09122222222",
             )
-            add_warehouse(business=partner_business, name="انبار تهران", city="تهران", is_default=True)
             complete_onboarding(partner_business)
 
         self.stdout.write(self.style.SUCCESS("Demo seed complete (fictional SANGA data)."))
-        self.stdout.write(f"Supplier login phone: {owner.phone}")
-        self.stdout.write(f"Partner login phone: {partner_owner.phone}")
-
+        self.stdout.write(f"Seller login phone: {owner.phone}")
+        self.stdout.write(f"Colleague login phone: {partner_owner.phone}")

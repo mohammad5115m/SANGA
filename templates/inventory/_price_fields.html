@@ -1,0 +1,16 @@
+{% comment %}
+One price channel's fields. Included twice — once per audience — so the two
+channels stay visibly separate in the UI as well as in the model.
+
+Expects: price_form (a TierPriceForm bound with its own prefix)
+{% endcomment %}
+{% if price_form.non_field_errors %}
+  <div class="alert alert-error">{{ price_form.non_field_errors|striptags }}</div>
+{% endif %}
+{% for field in price_form %}
+  <label class="field">
+    <span class="field-label">{{ field.label }}</span>
+    {{ field }}
+    {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+  </label>
+{% endfor %}

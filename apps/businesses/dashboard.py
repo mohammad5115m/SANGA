@@ -34,21 +34,12 @@ ATTENTION_ROWS = 8
 COLLEAGUE_LOT_ROWS = 6
 PENDING_ROWS = 5
 
-# Lot states that are neither sellable nor worth nagging about: sold and expired
-# are done, a draft is unfinished by choice, and a hidden lot was hidden on
-# purpose.
-IDLE_LOT_STATUSES = (
-    InventoryLot.Status.SOLD,
-    InventoryLot.Status.DRAFT,
-    InventoryLot.Status.HIDDEN,
-    InventoryLot.Status.EXPIRED,
-)
-
 # «بی‌پاسخ»: nobody has replied yet. Once the inquiry is marked تماس گرفته‌شده or
 # در حال مذاکره someone is on it, so it is no longer a task waiting on the team.
 UNANSWERED_INQUIRY_STATUSES = (Inquiry.Status.NEW, Inquiry.Status.VIEWED)
 
 ATTENTION_NEEDS_CONFIRMATION = "نیاز به تأیید موجودی"
+ATTENTION_PRICE_EXPIRED = "قیمت نیاز به بررسی دارد"
 ATTENTION_NO_PRICE = "بدون قیمت — قابل فروش نیست"
 
 
@@ -95,40 +86,48 @@ def _lots_needing_attention(business: Business) -> dict:
     ``has_price`` is an ``EXISTS`` sub-query, so the reasons cost no query per
     lot, and the totals are one aggregate over the same queryset.
     """
+    needs_stock = InventoryLot.needs_stock_confirmation_q()
+    stale_price = Exists(LotPrice.objects.filter(lot=OuterRef("pk")).filter(LotPrice.needs_confirmation_q()))
+
     sellable = (
-        InventoryLot.objects.filter(business=business, archived_at__isnull=True)
-        .exclude(status__in=IDLE_LOT_STATUSES)
-        .annotate(has_price=Exists(LotPrice.objects.filter(lot=OuterRef("pk"))))
+        InventoryLot.objects.filter(
+            business=business,
+            deleted_at__isnull=True,
+            status=InventoryLot.Status.ACTIVE,
+            availability_status=InventoryLot.Availability.AVAILABLE,
+        )
+        .annotate(
+            has_price=Exists(LotPrice.objects.filter(lot=OuterRef("pk"))),
+            has_stale_price=stale_price,
+        )
+        .annotate(stock_stale=Q(needs_stock))
     )
     totals = sellable.aggregate(
         active=Count("pk"),
-        needs_confirmation=Count(
-            "pk", filter=Q(status=InventoryLot.Status.NEEDS_CONFIRMATION)
-        ),
+        needs_confirmation=Count("pk", filter=needs_stock),
+        stale_price=Count("pk", filter=Q(has_stale_price=True)),
         no_price=Count("pk", filter=Q(has_price=False)),
     )
     lots = (
-        sellable.filter(
-            Q(status=InventoryLot.Status.NEEDS_CONFIRMATION) | Q(has_price=False)
-        )
+        sellable.filter(needs_stock | Q(has_price=False) | Q(has_stale_price=True))
         .select_related("product")
         .order_by("-updated_at")[:ATTENTION_ROWS]
     )
     return {
         "lot_totals": totals,
-        "attention_lots": [
-            {"lot": lot, "reasons": _attention_reasons(lot)} for lot in lots
-        ],
+        "attention_lots": [{"lot": lot, "reasons": _attention_reasons(lot)} for lot in lots],
     }
 
 
 def _attention_reasons(lot: InventoryLot) -> list[str]:
-    """Why this lot is on the list. Reads only annotated/loaded fields."""
+    """Why this item is on the list. Reads only annotated/loaded fields."""
     reasons: list[str] = []
-    if lot.status == InventoryLot.Status.NEEDS_CONFIRMATION:
+    if lot.stock_stale:
         reasons.append(ATTENTION_NEEDS_CONFIRMATION)
     if not lot.has_price:
         reasons.append(ATTENTION_NO_PRICE)
+    elif lot.has_stale_price:
+        reasons.append(ATTENTION_PRICE_EXPIRED)
     return reasons
 
 

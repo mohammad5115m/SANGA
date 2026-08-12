@@ -5,17 +5,30 @@
 {% block shell %}
 <div class="storefront-shell">
   <header class="storefront-top">
-    <a class="brand-lockup" href="{% url 'catalog:storefront' business.slug %}">
-      {% if business.logo %}
-        <img class="business-logo" src="{{ business.logo.url }}" alt="{{ business.name }}">
-      {% else %}
+    {# `business` is absent on the cross-seller search and on the unavailable
+       page, so the header falls back to SANGA's own branding rather than
+       reversing a storefront URL with an empty slug. #}
+    {% if business %}
+      <a class="brand-lockup" href="{% url 'catalog:storefront' business.slug %}">
+        {% if business.logo %}
+          <img class="business-logo" src="{{ business.logo.url }}" alt="{{ business.name }}">
+        {% else %}
+          <span class="brand-mark" aria-hidden="true"></span>
+        {% endif %}
+        <div>
+          <div class="brand-name">{{ business.name }}</div>
+          <div class="brand-sub">{% if business.city %}{{ business.city }} · {% endif %}سنگا</div>
+        </div>
+      </a>
+    {% else %}
+      <a class="brand-lockup" href="{% url 'catalog:public_search' %}">
         <span class="brand-mark" aria-hidden="true"></span>
-      {% endif %}
-      <div>
-        <div class="brand-name">{{ business.name }}</div>
-        <div class="brand-sub">{% if business.city %}{{ business.city }} · {% endif %}کاتالوگ سنگا</div>
-      </div>
-    </a>
+        <div>
+          <div class="brand-name">سنگا</div>
+          <div class="brand-sub">جستجوی سنگ</div>
+        </div>
+      </a>
+    {% endif %}
     {% block storefront_actions %}{% endblock %}
   </header>
   <main class="storefront-main">

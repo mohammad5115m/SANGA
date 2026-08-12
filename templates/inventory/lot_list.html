@@ -1,36 +1,18 @@
 {% extends "layouts/app_shell.html" %}
 
-{% block title %}موجودی | سنگا{% endblock %}
+{% block title %}موجودی من | سنگا{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar">
     <div>
-      <h1 class="page-title">موجودی</h1>
-      <p class="page-lead">محموله‌های فیزیکی کسب‌وکار شما</p>
+      <h1 class="page-title">موجودی من</h1>
+      <p class="page-lead">محصولات قابل فروش کسب‌وکار شما</p>
     </div>
-    <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن سریع</a>
+    <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
   </div>
 
-  <form method="get" class="panel filter-bar">
-    <label class="field">
-      <span class="field-label">جستجو</span>
-      {{ filter_form.q }}
-    </label>
-    <label class="field">
-      <span class="field-label">وضعیت</span>
-      {{ filter_form.status }}
-    </label>
-    <label class="field">
-      <span class="field-label">نمایش</span>
-      {{ filter_form.visibility }}
-    </label>
-    <label class="field">
-      <span class="field-label">فیلتر سریع</span>
-      {{ filter_form.freshness }}
-    </label>
-    <button class="btn btn-secondary" type="submit">اعمال</button>
-  </form>
+  {% include "inventory/_filter_bar.html" %}
 
   <div class="list-stack">
     {% for row in rows %}
@@ -44,24 +26,34 @@
         </div>
         <div class="lot-body">
           <div class="list-title">{{ row.lot.product.commercial_name }}</div>
-          <div class="muted" dir="ltr">{{ row.lot.lot_code }} · {{ row.lot.available_sqm }} m²</div>
+          <div class="muted" dir="ltr">{{ row.lot.lot_code }}</div>
           <div class="badge-row">
-            <span class="badge">{{ row.lot.get_status_display }}</span>
-            <span class="badge badge-accent freshness-{{ row.freshness.level.value }}">{{ row.freshness.label }}</span>
+            {% if row.lot.status == 'draft' %}
+              <span class="badge">پیش‌نویس</span>
+            {% elif not row.lot.is_visible %}
+              <span class="badge">منتشر نشده</span>
+            {% endif %}
+            {% if row.lot.is_unavailable %}
+              <span class="badge badge-danger">ناموجود</span>
+            {% endif %}
+            {% if row.stock.needs_confirmation %}
+              <span class="badge badge-warn">نیاز به تأیید موجودی</span>
+            {% endif %}
             {% if row.lot.is_urgent_sale %}<span class="badge badge-danger">فروش فوری</span>{% endif %}
           </div>
+          <div class="muted">{{ row.stock.label }}</div>
           {% if can_view_prices %}
-          <div class="price-inline muted">
-            {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount|floatformat:"0g" }}{% endif %}
-            {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount|floatformat:"0g" }}{% endif %}
-          </div>
+            <div class="price-inline muted">
+              {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount|default:"استعلام"|floatformat:"0g" }}{% endif %}
+              {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount|default:"استعلام"|floatformat:"0g" }}{% endif %}
+            </div>
           {% endif %}
         </div>
       </a>
     {% empty %}
       <div class="empty-state stack-md">
-        <div>هنوز محموله‌ای ثبت نشده است.</div>
-        <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">اولین محموله را ثبت کنید</a>
+        <div>هنوز محصولی ثبت نشده است.</div>
+        <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">اولین محصول را ثبت کنید</a>
       </div>
     {% endfor %}
   </div>

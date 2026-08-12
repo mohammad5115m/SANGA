@@ -84,7 +84,7 @@ class PurchaseOfferForm(forms.Form):
         self.fields["lot"].queryset = (
             InventoryLot.objects.filter(
                 business=business,
-                archived_at__isnull=True,
+                deleted_at__isnull=True,
             )
             .select_related("product")
             .order_by("-updated_at")

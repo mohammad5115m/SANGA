@@ -1,0 +1,15 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}محصول در دسترس نیست | سنگا{% endblock %}
+
+{% block content %}
+{# Hidden, unavailable and deleted all render this same page. Telling a stranger
+   which of the three applies would leak which products a seller has withdrawn. #}
+<section class="stack-lg">
+  <div class="empty-state empty-state-lg">
+    <h1 class="page-title">این محصول در حال حاضر موجود نیست</h1>
+    <p class="page-lead">ممکن است فروشنده آن را برداشته باشد یا موجودی تمام شده باشد.</p>
+    <a class="btn btn-primary" href="{% url 'catalog:public_search' %}">جستجوی محصولات دیگر</a>
+  </div>
+</section>
+{% endblock %}

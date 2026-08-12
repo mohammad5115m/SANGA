@@ -9,15 +9,10 @@ from django.views.decorators.http import require_http_methods
 
 from .dashboard import dashboard_data
 from .decorators import business_login_required, require_capability
-from .forms import BusinessProfileForm, WarehouseForm
+from .forms import BusinessProfileForm
 from .models import BusinessMembership
 from .permissions import BUSINESS_SETTINGS, TEAM_MANAGE
-from .services import (
-    BusinessServiceError,
-    add_warehouse,
-    complete_onboarding,
-    update_business_profile,
-)
+from .services import BusinessServiceError, complete_onboarding, update_business_profile
 
 logger = logging.getLogger(__name__)
 
@@ -56,39 +51,6 @@ def no_business(request: HttpRequest) -> HttpResponse:
 
 @business_login_required
 @require_http_methods(["GET", "POST"])
-def onboarding_warehouse(request: HttpRequest) -> HttpResponse:
-    business = request.business
-    if business is None:
-        return redirect("businesses:no_business")
-
-    form = WarehouseForm(request.POST or None, initial={"is_default": True, "city": business.city})
-    if request.method == "POST" and form.is_valid():
-        try:
-            add_warehouse(
-                business=business,
-                name=form.cleaned_data["name"],
-                city=form.cleaned_data.get("city", ""),
-                address=form.cleaned_data.get("address", ""),
-                is_default=form.cleaned_data.get("is_default", True),
-            )
-        except BusinessServiceError as exc:
-            form.add_error(None, exc.message)
-        except Exception:
-            logger.exception("Warehouse create failed during onboarding")
-            form.add_error(None, "ثبت انبار با خطا روبه‌رو شد.")
-        else:
-            messages.success(request, "انبار ثبت شد.")
-            return redirect("businesses:onboarding_profile")
-
-    return render(
-        request,
-        "businesses/onboarding_warehouse.html",
-        {"form": form, "step": 2, "total_steps": 4, "business": business},
-    )
-
-
-@business_login_required
-@require_http_methods(["GET", "POST"])
 def onboarding_profile(request: HttpRequest) -> HttpResponse:
     business = request.business
     if business is None:
@@ -111,7 +73,7 @@ def onboarding_profile(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "businesses/onboarding_profile.html",
-        {"form": form, "step": 3, "total_steps": 4, "business": business},
+        {"form": form, "step": 2, "total_steps": 3, "business": business},
     )
 
 
@@ -131,10 +93,9 @@ def onboarding_done(request: HttpRequest) -> HttpResponse:
         request,
         "businesses/onboarding_done.html",
         {
-            "step": 4,
-            "total_steps": 4,
+            "step": 3,
+            "total_steps": 3,
             "business": business,
-            "warehouse_count": business.warehouses.count(),
         },
     )
 
@@ -158,30 +119,6 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             messages.success(request, "تنظیمات ذخیره شد.")
             return redirect("businesses:settings")
     return render(request, "businesses/settings.html", {"form": form})
-
-
-@business_login_required
-@require_capability(BUSINESS_SETTINGS)
-@require_http_methods(["GET", "POST"])
-def warehouse_list(request: HttpRequest) -> HttpResponse:
-    business = request.business
-    form = WarehouseForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            add_warehouse(
-                business=business,
-                name=form.cleaned_data["name"],
-                city=form.cleaned_data.get("city", ""),
-                address=form.cleaned_data.get("address", ""),
-                is_default=form.cleaned_data.get("is_default", False),
-            )
-        except BusinessServiceError as exc:
-            form.add_error(None, exc.message)
-        else:
-            messages.success(request, "انبار اضافه شد.")
-            return redirect("businesses:warehouses")
-    warehouses = business.warehouses.all()
-    return render(request, "businesses/warehouses.html", {"form": form, "warehouses": warehouses})
 
 
 @business_login_required

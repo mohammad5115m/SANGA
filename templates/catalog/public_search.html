@@ -1,0 +1,25 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}جستجوی سنگ | سنگا{% endblock %}
+
+{% block content %}
+{# No login wall, no lead capture before browsing: identity is asked for at
+   submission, not at the door. #}
+<section class="stack-lg">
+  <div class="storefront-hero">
+    <h1 class="page-title">سنگ مورد نظرتان را پیدا کنید</h1>
+    <p class="page-lead">جستجو در محصولات فروشندگان سنگ، بدون نیاز به ثبت‌نام</p>
+  </div>
+
+  {% include "inventory/_filter_bar.html" %}
+
+  <div class="catalog-grid">
+    {% for card in cards %}
+      {% url 'catalog:lot_detail' card.lot.business.slug card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" %}
+    {% empty %}
+      <div class="empty-state">محصولی با این فیلترها پیدا نشد. فیلترها را ساده‌تر کنید.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
