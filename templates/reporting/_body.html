@@ -1,0 +1,193 @@
+{% load money %}
+{% comment %}
+The body of whichever report is active, shared by the screen and print views so
+the two cannot disagree.
+
+Expects: active, plus whichever of rows / balances / invoices / aging / items /
+prices the view populated.
+{% endcomment %}
+
+{% if active == 'summary' %}
+  <div class="metric-row">
+    <div class="metric">
+      <div class="metric-label">جمع فروش</div>
+      <div class="metric-value">{{ summary.total|rial }}</div>
+      <div class="metric-hint">ریال</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">متراژ فروخته‌شده</div>
+      <div class="metric-value">{{ summary.quantity_sqm|sqm }}</div>
+      <div class="metric-hint">متر مربع</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">تعداد معامله</div>
+      <div class="metric-value">{{ summary.trade_count }}</div>
+    </div>
+  </div>
+  <div class="metric-row">
+    <div class="metric">
+      <div class="metric-label">جمع دریافتی</div>
+      <div class="metric-value">{{ money.received|rial }}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">جمع پرداختی</div>
+      <div class="metric-value">{{ money.paid|rial }}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">جمع خرید</div>
+      <div class="metric-value">{{ money.purchased|rial }}</div>
+    </div>
+  </div>
+
+{% elif active == 'by_colleague' or active == 'by_stone_type' or active == 'by_product' %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% if active == 'by_colleague' %}همکار / مشتری{% elif active == 'by_stone_type' %}نوع سنگ{% else %}محصول{% endif %}</th>
+        <th class="num">متراژ</th>
+        <th class="num">تعداد معامله</th>
+        <th class="num">جمع (ریال)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td class="num">{{ row.quantity|sqm }}</td>
+          <td class="num">{{ row.trade_count }}</td>
+          <td class="num">{{ row.total|rial }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty-state">در این بازه فروشی ثبت نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th>جمع کل</th>
+        <th class="num">{{ summary.quantity_sqm|sqm }}</th>
+        <th class="num">{{ summary.trade_count }}</th>
+        <th class="num">{{ summary.total|rial }}</th>
+      </tr>
+    </tfoot>
+  </table>
+
+{% elif active == 'debtors' or active == 'creditors' %}
+  <table class="table">
+    <thead>
+      <tr><th>همکار</th><th>وضعیت</th><th class="num">مبلغ (ریال)</th></tr>
+    </thead>
+    <tbody>
+      {% for row in balances %}
+        <tr>
+          <td>{{ row.colleague.name }}</td>
+          <td>{{ row.balance.label }}</td>
+          <td class="num">{{ row.balance.amount|rial }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="empty-state">موردی وجود ندارد.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% elif active == 'invoices' %}
+  <div class="metric-row">
+    <div class="metric">
+      <div class="metric-label">جمع فاکتورها</div>
+      <div class="metric-value">{{ invoice_summary.total|rial }}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">صادرشده</div>
+      <div class="metric-value">{{ invoice_summary.issued_count }}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">باطل‌شده</div>
+      <div class="metric-value">{{ invoice_summary.cancelled_count }}</div>
+    </div>
+  </div>
+  <table class="table">
+    <thead>
+      <tr><th>شماره</th><th>تاریخ</th><th>خریدار</th><th>وضعیت</th><th class="num">مبلغ (ریال)</th></tr>
+    </thead>
+    <tbody>
+      {% for invoice in invoices %}
+        <tr>
+          <td dir="ltr">{{ invoice.number }}</td>
+          <td>{{ invoice.issue_date }}</td>
+          <td>{{ invoice.buyer_name }}</td>
+          <td>{{ invoice.get_status_display }}</td>
+          <td class="num">{{ invoice.total_amount|rial }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty-state">فاکتوری در این بازه صادر نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% elif active == 'aging' %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>همکار</th>
+        {% for bucket in aging.total.rows %}<th class="num">{{ bucket.label }}</th>{% endfor %}
+        <th class="num">جمع</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in aging.rows %}
+        <tr>
+          <td>{{ row.counterparty.name }}</td>
+          {% for bucket in row.aging.rows %}<td class="num">{{ bucket.amount|rial }}</td>{% endfor %}
+          <td class="num"><strong>{{ row.aging.total|rial }}</strong></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="empty-state">مطالبه معوقی وجود ندارد.</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th>جمع کل</th>
+        {% for bucket in aging.total.rows %}<th class="num">{{ bucket.amount|rial }}</th>{% endfor %}
+        <th class="num">{{ aging.total.total|rial }}</th>
+      </tr>
+    </tfoot>
+  </table>
+
+{% elif active == 'stock_check' %}
+  {# Deliberately not filtered by date: staleness is about now, not a window. #}
+  <table class="table">
+    <thead>
+      <tr><th>محصول</th><th>کد</th><th class="num">متراژ ثبت‌شده</th><th>آخرین تأیید</th></tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+        <tr>
+          <td>{{ item.product.commercial_name }}</td>
+          <td dir="ltr">{{ item.lot_code }}</td>
+          <td class="num">{{ item.available_sqm|sqm }}</td>
+          <td>{{ item.stock_confirmed_at|date:"Y/m/d"|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty-state">موجودی همه محصولات به‌روز است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% elif active == 'price_check' %}
+  <table class="table">
+    <thead>
+      <tr><th>محصول</th><th>کانال</th><th class="num">مبلغ (ریال)</th><th>انقضا</th></tr>
+    </thead>
+    <tbody>
+      {% for price in prices %}
+        <tr>
+          <td>{{ price.lot.product.commercial_name }}</td>
+          <td>{{ price.tier.name }}</td>
+          <td class="num">{{ price.amount|rial }}</td>
+          <td>{{ price.price_expires_at|date:"Y/m/d"|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty-state">همه قیمت‌ها به‌روز هستند.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}

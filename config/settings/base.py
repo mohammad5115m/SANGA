@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.trading",
     "apps.invoicing",
     "apps.accounting",
+    "apps.reporting",
     # Retired apps that must stay installed.
     #
     # apps.contacts still owns a table: LedgerEntry.contact is a PROTECT FK

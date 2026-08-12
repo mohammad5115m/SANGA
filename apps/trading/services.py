@@ -365,7 +365,7 @@ def record_direct_sale(
     if not snapshot_name:
         raise TradingError("نام محصول را وارد کنید.")
 
-    return Trade.objects.create(
+    trade = Trade.objects.create(
         seller_business=seller_business,
         counterparty_type=counterparty_type,
         buyer_business=buyer_business,
@@ -382,3 +382,11 @@ def record_direct_sale(
         finalized_at=timezone.now(),
         created_by=membership.user,
     )
+
+    # A finalized sale is a finalized sale, however it was reached. Posting only
+    # for request-driven sales would leave the books wrong for every deal agreed
+    # over the phone — which is most of them. A walk-in customer has no account,
+    # so post_trade_for_sale returns None for those.
+    post_trade_for_sale(trade=trade, membership=membership)
+    safe_create_invoice_for_trade(trade=trade, membership=membership)
+    return trade

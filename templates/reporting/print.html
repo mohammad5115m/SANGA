@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block shell %}
+<main class="print-sheet">
+  <header class="print-header">
+    <div>
+      <h1>{{ title }}</h1>
+      <div class="muted">{{ current_business.name }}</div>
+    </div>
+    <div class="muted">{{ window.label }}</div>
+  </header>
+
+  {% include "reporting/_body.html" %}
+
+  <div class="print-actions no-print">
+    <button class="btn btn-primary" type="button" onclick="window.print()">چاپ</button>
+  </div>
+</main>
+{% endblock %}

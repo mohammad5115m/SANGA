@@ -26,6 +26,7 @@
     <a class="btn btn-secondary" href="{% url 'businesses:colleagues' %}">لیست همکاران</a>
     {% if 'ledger.view' in capabilities %}
       <a class="btn btn-secondary" href="{% url 'accounting:index' %}">دفتر حساب</a>
+      <a class="btn btn-secondary" href="{% url 'reporting:index' %}">گزارش‌ها</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'businesses:team' %}">تیم</a>
     {% if 'catalog.manage' in capabilities %}
