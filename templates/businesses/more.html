@@ -1,0 +1,72 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}بیشتر | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">بیشتر</h1>
+    <p class="page-lead">دسترسی به بخش‌های دیگر</p>
+  </div>
+
+  <div class="hub-grid">
+    <a class="hub-tile" href="{% url 'businesses:colleagues' %}">
+      <div class="hub-title">لیست همکاران</div>
+      <div class="muted">کسب‌وکارهای فعال در سنگا</div>
+    </a>
+
+    {% if 'ledger.view' in capabilities %}
+      <a class="hub-tile" href="{% url 'accounting:index' %}">
+        <div class="hub-title">دفتر حساب</div>
+        <div class="muted">مانده حساب همکاران</div>
+      </a>
+    {% endif %}
+
+    {% if 'invoice.view' in capabilities %}
+      <a class="hub-tile" href="{% url 'invoicing:list' %}">
+        <div class="hub-title">فاکتورها</div>
+        <div class="muted">فاکتورهای صادرشده و دریافتی</div>
+      </a>
+    {% endif %}
+
+    {% if 'leads.view' in capabilities %}
+      <a class="hub-tile" href="{% url 'inquiries:inbox' %}">
+        <div class="hub-title">استعلام‌ها</div>
+        <div class="muted">درخواست‌های مشتریان</div>
+      </a>
+      <a class="hub-tile" href="{% url 'inquiries:leads' %}">
+        <div class="hub-title">مشتریان</div>
+        <div class="muted">سوابق تماس و درخواست</div>
+      </a>
+    {% endif %}
+
+    {% if 'ledger.view' in capabilities %}
+      <a class="hub-tile" href="{% url 'reporting:index' %}">
+        <div class="hub-title">گزارش‌ها</div>
+        <div class="muted">فروش، بدهکاران، موجودی</div>
+      </a>
+    {% endif %}
+
+    {% if 'team.manage' in capabilities %}
+      <a class="hub-tile" href="{% url 'businesses:team' %}">
+        <div class="hub-title">تیم</div>
+        <div class="muted">اعضا و دسترسی‌ها</div>
+      </a>
+    {% endif %}
+
+    {% if 'business.settings' in capabilities %}
+      <a class="hub-tile" href="{% url 'businesses:settings' %}">
+        <div class="hub-title">تنظیمات</div>
+        <div class="muted">اطلاعات کسب‌وکار</div>
+      </a>
+    {% endif %}
+
+    {% if current_business %}
+      <a class="hub-tile" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">
+        <div class="hub-title">ویترین عمومی</div>
+        <div class="muted">آنچه مشتری می‌بیند</div>
+      </a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

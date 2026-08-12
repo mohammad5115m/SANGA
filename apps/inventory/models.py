@@ -340,8 +340,8 @@ class LotMedia(models.Model):
 
     class Meta:
         ordering = ["sort_order", "created_at"]
-        verbose_name = "رسانه محموله"
-        verbose_name_plural = "رسانه‌های محموله"
+        verbose_name = "رسانه محصول"
+        verbose_name_plural = "رسانه‌های محصول"
 
     def __str__(self) -> str:
         return f"{self.lot.lot_code} media"

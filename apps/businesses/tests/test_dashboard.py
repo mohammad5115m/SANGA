@@ -306,18 +306,23 @@ def test_a_brand_new_business_gets_a_coherent_empty_dashboard(client, db):
     assert response.context["attention_lots"] == []
     assert list(response.context["colleague_lots"]) == []
     assert "هنوز محصولی ثبت نکرده‌اید" in body
-    assert "هنوز مخاطبی ندارید" in body
-    assert "استعلام بی‌پاسخی ندارید" in body
+    assert "بدهکاری ندارید" in body
+    # Empty sections are hidden rather than rendered as five empty frames; the
+    # counters at the top still say zero.
+    assert response.context["unanswered_inquiry_count"] == 0
+    assert response.context["open_request_count"] == 0
 
 
 def test_the_dashboard_query_count_stays_bounded(client, shop, django_assert_max_num_queries):
     _login(client, shop["owner"], shop["business"])
-    # A fully-populated dashboard costs 14: session + user + the two membership
-    # lookups in the middleware, then exactly one query per piece of data —
-    # summary, top debtors, top creditors, lot totals, lots needing attention,
-    # colleague lots, and a count plus a page for each of the two pending lists.
-    # The bound is that 14 plus a little slack for shell/session changes; it is
-    # flat in the number of rows, so an N+1 anywhere on the page (five debtors,
-    # eight lots, six colleague lots, ten pending rows) breaks it immediately.
-    with django_assert_max_num_queries(16):
+    # The dashboard costs one query per section: session and membership lookups
+    # in the middleware, then the financial summary, top debtors, top creditors,
+    # lot totals, lots needing attention, colleague products, the two pending
+    # lists with their counts, and recent trades and invoices.
+    #
+    # The point of the bound is that it is **flat in the number of rows**. Five
+    # debtors, eight products, six colleague products and ten pending rows all
+    # render without extra queries, so an N+1 anywhere on the page breaks this
+    # immediately.
+    with django_assert_max_num_queries(20):
         assert client.get(DASHBOARD).status_code == 200

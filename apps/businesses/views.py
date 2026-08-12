@@ -46,6 +46,19 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 
 @business_login_required
 @require_http_methods(["GET"])
+def more(request: HttpRequest) -> HttpResponse:
+    """«بیشتر» — the screens visited weekly rather than hourly.
+
+    A hub rather than a sixth top-level tab for each: keeping the primary bar to
+    six items is what makes it readable on a phone.
+    """
+    if not request.business:
+        return redirect("businesses:no_business")
+    return render(request, "businesses/more.html")
+
+
+@business_login_required
+@require_http_methods(["GET"])
 def no_business(request: HttpRequest) -> HttpResponse:
     """Dead end for a User who belongs to no Business.
 

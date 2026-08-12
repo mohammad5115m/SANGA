@@ -61,6 +61,30 @@ def dashboard_data(*, business: Business, membership: BusinessMembership | None)
         **_lots_needing_attention(business),
         "colleague_lots": _colleague_lots(business),
         **_pending_work(business),
+        **_recent_activity(business),
+    }
+
+
+def _recent_activity(business: Business) -> dict:
+    """The last few sales and invoices, so the home screen shows movement.
+
+    Operational, not analytical: a seller opening SANGA wants to see what needs
+    doing and what just happened, not a chart.
+    """
+    from apps.invoicing.models import SalesInvoice
+    from apps.trading.models import Trade
+
+    return {
+        "recent_trades": list(
+            Trade.objects.filter(seller_business=business)
+            .select_related("buyer_business")
+            .order_by("-finalized_at")[:PENDING_ROWS]
+        ),
+        "recent_invoices": list(
+            SalesInvoice.objects.filter(seller_business=business).order_by("-issue_date", "-created_at")[
+                :PENDING_ROWS
+            ]
+        ),
     }
 
 
@@ -77,7 +101,7 @@ def _top_balances(business: Business, state: str) -> list[dict]:
 def _lots_needing_attention(business: Business) -> dict:
     """Own lots the owner has to act on, as **one** list with a reason per row.
 
-    Two separate lists would split one errand — «کدام محموله‌ها ایراد دارند؟» —
+    Two separate lists would split one errand — «کدام محصولات ایراد دارند؟» —
     across two panels that mostly hold the same lots, and on a phone the second
     one falls below the fold. A single list ordered by recency with a reason
     badge answers it in one scan, and a lot that is both unconfirmed and unpriced

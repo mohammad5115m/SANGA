@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 
+{% comment %}
+Six destinations, matching the six things a seller does: see what needs doing,
+manage their products, look at colleagues' products, handle buying and selling,
+share catalogs, and everything else.
+
+The demand board, contacts and warehouses are gone from here because they are
+gone from the product. «بیشتر» holds the screens visited weekly rather than
+hourly, so the primary bar stays short enough to read on a phone.
+{% endcomment %}
+
 {% block shell %}
 <div class="app-shell">
   <header class="topbar">
@@ -12,20 +22,28 @@
         {% endif %}
       </div>
     </div>
+
     <nav class="topbar-nav" aria-label="ناوبری">
-      <a class="topbar-link {% if request.resolver_match.app_name == 'businesses' and request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'businesses:dashboard' %}">خانه</a>
-      <a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}" href="{% url 'inventory:lot_list' %}">موجودی من</a>
-      <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}" href="{% url 'marketplace:home' %}">بازار</a>
-      <a class="topbar-link {% if request.resolver_match.url_name == 'colleagues' or request.resolver_match.url_name == 'colleague_detail' %}is-active{% endif %}" href="{% url 'businesses:colleagues' %}">لیست همکاران</a>
-      {% if 'ledger.view' in capabilities %}
-        <a class="topbar-link {% if request.resolver_match.app_name == 'accounting' %}is-active{% endif %}" href="{% url 'accounting:index' %}">دفتر حساب</a>
+      {% url 'businesses:dashboard' as home_url %}
+      <a class="topbar-link {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}">خانه</a>
+      <a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}"
+         href="{% url 'inventory:lot_list' %}">موجودی من</a>
+      <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
+         href="{% url 'marketplace:home' %}">بازار</a>
+      {% if 'purchase.request' in capabilities %}
+        <a class="topbar-link {% if request.resolver_match.app_name == 'trading' %}is-active{% endif %}"
+           href="{% url 'trading:received_list' %}">خرید و فروش</a>
       {% endif %}
       {% if 'catalog.manage' in capabilities %}
-        <a class="topbar-link {% if request.resolver_match.app_name == 'catalog_manage' %}is-active{% endif %}" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
+        <a class="topbar-link {% if request.resolver_match.app_name == 'catalog_manage' %}is-active{% endif %}"
+           href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
       {% endif %}
-      <a class="topbar-link {% if request.resolver_match.url_name == 'settings' %}is-active{% endif %}" href="{% url 'businesses:settings' %}">تنظیمات</a>
+      <a class="topbar-link {% if request.resolver_match.url_name == 'more' %}is-active{% endif %}"
+         href="{% url 'businesses:more' %}">بیشتر</a>
     </nav>
+
     <div class="topbar-actions">
+      <a class="btn btn-ghost btn-sm" href="{% url 'notifications:list' %}">اعلان‌ها</a>
       <a class="btn btn-ghost btn-sm" href="{% url 'accounts:profile' %}">پروفایل</a>
     </div>
   </header>
@@ -35,23 +53,28 @@
   </main>
 
   <nav class="bottom-nav" aria-label="ناوبری اصلی">
-    <a class="nav-item {% if request.resolver_match.app_name == 'businesses' and request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'businesses:dashboard' %}" {% if request.resolver_match.app_name == 'businesses' and request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>
+    <a class="nav-item {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
+       {% if request.path == home_url %}aria-current="page"{% endif %}>
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
       <span class="nav-label">خانه</span>
     </a>
-    <a class="nav-item {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name == 'lot_list' %}is-active{% endif %}" href="{% url 'inventory:lot_list' %}" {% if request.resolver_match.app_name == 'inventory' and request.resolver_match.url_name == 'lot_list' %}aria-current="page"{% endif %}>
+    <a class="nav-item {% if request.resolver_match.app_name == 'inventory' and 'quick_add' not in request.resolver_match.url_name %}is-active{% endif %}"
+       href="{% url 'inventory:lot_list' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
-      <span class="nav-label">موجودی</span>
+      <span class="nav-label">موجودی من</span>
     </a>
-    <a class="nav-item nav-item-primary {% if request.resolver_match.app_name == 'inventory' and 'quick_add' in request.resolver_match.url_name %}is-active{% endif %}" href="{% url 'inventory:quick_add_start' %}">
+    <a class="nav-item nav-item-primary {% if 'quick_add' in request.resolver_match.url_name|default:'' %}is-active{% endif %}"
+       href="{% url 'inventory:quick_add_start' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       <span class="nav-label">افزودن</span>
     </a>
-    <a class="nav-item {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}" href="{% url 'marketplace:home' %}" {% if request.resolver_match.app_name == 'marketplace' %}aria-current="page"{% endif %}>
+    <a class="nav-item {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
+       href="{% url 'marketplace:home' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 4h16l-1.5 5.5a2.5 2.5 0 0 1-2.4 1.9H7.9a2.5 2.5 0 0 1-2.4-1.9L4 4Z"/><path d="M6 11.5V20h12v-8.5"/><path d="M10 16h4"/></svg>
       <span class="nav-label">بازار</span>
     </a>
-    <a class="nav-item {% if request.resolver_match.url_name == 'settings' or request.resolver_match.app_name == 'catalog_manage' or request.resolver_match.app_name == 'notifications' or request.resolver_match.app_name == 'invoicing' or request.resolver_match.app_name == 'reporting' or request.resolver_match.app_name == 'inquiries' or request.resolver_match.app_name == 'accounting' or request.resolver_match.app_name == 'trading' %}is-active{% endif %}" href="{% url 'businesses:settings' %}">
+    <a class="nav-item {% if request.resolver_match.url_name == 'more' or request.resolver_match.app_name in more_apps %}is-active{% endif %}"
+       href="{% url 'businesses:more' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
       <span class="nav-label">بیشتر</span>
     </a>
