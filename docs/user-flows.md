@@ -4,23 +4,57 @@
 
 ### A) Business App (authenticated owner/staff)
 
-Mobile bottom nav (core):
+Mobile bottom nav as built (`templates/layouts/app_shell.html`):
 
 1. **خانه** — Dashboard  
 2. **موجودی** — Inventory  
 3. **افزودن** — Quick Add (center action)  
-4. **پیگیری** — Inquiries & Reservations hub  
-5. **بیشتر** — Partners, catalogs, customers, team, settings  
+4. **بازار** — Colleague marketplace  
+5. **بیشتر** — Settings hub: contacts, ledger, catalogs, notifications, inquiries, purchase requests, demand board, team  
 
-Desktop sidebar mirrors the same IA with grouped sections.
+### 1.1 Dashboard («خانه», `/app/`)
 
-### B) B2B Partner App
+The first screen after login. Five sections, in order, all tenant-scoped and all
+built from existing selectors — the dashboard owns no financial logic of its own:
 
-1. **بازار** — Partner marketplace  
-2. **جستجو** — Advanced search / saved searches  
-3. **درخواست خرید** — Purchase requests  
-4. **پیگیری** — My inquiries/reservations  
-5. **تأمین‌کنندگان** — Followed/approved suppliers  
+1. **خلاصه مالی** — جمع مطالبات / جمع دیون / مانده کل, from
+   `accounting.selectors.business_financial_summary`. Every number carries its
+   بدهکار / بستانکار / تسویه label.
+2. **بزرگ‌ترین بدهکاران و بستانکاران** — the five largest balances on each side,
+   from `contact_balances`, each row linking to that contact's statement and
+   marked «بایگانی‌شده» when the contact is archived
+   ([accounting.md](./accounting.md) §6.4).
+3. **محموله‌های نیازمند رسیدگی** — one list of the business's own lots that need
+   action, with a reason badge per row: «نیاز به تأیید موجودی» and/or
+   «بدون قیمت — قابل فروش نیست». One list rather than two, because a lot can have
+   both problems and the errand is the same one; the counts sit above it.
+4. **تازه‌ترین محموله‌های همکاران** — the newest colleague lots, fetched through
+   `marketplace.selectors.marketplace_lots_for` so the visibility rules, the
+   "never my own lots" rule and the active-business gate are inherited rather than
+   re-implemented. No prices are shown here.
+5. **کارهای در انتظار** — unanswered inquiries (still `new`/`viewed`) and offers
+   received on this business's own purchase requests that are still `submitted`.
+
+Sections 1 and 2 render **only** for a membership with `ledger.view`; the gate is
+in the data layer, not the template ([permissions.md](./permissions.md) §10).
+There are no charts — numbers, labels and lists only. Every section has its own
+empty state, so a brand-new business sees a coherent screen rather than a frame.
+Row caps (starting point, not a full report): 5 balances per side, 8 attention
+lots, 6 colleague lots, 5 pending items. The whole page is a fixed number of
+queries, pinned by a test.
+
+The desktop top bar carries the same destinations plus **تابلوی تقاضا**,
+**مخاطبین**, **دفتر حساب**, and **کاتالوگ‌ها** directly. The last three are hidden
+unless the membership holds `customers.manage`, `ledger.view`, or `catalog.manage`
+respectively — see [permissions.md](./permissions.md) §10. Hiding a link is a
+courtesy, never the access control.
+
+### B) Colleague surface
+
+There is **no separate colleague app**, and nothing to join: a colleague is just a
+business with an account, so it uses the same shell. Its network-facing
+destinations are **بازار** (marketplace, with saved searches),
+**درخواست‌های خرید** and **تابلوی تقاضا**.
 
 ### C) B2C Public Catalog
 
@@ -41,7 +75,7 @@ Create account (OTP)
   → Verification info (skippable)
   → Logo/branding (skippable)
   → Add first inventory lot (wizard)
-  → Invite employee/partner (skippable)
+  → Invite teammate (skippable)
   → Dashboard
 ```
 
@@ -59,14 +93,15 @@ Mobile-first wizard:
 6. Visibility & publication  
 7. Review & publish / save draft  
 
-Supports: autosave draft, duplicate existing lot, primary image selection, compression before upload.
+Supports today: duplicate existing lot, primary image selection.  
+Not built yet: autosave draft mid-wizard, client-side image compression before upload.
 
 ## 4. Inventory Management Flow
 
 - List with filters/chips, search, sort  
-- Row/card indicators: freshness, availability, reservation, visibility, urgent  
-- Actions: quick edit, duplicate, archive, hide/show, mark sold, reserve, confirm, media, prices  
-- Bulk actions for status/visibility/confirm  
+- Row/card indicators: freshness, availability, visibility, urgent  
+- Actions: quick edit, duplicate, archive, hide/show, mark sold, confirm, media, prices  
+- Bulk actions for status/visibility/confirm are **not built** — each lot is acted on one at a time
 
 ## 5. Freshness Flow
 
@@ -84,9 +119,13 @@ Visitor opens storefront → filters/search → lot detail (gallery, B2C price, 
 
 Must not expose B2B/internal notes/margins.
 
-## 7. B2B Marketplace Flow
+## 7. Colleague Marketplace Flow
 
-Approved partner browses recent/urgent lots → sees B2B price → inquire or request reservation → optional save search / follow supplier.
+Any logged-in **active** business browses recent/urgent lots from every other
+active business → sees the B2B price (or its own negotiated `ContactPrice`) →
+inquires → optionally saves the search. No partnership, no approval, no request. It
+never sees its own lots there, nor anybody's `private` lots, nor anything belonging
+to a suspended business — and a suspended business sees nothing at all.
 
 ## 8. Inquiry Flow
 
@@ -94,22 +133,28 @@ Approved partner browses recent/urgent lots → sees B2B price → inquire or re
 New → Viewed → Contacted → Negotiating → Converted / Closed / Lost
 ```
 
-Assignable to staff; linked to lot/catalog/PR/customer.
+Linked to a lot or a custom catalog (no purchase-request FK). The model has an
+`assignee` field, but there is **no assignment UI or workflow** yet — Phase 7 still
+lists inquiry-pipeline UX as open.
 
-## 9. Reservation Flow
+## 9. Trade Recording Flow
 
 ```text
-Request → Approve / Reject
-Approve → Active hold (expires) → Extend / Cancel / Convert
+Trade agreed offline → «ثبت معامله» → confirm the effect on the balance → one ledger entry
 ```
 
-Service layer locks lot row; prevents oversell; updates lot status/qty.
+Stock is never held by the platform: there are no reservations. Optionally the
+screen is opened from an accepted offer, which pre-fills amount, lot, side and
+counterparty. See [accounting.md](./accounting.md) §5.
 
-## 10. Purchase Request + Matching Flow
+## 10. Purchase Request Flow
 
-Partner publishes structured PR → matching service finds candidate lots → notify relevant sellers → private offers → inquiry/reservation continuation.
+Buyer publishes a structured PR → it appears on **تابلوی تقاضا** for every other
+business → sellers send **private** offers → the buyer accepts one → either side
+records the trade in its own ledger.
 
-No public reverse auction.
+There is no automatic matching and no public reverse auction: sellers read the
+board themselves, and an offer is visible only to its author and the buyer.
 
 ## 11. Custom Catalog Sharing Flow
 
@@ -122,7 +167,7 @@ Owner curates lots → generates share link → customer opens B2C-safe view →
 - Login / OTP  
 - Onboarding steps  
 - App shell (RTL)  
-- Dashboard (lightweight)  
+- Dashboard (see §1.1)  
 - Business settings / warehouses / team list (basic)  
 
 ### Phase 2 pages
@@ -136,11 +181,11 @@ Owner curates lots → generates share link → customer opens B2C-safe view →
 ### Phase 3+
 
 - Storefront + lot public detail  
-- Partner marketplace  
-- PR board  
-- Reservations inbox  
-- CRM list/detail  
-- Platform verification  
+- Colleague marketplace  
+- PR board / demand board  
+- Contacts (CRM-lite) + ledger + trade recording  
+- Business dashboard (§1.1)  
+- Platform verification (status field only; workflow UI not built) 
 
 ## 13. UI Component System (Design System Targets)
 

@@ -14,9 +14,10 @@ urlpatterns = [
     path("app/inventory/", include("apps.inventory.urls")),
     path("app/catalogs/", include("apps.catalog.urls_manage")),
     path("app/marketplace/", include("apps.marketplace.urls")),
-    path("app/partners/", include("apps.partners.urls")),
+    path("app/notifications/", include("apps.notifications.urls")),
     path("app/purchase-requests/", include("apps.purchase_requests.urls")),
-    path("app/reservations/", include("apps.reservations.urls")),
+    path("app/contacts/", include("apps.contacts.urls")),
+    path("app/accounting/", include("apps.accounting.urls")),
 ]
 
 if settings.DEBUG:

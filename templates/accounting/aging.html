@@ -1,0 +1,71 @@
+{% extends "layouts/app_shell.html" %}
+{% load humanize %}
+{% block title %}گزارش سنی بدهی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">گزارش سنی بدهی</h1>
+      <p class="page-lead">مطالبات باز به تفکیک عمر بدهی، تا تاریخ {{ report.as_of }}</p>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="{% url 'accounting:index' %}">دفتر حساب</a>
+  </div>
+
+  <div class="metric-grid">
+    {% for bucket in report.total.rows %}
+      <div class="metric">
+        <div class="metric-label">{{ bucket.label }}</div>
+        <div class="metric-value">{{ bucket.amount|intcomma }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="kv"><span>جمع مطالبات معوق</span><strong>{{ report.total.total|intcomma }} ریال</strong></div>
+    <div class="kv"><span>جمع مطالبات (دفتر حساب)</span><strong>{{ summary.receivable_total|intcomma }} ریال</strong></div>
+    <p class="muted">
+      عمر هر بدهی از تاریخ سند آن حساب می‌شود و هر بستانکاری (دریافت، خرید، اصلاح بستانکار)
+      ابتدا به قدیمی‌ترین بدهی باز تخصیص می‌یابد؛ اسناد برگشت‌خورده و برگشتی‌ها کنار گذاشته می‌شوند.
+      بایگانی کردن مخاطب بدهی او را پاک نمی‌کند؛ چنین مخاطبی با نشان «بایگانی‌شده» در همین جدول می‌ماند.
+    </p>
+  </section>
+
+  <div class="table-scroll">
+    <table class="ledger-table">
+      <thead>
+        <tr>
+          <th>مخاطب</th>
+          {% for bucket in report.total.rows %}<th>{{ bucket.label }}</th>{% endfor %}
+          <th>جمع</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.rows %}
+          <tr>
+            <td>
+              <a class="list-title" href="{% url 'accounting:statement' row.contact.id %}">{{ row.contact.display_name }}</a>
+              {% if not row.contact.is_active %}<span class="badge badge-muted">بایگانی‌شده</span>{% endif %}
+            </td>
+            {% for bucket in row.aging.rows %}
+              <td class="num">{{ bucket.amount|intcomma }}</td>
+            {% endfor %}
+            <td class="num"><strong>{{ row.aging.total|intcomma }}</strong></td>
+          </tr>
+        {% empty %}
+          <tr><td class="empty-cell" colspan="6">هیچ مطالبه معوقی ثبت نشده است.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if report.rows %}
+        <tfoot>
+          <tr>
+            <th>جمع کل</th>
+            {% for bucket in report.total.rows %}<td class="num">{{ bucket.amount|intcomma }}</td>{% endfor %}
+            <td class="num"><strong>{{ report.total.total|intcomma }}</strong></td>
+          </tr>
+        </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</section>
+{% endblock %}

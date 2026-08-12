@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.businesses.models import BusinessMembership
 from apps.businesses.services import add_warehouse, create_business_for_owner
+from apps.inventory.forms import LotEditForm, editable_visibility_choices
 from apps.inventory.freshness import FreshnessLevel, apply_freshness_transition, evaluate_freshness
 from apps.inventory.models import InventoryLot, Product
 from apps.inventory.selectors import get_business_lot
@@ -144,3 +145,29 @@ def test_other_business_cannot_price_lot(owner_business):
             b2b_amount=Decimal("1"),
             b2c_amount=Decimal("2"),
         )
+
+
+@pytest.mark.django_db
+def test_visibility_offers_exactly_three_levels(owner_business):
+    _owner, business, warehouse, _membership = owner_business
+
+    offered = [value for value, _label in editable_visibility_choices()]
+    assert offered == [
+        InventoryLot.Visibility.PRIVATE,
+        InventoryLot.Visibility.COLLEAGUES,
+        InventoryLot.Visibility.PUBLIC,
+    ]
+
+    product = Product.objects.create(business=business, commercial_name="سنگ سه‌سطحی")
+    lot = InventoryLot.objects.create(
+        business=business,
+        product=product,
+        warehouse=warehouse,
+        lot_code="VIS-1",
+        status=InventoryLot.Status.AVAILABLE,
+        visibility=InventoryLot.Visibility.COLLEAGUES,
+        available_sqm=Decimal("10"),
+        original_sqm=Decimal("10"),
+    )
+    form = LotEditForm(instance=lot, business=business)
+    assert [value for value, _label in form.fields["visibility"].choices] == offered

@@ -1,0 +1,25 @@
+{% extends "layouts/app_shell.html" %}
+{% load humanize %}
+{% block title %}برگشت سند | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">برگشت سند</h1>
+    <p class="page-lead">یک سند برگشتی ثبت می‌شود؛ سند اصلی حذف یا تغییر نمی‌کند.</p>
+  </div>
+
+  <section class="panel stack-md">
+    <div class="kv"><span>نوع سند</span><strong>{{ entry.get_entry_type_display }}</strong></div>
+    <div class="kv"><span>مبلغ</span><strong>{{ entry.amount|intcomma }} ریال</strong></div>
+    <div class="kv"><span>تاریخ</span><strong>{{ entry.occurred_on }}</strong></div>
+    {% if entry.description %}<div class="kv"><span>شرح</span><strong>{{ entry.description }}</strong></div>{% endif %}
+
+    <form method="post" class="btn-row">
+      {% csrf_token %}
+      <button class="btn btn-primary" type="submit">تأیید برگشت سند</button>
+      <a class="btn btn-ghost" href="{% url 'accounting:statement' entry.contact_id %}">انصراف</a>
+    </form>
+  </section>
+</section>
+{% endblock %}

@@ -7,9 +7,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import RESERVATIONS_MANAGE
+from apps.businesses.permissions import INQUIRIES_RESPOND
 from apps.inventory.models import InventoryLot
-from apps.matching.services import persist_matches
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_user
 
@@ -24,6 +23,27 @@ class PurchaseRequestError(Exception):
         super().__init__(message)
 
 
+def _require_respond(membership: BusinessMembership | None, message: str) -> None:
+    """Posting demand, quoting on it, and accepting a quote are all the same
+    kind of act — committing the business to a counterparty — so they share the
+    existing ``inquiries.respond`` capability. Viewers, who may browse the demand
+    board, are excluded.
+    """
+    if membership is None or not membership.has_capability(INQUIRIES_RESPOND):
+        raise PurchaseRequestError(message)
+
+
+def _require_active_network_business(business: Business | None, message: str) -> None:
+    """Acting on someone else's demand — quoting on it, or deciding on a quote —
+    needs an active business on both sides, the same rule the demand board in
+    ``selectors.network_purchase_requests`` and ``marketplace_lots_for`` apply.
+    Same notion of "active" as ``contacts.is_linkable_business``. This never
+    touches a business's own requests, inventory or ledger.
+    """
+    if business is None or business.status != Business.Status.ACTIVE:
+        raise PurchaseRequestError(message)
+
+
 @transaction.atomic
 def create_purchase_request(
     *,
@@ -33,6 +53,7 @@ def create_purchase_request(
 ) -> PurchaseRequest:
     if membership.business_id != business.id:
         raise PurchaseRequestError("دسترسی نامعتبر است.")
+    _require_respond(membership, "اجازه ثبت درخواست خرید را ندارید.")
     title = (fields.get("title") or "").strip()
     if len(title) < 3:
         raise PurchaseRequestError("عنوان درخواست خیلی کوتاه است.")
@@ -62,34 +83,9 @@ def create_purchase_request(
         is_public_to_network=bool(fields.get("is_public_to_network", True)),
         status=PurchaseRequest.Status.OPEN,
     )
-    persist_matches(pr)
-    _notify_potential_sellers(pr)
+    # Nothing is pushed at sellers any more: automatic matching is gone, so demand
+    # is found by browsing the network board rather than by a scoring rule.
     return pr
-
-
-def _notify_potential_sellers(pr: PurchaseRequest) -> None:
-    from apps.matching.models import MatchResult
-
-    # Only notify for matches that have not been announced yet so re-running the
-    # matcher (rematch) never sends duplicate notifications to the same sellers.
-    pending = MatchResult.objects.filter(purchase_request=pr, notified=False)
-    seller_ids = list(pending.values_list("lot__business_id", flat=True).distinct()[:20])
-    for business_id in seller_ids:
-        owners = BusinessMembership.objects.filter(
-            business_id=business_id,
-            status=BusinessMembership.Status.ACTIVE,
-            role__in=[BusinessMembership.Role.OWNER, BusinessMembership.Role.MANAGER],
-        ).select_related("user")[:3]
-        for membership in owners:
-            notify_user(
-                user=membership.user,
-                business=membership.business,
-                kind=Notification.Kind.GENERAL,
-                title="درخواست خرید منطبق",
-                body=f"درخواست «{pr.title}» با موجودی شما هم‌خوانی دارد.",
-                link=f"/app/purchase-requests/network/{pr.id}/",
-            )
-    pending.update(notified=True)
 
 
 @transaction.atomic
@@ -105,6 +101,15 @@ def submit_private_offer(
 ) -> PurchaseOffer:
     if membership.business_id != seller_business.id:
         raise PurchaseRequestError("دسترسی نامعتبر است.")
+    _require_respond(membership, "اجازه ارسال پیشنهاد را ندارید.")
+    _require_active_network_business(
+        seller_business,
+        "کسب‌وکار شما فعال نیست و امکان ارسال پیشنهاد در شبکه را ندارید.",
+    )
+    _require_active_network_business(
+        purchase_request.business,
+        "این درخواست در شبکه فعال نیست.",
+    )
     if seller_business.id == purchase_request.business_id:
         raise PurchaseRequestError("نمی‌توانید روی درخواست خودتان پیشنهاد بدهید.")
     if purchase_request.status in {PurchaseRequest.Status.CLOSED, PurchaseRequest.Status.CANCELLED}:
@@ -167,10 +172,20 @@ def decide_offer(
     pr = offer.purchase_request
     if membership.business_id != pr.business_id:
         raise PurchaseRequestError("فقط صاحب درخواست می‌تواند تصمیم بگیرد.")
-    # Accepting an offer commits the buyer to a reservation, so it is a
-    # reservation-management action and requires the capability.
-    if accept and not membership.has_capability(RESERVATIONS_MANAGE):
-        raise PurchaseRequestError("دسترسی لازم برای پذیرش پیشنهاد را ندارید.")
+    # Deciding on an offer is part of running your own purchase request, so it
+    # takes the same capability as creating one.
+    _require_respond(membership, "اجازه تصمیم‌گیری درباره پیشنهاد را ندارید.")
+    # Accepting or rejecting commits the two businesses to each other, so it is
+    # a network act and needs both sides active — even though the offer itself
+    # was submitted while they still were.
+    _require_active_network_business(
+        pr.business,
+        "کسب‌وکار شما فعال نیست و امکان تصمیم‌گیری درباره پیشنهاد را ندارید.",
+    )
+    _require_active_network_business(
+        offer.seller_business,
+        "کسب‌وکار پیشنهاددهنده فعال نیست.",
+    )
     if offer.status != PurchaseOffer.Status.SUBMITTED:
         raise PurchaseRequestError("این پیشنهاد قابل تصمیم‌گیری نیست.")
 
@@ -184,20 +199,36 @@ def decide_offer(
             purchase_request=pr,
             status=PurchaseOffer.Status.SUBMITTED,
         ).exclude(pk=offer.pk).update(status=PurchaseOffer.Status.REJECTED, updated_at=timezone.now())
-        # Turn the accepted offer into an active reservation hold when it points
-        # at a concrete lot. Runs in this same atomic block: if the lot lacks
-        # quantity the whole acceptance rolls back.
-        if offer.lot_id is not None:
-            from apps.reservations.services import create_reservation_from_offer
-
-            create_reservation_from_offer(offer=offer, membership=membership)
+    # Acceptance no longer holds stock: nothing is reserved and no quantity moves.
+    # It records the decision and tells the seller, who then settles the trade
+    # offline and records it in the ledger.
+    _notify_offer_decision(offer, accept=accept)
     return offer
+
+
+def _notify_offer_decision(offer: PurchaseOffer, *, accept: bool) -> None:
+    title = "پیشنهاد شما پذیرفته شد" if accept else "پیشنهاد شما رد شد"
+    verb = "پذیرفت" if accept else "رد کرد"
+    body = f"{offer.purchase_request.business.name} پیشنهاد شما روی «{offer.purchase_request.title}» را {verb}."
+    for m in offer.seller_business.memberships.filter(
+        status=BusinessMembership.Status.ACTIVE,
+        role__in=[BusinessMembership.Role.OWNER, BusinessMembership.Role.MANAGER],
+    ).select_related("user")[:5]:
+        notify_user(
+            user=m.user,
+            business=offer.seller_business,
+            kind=Notification.Kind.GENERAL,
+            title=title,
+            body=body,
+            link=f"/app/purchase-requests/network/{offer.purchase_request_id}/",
+        )
 
 
 @transaction.atomic
 def close_purchase_request(*, purchase_request: PurchaseRequest, membership: BusinessMembership) -> PurchaseRequest:
     if membership.business_id != purchase_request.business_id:
         raise PurchaseRequestError("دسترسی ندارید.")
+    _require_respond(membership, "اجازه لغو درخواست خرید را ندارید.")
     purchase_request.status = PurchaseRequest.Status.CANCELLED
     purchase_request.closed_at = timezone.now()
     purchase_request.save(update_fields=["status", "closed_at", "updated_at"])

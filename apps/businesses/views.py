@@ -4,9 +4,10 @@ import logging
 
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
 
+from .dashboard import dashboard_data
 from .decorators import business_login_required, require_capability
 from .forms import BusinessCreateForm, BusinessProfileForm, WarehouseForm
 from .models import BusinessMembership
@@ -36,30 +37,7 @@ def post_login(request: HttpRequest) -> HttpResponse:
 def dashboard(request: HttpRequest) -> HttpResponse:
     if not request.business:
         return redirect("businesses:onboarding_start")
-    from apps.inquiries.models import Inquiry
-    from apps.inventory.models import InventoryLot
-
-    warehouses = request.business.warehouses.filter(is_active=True)
-    lots = InventoryLot.objects.filter(business=request.business, archived_at__isnull=True)
-    open_inquiries = Inquiry.objects.filter(
-        business=request.business,
-        status__in=[
-            Inquiry.Status.NEW,
-            Inquiry.Status.VIEWED,
-            Inquiry.Status.CONTACTED,
-            Inquiry.Status.NEGOTIATING,
-        ],
-    ).count()
-    context = {
-        "warehouses": warehouses,
-        "warehouse_count": warehouses.count(),
-        "team_count": request.business.memberships.filter(status=BusinessMembership.Status.ACTIVE).count(),
-        "active_lots": lots.exclude(
-            status__in=[InventoryLot.Status.SOLD, InventoryLot.Status.DRAFT, InventoryLot.Status.HIDDEN]
-        ).count(),
-        "needs_confirmation": lots.filter(status=InventoryLot.Status.NEEDS_CONFIRMATION).count(),
-        "open_inquiries": open_inquiries,
-    }
+    context = dashboard_data(business=request.business, membership=request.membership)
     return render(request, "businesses/dashboard.html", context)
 
 

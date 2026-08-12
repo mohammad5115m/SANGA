@@ -11,6 +11,9 @@
 
 ## 2. Entity Relationship Overview
 
+The diagram below lists **only models that exist in code today**. Anything planned
+but unbuilt lives in §11, never here.
+
 ```mermaid
 erDiagram
   User ||--o{ BusinessMembership : has
@@ -23,18 +26,22 @@ erDiagram
   InventoryLot ||--o{ LotMedia : has
   InventoryLot ||--o{ LotPrice : priced_as
   PriceTier ||--o{ LotPrice : tier
-  Business ||--o{ PartnerRelation : supplier_or_partner
+  Business ||--o{ SavedSearch : saves
   InventoryLot ||--o{ Inquiry : about
-  InventoryLot ||--o{ Reservation : reserved_as
   Business ||--o{ PurchaseRequest : creates
   PurchaseRequest ||--o{ PurchaseOffer : receives
+  PurchaseOffer |o--o{ LedgerEntry : "settled by"
   Business ||--o{ CustomCatalog : publishes
   CustomCatalog ||--o{ CustomCatalogItem : contains
   InventoryLot ||--o{ CustomCatalogItem : included
   User ||--o{ Notification : receives
-  Business ||--o{ AuditEvent : scoped
-  User ||--o{ CustomerProfile : "may link"
-  Business ||--o{ CustomerProfile : owns
+  Business ||--o{ Contact : owns
+  Business |o--o{ Contact : "linked as colleague"
+  Contact ||--o{ ContactPrice : "quoted at"
+  InventoryLot ||--o{ ContactPrice : "overridden for"
+  Business ||--o{ LedgerEntry : scoped
+  Contact ||--o{ LedgerEntry : "statement of"
+  LedgerEntry |o--o| LedgerEntry : reverses
 ```
 
 ## 3. Core Entities
@@ -50,7 +57,8 @@ erDiagram
 | is_active / is_staff / is_superuser | Django auth |
 | date_joined / last_login | Standard |
 
-Related: `OTPChallenge`, `UserSessionDevice` (optional Phase 1.5).
+Related: `OTPChallenge`. (There is no `UserSessionDevice` model; per-device session
+tracking is not built.)
 
 ### businesses.Business
 
@@ -123,8 +131,8 @@ Physical batch.
 | product | FK |
 | warehouse | FK |
 | lot_code | Unique per business |
-| status | draft/available/reservation_pending/reserved/partially_sold/sold/expired/hidden/needs_confirmation |
-| visibility | private/selected_partners/all_partners/customer_catalog/public |
+| status | draft/available/reservation_pending/reserved/partially_sold/sold/expired/hidden/needs_confirmation (the two reserved states are legacy: nothing sets them since reservations were removed) |
+| visibility | `private` (داخلی) / `colleagues` (همکاران — every business with an account) / `public` (عمومی — colleagues **and** the storefront) |
 | available_sqm / original_sqm | Decimal |
 | slab_count / bundle_count | optional ints |
 | length_cm / width_cm / thickness_mm | dimensions |
@@ -141,7 +149,9 @@ Physical batch.
 | created_at / updated_at | |
 | archived_at | nullable |
 
-Check constraints: quantities ≥ 0; available ≤ original (+ reservation accounting rules).
+Check constraints: `available_sqm >= 0` and `original_sqm >= 0`. There is **no**
+DB constraint that `available_sqm <= original_sqm` — that remains an application
+convention, not an enforced check.
 
 ### pricing.PriceTier
 
@@ -157,11 +167,29 @@ Check constraints: quantities ≥ 0; available ≤ original (+ reservation accou
 |-------|-------|
 | lot | FK |
 | tier | FK |
-| amount | Decimal(12,2) |
+| amount | Decimal(14,2) |
 | currency | default IRR (or explicit) |
 | unit | per_sqm / per_slab / inquiry_only |
 
 Unique: `(lot, tier)`.
+
+### pricing.ContactPrice
+
+Contact-specific price: one number, one contact, one lot.
+
+| Field | Notes |
+|-------|-------|
+| contact | FK `contacts.Contact` (tenant scoping rides on `contact.business`) |
+| lot | FK `inventory.InventoryLot` |
+| amount | Decimal(14,2) |
+| currency | default IRR |
+| unit | per_sqm / per_slab / inquiry_only |
+| created_by / created_at / updated_at | audit trail for a commercial decision |
+
+Unique: `(contact, lot)`. The service refuses unless
+`contact.business_id == lot.business_id`. Visible only to the business named by
+`contact.linked_business`, and only through the `b2b_partner` audience — see
+[pricing.md](./pricing.md).
 
 ### inventory.LotMedia
 
@@ -177,62 +205,102 @@ Unique: `(lot, tier)`.
 
 ## 4. Network & Demand Entities
 
-### partners.PartnerRelation
+There is **no relationship model between businesses**. `PartnerRelation` and
+`SupplierFollow` were deleted: an account *is* the relationship, so lot visibility
+is decided by `InventoryLot.visibility` alone. `matching.MatchResult` was deleted
+with the scoring rule that produced it; sellers browse the demand board instead.
+The `partners`, `matching` and `reservations` apps survive only as migration
+history and hold no models.
 
-| Field | Notes |
-|-------|-------|
-| supplier_business | |
-| partner_business | |
-| status | requested/approved/rejected/blocked |
-| can_see_selected_lots | for selected_partners visibility |
-| created_at / decided_at | |
+### marketplace.SavedSearch
 
-### partners.SupplierFollow
-
-Follower user/business → supplier business.
+A stored marketplace filter (`business`, `user`, `name`, `query` JSON, notify
+flag, last-matched/last-notified timestamps). Moved here from the removed
+`partners` app; a Celery beat task re-runs the filters and notifies the owner.
 
 ### purchase_requests.PurchaseRequest
 
-Structured demand from B2B users: stone type, color, qty, thickness, grade, budget, destination city, required date, notes, status.
+Structured demand from B2B users: stone type, color, qty, thickness, grade, budget,
+destination city, required date, notes, status. It reaches the demand board only
+when `is_public_to_network` is set. The `matching` status is legacy — nothing sets
+it since automatic matching was removed, but existing rows keep it and the board
+still accepts it.
 
 ### purchase_requests.PurchaseOffer
 
-Private seller response to a PR (not public auction).
-
-### matching.MatchResult (optional persisted)
-
-Cached/generated matches between PR and lots for notification/review.
+Private seller response to a PR (not public auction). Accepting one closes the
+request and rejects the competing offers; it holds no stock. An accepted offer can
+be settled into the ledger once per business — see `LedgerEntry.related_offer`.
 
 ## 5. Commercial Interaction Entities
 
 ### inquiries.Inquiry
 
-Links: business, requester (user/customer), optional lot/catalog/PR, status pipeline (`new` → … → `converted/closed/lost`), assignee, timestamps.
+Links: business, optional `lot` and/or `custom_catalog` (no purchase-request FK),
+optional `requester` user, optional `assignee` user (field exists; **no assign UI
+yet**), status pipeline (`new` → … → `converted/closed/lost`), contact fields
+(`name`, `phone`, `message`), `source`, timestamps.
 
-### reservations.Reservation
+### contacts.Contact
+
+The CRM-lite record; there is **no** `customers.CustomerProfile` model (the
+`customers.manage` capability code predates this app and still governs it).
 
 | Field | Notes |
 |-------|-------|
-| lot | |
-| business | seller |
-| requester | |
-| quantity | Decimal |
-| status | requested/approved/rejected/extended/cancelled/converted/expired |
-| expires_at | |
-| reason / notes | |
-| timestamps | |
+| business | FK — owning tenant; a contact is never visible to another business |
+| display_name / phone / address / notes | |
+| linked_business | Optional FK to any other **active** business; no approval involved |
+| is_active | archive instead of delete |
+| created_by / created_at / updated_at | |
 
-Quantity locking via transactions + `select_for_update`.
+There is **no relationship type**. Only stone sellers and traders hold accounts,
+so every contact is a همکار who sometimes buys and sometimes sells; the former
+`is_customer` / `is_supplier` / `is_trader` flags (and the "at least one required"
+rule) were dropped in migration `contacts.0004_remove_contact_types`. Nothing keyed
+off them — no report, price rule or ledger entry — so the values were not migrated
+anywhere. The list is filtered by free-text search over name and phone.
 
-### customers.CustomerProfile
+An archived contact (`is_active = False`) disappears from the default contact list
+but **not** from financial reporting while its balance is non-zero — see
+[accounting.md](./accounting.md) §6.4. It stays reachable through the list's
+«نمایش مخاطبین بایگانی‌شده» filter (`?archived=1`) and can be returned to the active
+list from its detail page (`contacts:restore`, POST only). Archiving also suspends
+that contact's `ContactPrice` overrides, so the archive confirmation screen names
+how many negotiated prices will stop applying, and restoring brings them back.
 
-Lightweight CRM per business: name, phone, company, city, notes, source, linked user optional.
+Unique: `(business, linked_business)` where `linked_business` is not null
+(`uniq_linked_business_per_business`) — one colleague maps to at most one contact,
+so a colleague's balance can never split across two ledgers.
+
+### accounting.LedgerEntry
+
+Immutable per-contact ledger entry. Full semantics in
+[accounting.md](./accounting.md).
+
+| Field | Notes |
+|-------|-------|
+| business / contact | tenant + statement scope |
+| entry_type | sale / purchase / payment_received / payment_made / adjust_debit / adjust_credit / reversal |
+| amount | Decimal(14,2), positive magnitude, check constraint `> 0` |
+| balance_delta | Decimal(14,2) signed — single source of truth for balance math |
+| balance_after | Decimal(18,2) running balance, computed under a contact row lock |
+| currency / description / reference / occurred_on | |
+| related_lot / related_offer / reverses | optional links |
+| reversed_at | set on the original when a reversal is posted (bookkeeping flag) |
+| created_by / created_at | |
+
+Constraints: `ledger_amount_positive`; `uniq_trade_entry_per_offer` on
+`(business, related_offer)` for trade types with a non-null offer and
+`reversed_at IS NULL`. `save()` blocks updates and `delete()` raises.
 
 ## 6. Catalog & Sharing
 
 ### catalog.CustomCatalog
 
-title, business, customer optional, message, share_token, expires_at, is_active, view_count, first/last viewed.
+`title`, `business`, optional free-text `customer_name` (not a Contact/Customer FK),
+`custom_message`, `share_token`, `expires_at`, `is_active`, `view_count`,
+first/last viewed timestamps.
 
 ### catalog.CustomCatalogItem
 
@@ -242,20 +310,23 @@ Public share URLs must use B2C-safe serializers only.
 
 ## 7. Platform Cross-Cutting
 
-### notifications.Notification / NotificationPreference
+### notifications.Notification
 
-### audit.AuditEvent
+user, business, kind, title, body, link, read state, timestamps. This is the only
+model in the app — there is no `NotificationPreference` table; per-channel
+preferences are not built.
 
-actor, business, entity_type, entity_id, action, old_values, new_values, ip/user_agent, created_at.  
-Normal users cannot edit/delete.
+### Not built (do not document as if they exist)
 
-### businesses.BusinessVerificationDocument (lightweight)
-
-For pending verification workflow — keep minimal.
-
-### analytics events
-
-Start with derived queries + sparse event table; avoid heavy warehouse prematurely.
+- **`audit.AuditEvent`** — there is no audit app or model. The `audit.view`
+  capability code exists but currently gates nothing. Writes are traced through
+  server-side logging only (`logger.info` in each service).
+- **`businesses.BusinessVerificationDocument`** — `Business.verification_status`
+  exists as a field; the document workflow does not.
+- **analytics event tables** — the `analytics.view` capability code exists but is
+  not checked anywhere yet, and there is no event table. The dashboard at `/app/`
+  reads live rows through the existing selectors; it stores and aggregates nothing
+  of its own.
 
 ## 8. Indexing Strategy (Initial)
 
@@ -273,7 +344,7 @@ Prefer TextChoices on models for:
 - lot status, visibility  
 - membership role/status  
 - verification status  
-- inquiry/reservation statuses  
+- inquiry status  
 - media kind  
 - price unit  
 
@@ -287,5 +358,10 @@ Prefer TextChoices on models for:
 
 - Shared global stone taxonomy marketplace-wide (can normalize later)
 - Invoice/Order/Payment tables
-- Complex KYC document graph
+- Complex KYC document graph (incl. `BusinessVerificationDocument`)
 - Star ratings / reviews
+- Audit event table (`AuditEvent`) and per-device session tracking
+- A separate customer-profile table; `contacts.Contact` covers CRM-lite
+- Reservations/holds and automatic matching (removed; trades are recorded manually)
+- Squashing the migration history of the emptied `partners`, `matching` and
+  `reservations` apps, which is why they are still in `INSTALLED_APPS`

@@ -9,7 +9,6 @@
       <p class="page-lead">{{ pr.get_status_display }} · {{ pr.required_qty_sqm }} m²</p>
     </div>
     <div class="btn-row">
-      <form method="post" action="{% url 'purchase_requests:rematch' pr.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">تطبیق دوباره</button></form>
       <form method="post" action="{% url 'purchase_requests:close' pr.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit">لغو</button></form>
     </div>
   </div>
@@ -38,30 +37,14 @@
             <button class="btn btn-primary btn-sm" name="decision" value="accept" type="submit">پذیرش</button>
             <button class="btn btn-ghost btn-sm" name="decision" value="reject" type="submit">رد</button>
           </form>
+          {% elif offer.status == 'accepted' and can_record_trade %}
+          <div class="btn-row">
+            <a class="btn btn-primary btn-sm" href="{% url 'accounting:record_trade' %}?offer={{ offer.id }}">ثبت سند مالی این معامله</a>
+          </div>
           {% endif %}
         </article>
       {% empty %}
         <div class="empty-state">هنوز پیشنهاد خصوصی نرسیده است.</div>
-      {% endfor %}
-    </div>
-  </section>
-
-  <section class="stack-md">
-    <h2 class="section-title">تطبیق‌های پیشنهادی سیستم</h2>
-    <div class="list-stack">
-      {% for match in matches %}
-        <article class="list-item">
-          <div>
-            <div class="list-title">{{ match.lot.product.commercial_name }}</div>
-            <div class="muted">{{ match.lot.business.name }} · امتیاز {{ match.score }}</div>
-            <div class="chip-row">
-              {% for reason in match.reasons %}<span class="chip">{{ reason }}</span>{% endfor %}
-            </div>
-          </div>
-          <a class="btn btn-ghost btn-sm" href="{% url 'marketplace:lot_detail' match.lot.id %}">مشاهده</a>
-        </article>
-      {% empty %}
-        <div class="empty-state">تطبیقی پیدا نشد.</div>
       {% endfor %}
     </div>
   </section>

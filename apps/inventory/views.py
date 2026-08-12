@@ -4,6 +4,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
@@ -18,9 +19,18 @@ from apps.businesses.permissions import (
     PRICES_EDIT,
     PRICES_VIEW,
 )
-from apps.pricing.services import resolve_visible_prices
+from apps.contacts.models import Contact
+from apps.contacts.selectors import get_contact
+from apps.pricing.selectors import contact_prices_for_lot
+from apps.pricing.services import (
+    PricingError,
+    remove_contact_price,
+    resolve_visible_prices,
+    set_contact_price,
+)
 
 from .forms import (
+    ContactPriceForm,
     InventoryFilterForm,
     LotDetailsForm,
     LotEditForm,
@@ -187,6 +197,62 @@ def lot_edit(request: HttpRequest, lot_id) -> HttpResponse:
         request,
         "inventory/lot_edit.html",
         {"lot": lot, "form": form, "price_form": price_form},
+    )
+
+
+@business_login_required
+@require_capability(PRICES_EDIT)
+@require_http_methods(["GET", "POST"])
+def lot_partner_prices(request: HttpRequest, lot_id) -> HttpResponse:
+    """Per-partner prices for one lot: add, change, or remove an override.
+
+    The capability and the tenant checks are re-applied inside
+    ``pricing.services``; the decorator here only keeps the screen out of sight.
+    """
+    lot = get_business_lot(request.business, lot_id)
+    if lot is None:
+        messages.error(request, "محموله یافت نشد.")
+        return redirect("inventory:lot_list")
+
+    form = ContactPriceForm(business=request.business)
+    if request.method == "POST":
+        action = request.POST.get("action", "save")
+        try:
+            if action == "remove":
+                contact = get_contact(request.business, request.POST.get("contact", ""))
+                remove_contact_price(lot=lot, contact=contact, membership=request.membership)
+                messages.success(request, "قیمت اختصاصی حذف شد.")
+                return redirect("inventory:lot_partner_prices", lot_id=lot.id)
+
+            form = ContactPriceForm(request.POST, business=request.business)
+            if form.is_valid():
+                set_contact_price(
+                    lot=lot,
+                    contact=form.cleaned_data["contact"],
+                    membership=request.membership,
+                    amount=form.cleaned_data.get("amount"),
+                    currency=form.cleaned_data.get("currency") or "IRR",
+                    unit=form.cleaned_data["unit"],
+                )
+                messages.success(request, "قیمت اختصاصی ذخیره شد.")
+                return redirect("inventory:lot_partner_prices", lot_id=lot.id)
+        except (Contact.DoesNotExist, ValidationError, ValueError):
+            messages.error(request, "مخاطب یافت نشد.")
+            return redirect("inventory:lot_partner_prices", lot_id=lot.id)
+        except PricingError as exc:
+            messages.error(request, exc.message)
+        except Exception:
+            logger.exception("Contact price update failed lot=%s", lot.id)
+            messages.error(request, "ذخیره قیمت اختصاصی با خطا روبه‌رو شد؛ دوباره تلاش کنید.")
+
+    return render(
+        request,
+        "inventory/lot_partner_prices.html",
+        {
+            "lot": lot,
+            "form": form,
+            "overrides": contact_prices_for_lot(request.business, lot),
+        },
     )
 
 
@@ -470,7 +536,7 @@ def quick_add_visibility(request: HttpRequest) -> HttpResponse:
 
     form = LotVisibilityForm(
         request.POST or None,
-        initial={"visibility": InventoryLot.Visibility.CUSTOMER_CATALOG},
+        initial={"visibility": InventoryLot.Visibility.PUBLIC},
     )
     if request.method == "POST" and form.is_valid():
         data["visibility"] = form.cleaned_data["visibility"]

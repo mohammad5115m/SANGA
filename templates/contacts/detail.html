@@ -1,0 +1,95 @@
+{% extends "layouts/app_shell.html" %}
+{% load humanize %}
+{% block title %}{{ contact.display_name }} | مخاطبین{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">{{ contact.display_name }}</h1>
+      <div class="badge-row">
+        {% if contact.linked_business %}<span class="badge badge-muted">همکار متصل</span>{% endif %}
+        {% if not contact.is_active %}<span class="badge badge-muted">بایگانی‌شده</span>{% endif %}
+      </div>
+    </div>
+    <div class="btn-row">
+      <a class="btn btn-secondary btn-sm" href="{% url 'contacts:edit' contact.id %}">ویرایش</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'contacts:list' %}">بازگشت</a>
+    </div>
+  </div>
+
+  <section class="panel stack-sm">
+    <h2 class="section-title">اطلاعات تماس</h2>
+    <div class="kv"><span>شماره تماس</span><strong dir="ltr">{{ contact.phone|default:"—" }}</strong></div>
+    <div class="kv"><span>آدرس</span><strong>{{ contact.address|default:"—" }}</strong></div>
+    {% if contact.linked_business %}
+      <div class="kv"><span>همکار متصل</span><strong>{{ contact.linked_business.name }}</strong></div>
+    {% endif %}
+  </section>
+
+  {% if contact.notes %}
+  <section class="panel stack-sm">
+    <h2 class="section-title">یادداشت</h2>
+    <p class="muted">{{ contact.notes|linebreaksbr }}</p>
+  </section>
+  {% endif %}
+
+  <section class="panel stack-sm">
+    <h2 class="section-title">خلاصه مالی</h2>
+    {% if balance %}
+      <div class="kv">
+        <span>مانده حساب</span>
+        <strong class="amount-{{ balance.state }}">{{ balance.amount|intcomma }} ریال · {{ balance.label }}</strong>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-secondary btn-sm" href="{% url 'accounting:statement' contact.id %}">دفتر حساب</a>
+      </div>
+    {% else %}
+      <p class="muted">برای مشاهده مانده و دفتر حساب، دسترسی مالی لازم است.</p>
+    {% endif %}
+  </section>
+
+  {% if contact_prices is not None %}
+  <section class="panel stack-sm">
+    <h2 class="section-title">قیمت‌های اختصاصی این مخاطب</h2>
+    <div class="list-stack">
+      {% for override in contact_prices %}
+        <article class="list-item">
+          <div>
+            <div class="list-title">{{ override.lot.product.commercial_name }}</div>
+            <div class="muted" dir="ltr">{{ override.lot.lot_code }}</div>
+          </div>
+          <strong dir="ltr">
+            {% if override.unit == 'inquiry_only' %}
+              استعلامی
+            {% else %}
+              {{ override.amount|intcomma }} {{ override.currency }}
+            {% endif %}
+          </strong>
+        </article>
+      {% empty %}
+        <div class="empty-state">قیمت اختصاصی‌ای برای این مخاطب ثبت نشده است.</div>
+      {% endfor %}
+    </div>
+    <p class="muted">قیمت اختصاصی از صفحه‌ی همان محموله ثبت یا حذف می‌شود.</p>
+  </section>
+  {% endif %}
+
+  <section class="panel stack-sm">
+    <h2 class="section-title">مدیریت</h2>
+    <div class="btn-row">
+      {% if contact.is_active %}
+        <a class="btn btn-ghost btn-sm" href="{% url 'contacts:archive' contact.id %}">بایگانی مخاطب</a>
+      {% else %}
+        <form method="post" action="{% url 'contacts:restore' contact.id %}">
+          {% csrf_token %}
+          <button class="btn btn-secondary btn-sm" type="submit">بازگرداندن از بایگانی</button>
+        </form>
+      {% endif %}
+    </div>
+    {% if not contact.is_active %}
+      <p class="muted">تا وقتی این مخاطب بایگانی است، قیمت‌های اختصاصی‌اش اعمال نمی‌شود.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

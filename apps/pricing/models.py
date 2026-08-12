@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -56,3 +57,66 @@ class LotPrice(models.Model):
 
     def __str__(self) -> str:
         return f"{self.lot_id} / {self.tier.code}: {self.amount} {self.currency}"
+
+
+class ContactPrice(models.Model):
+    """A price for one lot, offered to one specific contact of the lot's owner.
+
+    This is not a rules engine: it is a plain per-contact override that wins over
+    the B2B tier for that one partner and nobody else. Tenant scoping rides on
+    ``contact.business``, which the service checks against ``lot.business`` so a
+    business can never price another business's lot.
+
+    An override only ever reaches a viewer through
+    ``services.resolve_prices_for_viewer`` with the ``b2b_partner`` audience, and
+    only when the viewer *is* the business the contact is linked to. The public
+    B2C catalog and anonymous visitors never see one.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contact = models.ForeignKey(
+        "contacts.Contact",
+        on_delete=models.CASCADE,
+        related_name="lot_prices",
+    )
+    lot = models.ForeignKey(
+        "inventory.InventoryLot",
+        on_delete=models.CASCADE,
+        related_name="contact_prices",
+    )
+    amount = models.DecimalField(
+        "مبلغ",
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    currency = models.CharField(max_length=3, default="IRR")
+    unit = models.CharField(
+        "واحد",
+        max_length=20,
+        choices=LotPrice.Unit.choices,
+        default=LotPrice.Unit.PER_SQM,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contact_prices_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "قیمت اختصاصی مخاطب"
+        verbose_name_plural = "قیمت‌های اختصاصی مخاطبین"
+        ordering = ["contact__display_name"]
+        constraints = [
+            models.UniqueConstraint(fields=["contact", "lot"], name="uniq_price_per_contact_lot"),
+        ]
+        indexes = [
+            models.Index(fields=["lot", "contact"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.lot_id} / {self.contact_id}: {self.amount} {self.currency}"

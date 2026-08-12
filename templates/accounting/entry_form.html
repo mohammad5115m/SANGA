@@ -1,0 +1,33 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}ثبت سند مالی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">ثبت سند مالی</h1>
+    <p class="page-lead">{{ contact.display_name }}</p>
+  </div>
+
+  <section class="panel stack-md">
+    <p class="muted">
+      «فروش» و «پرداخت» مخاطب را بدهکارتر می‌کند؛
+      «خرید» و «دریافت» او را بستانکارتر می‌کند. برای اصلاح دستی، ذکر دلیل الزامی است.
+    </p>
+    <form method="post" class="stack-md" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+      {% for field in form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+        </label>
+      {% endfor %}
+      <div class="btn-row">
+        <button class="btn btn-primary" type="submit">ثبت سند</button>
+        <a class="btn btn-ghost" href="{% url 'accounting:statement' contact.id %}">انصراف</a>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

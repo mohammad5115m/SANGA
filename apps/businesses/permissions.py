@@ -14,15 +14,14 @@ PRICES_VIEW: Final = "prices.view"
 PRICES_EDIT: Final = "prices.edit"
 INQUIRIES_VIEW: Final = "inquiries.view"
 INQUIRIES_RESPOND: Final = "inquiries.respond"
-RESERVATIONS_VIEW: Final = "reservations.view"
-RESERVATIONS_MANAGE: Final = "reservations.manage"
-PARTNERS_MANAGE: Final = "partners.manage"
 CUSTOMERS_MANAGE: Final = "customers.manage"
 CATALOG_MANAGE: Final = "catalog.manage"
 TEAM_MANAGE: Final = "team.manage"
 BUSINESS_SETTINGS: Final = "business.settings"
 ANALYTICS_VIEW: Final = "analytics.view"
 AUDIT_VIEW: Final = "audit.view"
+LEDGER_VIEW: Final = "ledger.view"
+LEDGER_MANAGE: Final = "ledger.manage"
 
 ALL_CAPABILITIES: Final[tuple[str, ...]] = (
     INVENTORY_VIEW,
@@ -36,15 +35,14 @@ ALL_CAPABILITIES: Final[tuple[str, ...]] = (
     PRICES_EDIT,
     INQUIRIES_VIEW,
     INQUIRIES_RESPOND,
-    RESERVATIONS_VIEW,
-    RESERVATIONS_MANAGE,
-    PARTNERS_MANAGE,
     CUSTOMERS_MANAGE,
     CATALOG_MANAGE,
     TEAM_MANAGE,
     BUSINESS_SETTINGS,
     ANALYTICS_VIEW,
     AUDIT_VIEW,
+    LEDGER_VIEW,
+    LEDGER_MANAGE,
 )
 
 ROLE_DEFAULTS: Final[dict[str, tuple[str, ...]]] = {
@@ -61,16 +59,14 @@ ROLE_DEFAULTS: Final[dict[str, tuple[str, ...]]] = {
         PRICES_VIEW,
         INQUIRIES_VIEW,
         INQUIRIES_RESPOND,
-        RESERVATIONS_VIEW,
-        RESERVATIONS_MANAGE,
         CUSTOMERS_MANAGE,
         CATALOG_MANAGE,
+        LEDGER_VIEW,
     ),
     "viewer": (
         INVENTORY_VIEW,
         ANALYTICS_VIEW,
         INQUIRIES_VIEW,
-        RESERVATIONS_VIEW,
     ),
 }
 

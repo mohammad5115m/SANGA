@@ -5,19 +5,20 @@ import logging
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required
 from apps.inquiries.models import Inquiry
 from apps.inquiries.services import InquiryError, create_inquiry
-from apps.partners.models import SupplierFollow
-from apps.partners.selectors import followed_supplier_ids, saved_searches_for
-from apps.partners.services import PartnerError, follow_supplier, save_search, unfollow_supplier
 
 from .forms import MarketplaceFilterForm, SaveSearchForm
-from .selectors import filter_marketplace_lots, get_marketplace_lot, marketplace_lots_for
-from .services import b2b_price_context, marketplace_lot_card
+from .selectors import (
+    filter_marketplace_lots,
+    get_marketplace_lot,
+    marketplace_lots_for,
+    saved_searches_for,
+)
+from .services import MarketplaceError, b2b_price_context, marketplace_lot_card, save_search
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,6 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
 
     form = MarketplaceFilterForm(request.GET or None)
     qs = marketplace_lots_for(request.business)
-    followed_ids = followed_supplier_ids(request.business)
     if form.is_valid():
         qs = filter_marketplace_lots(
             qs,
@@ -37,11 +37,9 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
             stone_type=form.cleaned_data.get("stone_type", ""),
             color=form.cleaned_data.get("color", ""),
             only_urgent=bool(form.cleaned_data.get("only_urgent")),
-            only_followed=bool(form.cleaned_data.get("only_followed")),
-            followed_supplier_ids=followed_ids,
             min_qty=form.cleaned_data.get("min_qty", ""),
         )
-    cards = [marketplace_lot_card(lot) for lot in qs[:80]]
+    cards = [marketplace_lot_card(lot, request.business) for lot in qs[:80]]
     save_form = SaveSearchForm()
     return render(
         request,
@@ -85,10 +83,6 @@ def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             messages.success(request, "استعلام برای تأمین‌کننده ارسال شد.")
             return redirect("marketplace:lot_detail", lot_id=lot.id)
 
-    is_following = SupplierFollow.objects.filter(
-        follower_business=request.business,
-        supplier_business=lot.business,
-    ).exists()
     return render(
         request,
         "marketplace/lot_detail.html",
@@ -96,10 +90,9 @@ def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             "lot": lot,
             "product": lot.product,
             "supplier": lot.business,
-            "price": b2b_price_context(lot),
+            "price": b2b_price_context(lot, request.business),
             "media_items": [m for m in lot.media.all() if m.kind == "image"],
             "inquiry_form": form,
-            "is_following": is_following,
         },
     )
 
@@ -126,44 +119,10 @@ def save_current_search(request: HttpRequest) -> HttpResponse:
                     "only_urgent": bool(filters.cleaned_data.get("only_urgent")),
                 },
             )
-        except PartnerError as exc:
+        except MarketplaceError as exc:
             messages.error(request, exc.message)
         else:
             messages.success(request, "جستجو ذخیره شد.")
     else:
         messages.error(request, "ذخیره جستجو ممکن نشد.")
     return redirect("marketplace:home")
-
-
-@business_login_required
-@require_POST
-def follow_toggle(request: HttpRequest, supplier_id) -> HttpResponse:
-    if not request.business:
-        return redirect("businesses:onboarding_start")
-    from apps.businesses.models import Business
-
-    supplier = Business.objects.filter(pk=supplier_id, status=Business.Status.ACTIVE).first()
-    if supplier is None:
-        messages.error(request, "تأمین‌کننده یافت نشد.")
-        return redirect("marketplace:home")
-    action = request.POST.get("action", "follow")
-    try:
-        if action == "unfollow":
-            unfollow_supplier(follower_business=request.business, supplier_business=supplier)
-            messages.info(request, "دنبال‌کردن لغو شد.")
-        else:
-            follow_supplier(
-                follower_business=request.business,
-                supplier_business=supplier,
-                membership=request.membership,
-            )
-            messages.success(request, f"{supplier.name} دنبال شد.")
-    except PartnerError as exc:
-        messages.error(request, exc.message)
-    next_url = request.POST.get("next")
-    # Only follow same-host redirects; anything else could be an open redirect.
-    if next_url and url_has_allowed_host_and_scheme(
-        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
-    ):
-        return redirect(next_url)
-    return redirect("partners:directory")

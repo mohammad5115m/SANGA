@@ -75,10 +75,17 @@ class PurchaseOfferForm(forms.Form):
         widget=forms.Textarea(attrs={"class": "field-input", "rows": 3}),
     )
 
-    def __init__(self, *args, business=None, **kwargs):
+    def __init__(self, *args, business, **kwargs):
+        """``business`` is required: the lot choices are the offering business's
+        own un-archived lots and nothing else, so a crafted lot id from another
+        tenant fails validation before the service is ever called.
+        """
         super().__init__(*args, **kwargs)
-        if business is not None:
-            self.fields["lot"].queryset = InventoryLot.objects.filter(
+        self.fields["lot"].queryset = (
+            InventoryLot.objects.filter(
                 business=business,
                 archived_at__isnull=True,
-            ).select_related("product").order_by("-updated_at")
+            )
+            .select_related("product")
+            .order_by("-updated_at")
+        )

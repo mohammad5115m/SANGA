@@ -70,10 +70,10 @@ class InventoryLot(models.Model):
         NEEDS_CONFIRMATION = "needs_confirmation", "نیاز به تأیید"
 
     class Visibility(models.TextChoices):
+        # COLLEAGUES means every business with an account: there is no
+        # partnership to approve and no per-lot allowlist.
         PRIVATE = "private", "داخلی"
-        SELECTED_PARTNERS = "selected_partners", "شرکای انتخابی"
-        ALL_PARTNERS = "all_partners", "همه شرکای تأییدشده"
-        CUSTOMER_CATALOG = "customer_catalog", "کاتالوگ مشتری"
+        COLLEAGUES = "colleagues", "همکاران"
         PUBLIC = "public", "عمومی"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

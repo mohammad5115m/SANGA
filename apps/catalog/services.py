@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -90,17 +91,45 @@ def set_catalog_lots(
     membership: BusinessMembership,
     lot_ids: list,
 ) -> CustomCatalog:
+    """Replace the catalog's lots with ``lot_ids``.
+
+    Only lots the acting business owns and has not archived may be attached. A
+    lot id from another tenant — or one that is simply not a valid id — aborts
+    the whole call, so the caller cannot be told a crafted request succeeded.
+    """
     _require_catalog_manage(membership)
     if catalog.business_id != membership.business_id:
         raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
 
-    valid_ids = list(
-        InventoryLot.objects.filter(
-            business=catalog.business,
-            id__in=lot_ids,
-            archived_at__isnull=True,
-        ).values_list("id", flat=True)
-    )
+    requested = [lot_id for lot_id in (lot_ids or []) if lot_id is not None]
+    try:
+        owned = list(
+            InventoryLot.objects.filter(
+                business=catalog.business,
+                id__in=requested,
+                archived_at__isnull=True,
+            ).values_list("id", flat=True)
+        )
+    except (DjangoValidationError, TypeError, ValueError) as exc:
+        # A malformed id can only come from a crafted request; refuse the whole
+        # submission rather than quietly attaching the well-formed remainder.
+        raise CatalogError("محموله انتخاب‌شده معتبر نیست.") from exc
+
+    # Reject rather than silently drop: a lot id this business does not own must
+    # never be accepted as a no-op, or a crafted request looks like it worked.
+    if len(owned) != len({str(lot_id) for lot_id in requested}):
+        raise CatalogError("یک یا چند محموله انتخاب‌شده متعلق به کسب‌وکار شما نیست.")
+
+    # Preserve the order the caller asked for; the DB does not guarantee it.
+    owned_ids = {str(lot_id) for lot_id in owned}
+    valid_ids: list = []
+    seen: set[str] = set()
+    for lot_id in requested:
+        key = str(lot_id)
+        if key in owned_ids and key not in seen:
+            seen.add(key)
+            valid_ids.append(lot_id)
+
     catalog.items.all().delete()
     CustomCatalogItem.objects.bulk_create(
         [
