@@ -16,8 +16,8 @@ from apps.businesses.services import add_warehouse, create_business_for_owner
 from apps.contacts.services import archive_contact, create_contact
 from apps.inquiries.models import Inquiry
 from apps.inventory.models import InventoryLot, Product
-from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
 from apps.pricing.services import ensure_default_tiers, set_lot_prices
+from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
 
 User = get_user_model()
 

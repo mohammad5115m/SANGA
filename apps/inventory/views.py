@@ -412,6 +412,7 @@ def quick_add_quantity(request: HttpRequest) -> HttpResponse:
     form = LotQuantityForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         from apps.businesses.models import Warehouse
+
         from .models import Product
 
         product = Product.objects.filter(business=request.business, pk=data["product_id"]).first()

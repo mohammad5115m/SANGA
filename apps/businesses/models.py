@@ -102,14 +102,14 @@ class BusinessMembership(models.Model):
     def __str__(self) -> str:
         return f"{self.user} @ {self.business} ({self.role})"
 
-    def clean(self) -> None:
-        if not isinstance(self.permissions, list):
-            raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
-
     def save(self, *args, **kwargs):
         if not self.permissions:
             self.permissions = defaults_for_role(self.role)
         super().save(*args, **kwargs)
+
+    def clean(self) -> None:
+        if not isinstance(self.permissions, list):
+            raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
 
     def has_capability(self, capability: str) -> bool:
         if self.status != self.Status.ACTIVE:

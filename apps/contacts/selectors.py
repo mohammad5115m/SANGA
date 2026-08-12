@@ -6,6 +6,7 @@ from apps.businesses.models import Business
 
 from .models import Contact
 
+
 def contacts_for_business(
     business: Business,
     *,

@@ -2,17 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import wraps
-from typing import TypeVar
 
 from django.contrib import messages
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 
-F = TypeVar("F", bound=Callable[..., HttpResponse])
+type View = Callable[..., HttpResponse]
 
 
-def business_login_required(view: F) -> F:
+def business_login_required[F: View](view: F) -> F:
     @wraps(view)
     def _wrapped(request: HttpRequest, *args, **kwargs):
         if not request.user.is_authenticated:
@@ -22,7 +21,7 @@ def business_login_required(view: F) -> F:
     return _wrapped  # type: ignore[return-value]
 
 
-def require_capability(capability: str) -> Callable[[F], F]:
+def require_capability[F: View](capability: str) -> Callable[[F], F]:
     def decorator(view: F) -> F:
         @wraps(view)
         def _wrapped(request: HttpRequest, *args, **kwargs):

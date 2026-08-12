@@ -93,7 +93,9 @@ if _db_engine == "sqlite":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            # Overridable so the fresh-migrate check can target a throwaway file
+            # instead of the developer's working database.
+            "NAME": env("SANGA_SQLITE_PATH", default=str(BASE_DIR / "db.sqlite3")),
         }
     }
 else:

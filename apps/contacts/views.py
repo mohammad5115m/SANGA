@@ -54,8 +54,8 @@ def contact_detail(request: HttpRequest, contact_id) -> HttpResponse:
 
     # Financial summary is only exposed to members with the ledger.view
     # capability; contact management alone must not reveal balances.
-    from apps.businesses.permissions import LEDGER_VIEW, PRICES_VIEW
     from apps.accounting.selectors import current_balance, describe_balance
+    from apps.businesses.permissions import LEDGER_VIEW, PRICES_VIEW
     from apps.pricing.selectors import contact_prices_for_contact
 
     balance = None

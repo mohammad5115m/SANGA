@@ -16,8 +16,8 @@ from apps.catalog.services import (
     create_custom_catalog,
     set_catalog_lots,
 )
-from apps.inventory.models import InventoryLot, Product
 from apps.inquiries.models import Inquiry
+from apps.inventory.models import InventoryLot, Product
 from apps.pricing.services import ensure_default_tiers, set_lot_prices
 
 User = get_user_model()

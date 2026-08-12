@@ -34,7 +34,13 @@ def b2c_price_context(lot: InventoryLot) -> dict:
     if b2c is None:
         return {"has_price": False, "amount": None, "currency": None, "unit": None, "label": "استعلام بگیرید"}
     if b2c.display_as_inquiry or b2c.amount is None:
-        return {"has_price": False, "amount": None, "currency": b2c.currency, "unit": b2c.unit, "label": "استعلام بگیرید"}
+        return {
+            "has_price": False,
+            "amount": None,
+            "currency": b2c.currency,
+            "unit": b2c.unit,
+            "label": "استعلام بگیرید",
+        }
     return {
         "has_price": True,
         "amount": b2c.amount,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum
+from enum import StrEnum
 
 from django.utils import timezone
 
@@ -11,7 +11,7 @@ from apps.businesses.models import Business
 from .models import InventoryLot
 
 
-class FreshnessLevel(str, Enum):
+class FreshnessLevel(StrEnum):
     FRESH = "fresh"
     NEEDS_CONFIRMATION = "needs_confirmation"
     STALE = "stale"

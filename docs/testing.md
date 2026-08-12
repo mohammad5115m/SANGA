@@ -5,7 +5,22 @@
 ```bash
 pytest
 python manage.py check
+python manage.py makemigrations --check
+ruff check .
 ```
+
+## Definition of done for every phase
+
+A change is not finished until all five of these are green:
+
+1. `python manage.py check`
+2. `python manage.py makemigrations --check` — no unrecorded model changes
+3. `pytest`
+4. `./scripts/check_fresh_migrate.sh` — `migrate` against a **brand-new empty database**
+5. `ruff check .`
+
+Step 4 is the one that is easy to forget and the one that catches a prematurely
+deleted migration-only app. See [v2-migration-strategy.md](./v2-migration-strategy.md).
 
 ## Critical coverage areas
 

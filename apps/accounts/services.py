@@ -46,7 +46,7 @@ class OTPRequestResult:
 
 def _hash_code(code: str) -> str:
     secret = settings.SECRET_KEY
-    return hashlib.sha256(f"{secret}:{code}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{secret}:{code}".encode()).hexdigest()
 
 
 def _client_ip(request: HttpRequest | None) -> str | None:

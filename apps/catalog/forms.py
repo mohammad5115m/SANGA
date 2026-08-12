@@ -36,12 +36,16 @@ class InquiryForm(forms.Form):
     phone = forms.CharField(
         label="موبایل",
         max_length=20,
-        widget=forms.TextInput(attrs={"class": "field-input", "dir": "ltr", "inputmode": "tel", "placeholder": "0912..."}),
+        widget=forms.TextInput(
+            attrs={"class": "field-input", "dir": "ltr", "inputmode": "tel", "placeholder": "0912..."}
+        ),
     )
     message = forms.CharField(
         label="پیام",
         required=False,
-        widget=forms.Textarea(attrs={"class": "field-input", "rows": 3, "placeholder": "مثلاً متراژ مورد نیاز و زمان بارگیری"}),
+        widget=forms.Textarea(
+            attrs={"class": "field-input", "rows": 3, "placeholder": "مثلاً متراژ مورد نیاز و زمان بارگیری"}
+        ),
     )
 
 
