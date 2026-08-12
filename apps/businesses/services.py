@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 
+from .entitlements import EntitlementError, require_seat_available
 from .models import Business, BusinessMembership
 from .permissions import BUSINESS_SETTINGS, TEAM_MANAGE, defaults_for_role
 
@@ -82,6 +83,7 @@ def complete_onboarding(business: Business) -> Business:
     return business
 
 
+@transaction.atomic
 def invite_member(
     *,
     business: Business,
@@ -89,20 +91,35 @@ def invite_member(
     user: User,
     role: str = BusinessMembership.Role.STAFF,
 ) -> BusinessMembership:
+    """Add or reactivate a member, within the Business's seat limit.
+
+    The seat check happens here rather than at login: lowering a limit must not
+    lock out people who are already working, it should bite the next time
+    somebody is added.
+    """
     if not actor_membership.has_capability(TEAM_MANAGE):
         raise BusinessServiceError("اجازه مدیریت تیم را ندارید.")
-    membership, created = BusinessMembership.objects.get_or_create(
+
+    existing = BusinessMembership.objects.filter(user=user, business=business).first()
+    if existing is not None and existing.status == BusinessMembership.Status.ACTIVE:
+        return existing
+
+    try:
+        require_seat_available(business)
+    except EntitlementError as exc:
+        raise BusinessServiceError(exc.message) from exc
+
+    if existing is not None:
+        existing.status = BusinessMembership.Status.ACTIVE
+        existing.role = role
+        existing.permissions = defaults_for_role(role)
+        existing.save()
+        return existing
+
+    return BusinessMembership.objects.create(
         user=user,
         business=business,
-        defaults={
-            "role": role,
-            "permissions": defaults_for_role(role),
-            "status": BusinessMembership.Status.ACTIVE,
-        },
+        role=role,
+        permissions=defaults_for_role(role),
+        status=BusinessMembership.Status.ACTIVE,
     )
-    if not created and membership.status == BusinessMembership.Status.SUSPENDED:
-        membership.status = BusinessMembership.Status.ACTIVE
-        membership.role = role
-        membership.permissions = defaults_for_role(role)
-        membership.save()
-    return membership

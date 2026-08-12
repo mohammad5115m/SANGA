@@ -310,22 +310,26 @@ def test_view_list_requires_capability(client, setup):
     assert resp.status_code == 302
 
 
-def test_navigation_hides_contacts_from_members_without_the_capability(client, setup):
-    contacts_url = "/app/contacts/"
+def test_navigation_offers_the_colleague_directory_and_gates_the_ledger(client, setup):
+    """Contacts left the navigation; the Business directory replaced them.
 
+    The directory needs no capability — a colleague is a Business, and every
+    member can see who else is on the platform. The ledger still stops at
+    ``ledger.view``.
+    """
     client.force_login(setup["owner_a"])
     owner_dashboard = client.get("/app/")
     assert owner_dashboard.status_code == 200
-    assert contacts_url in owner_dashboard.content.decode()
+    owner_content = owner_dashboard.content.decode()
+    assert "/app/contacts/" not in owner_content
+    assert "/app/colleagues/" in owner_content
 
-    # A viewer holds neither customers.manage nor ledger.view, so neither link
-    # should be offered on a page they can reach.
     client.force_login(setup["viewer_m"].user)
     viewer_dashboard = client.get("/app/")
     assert viewer_dashboard.status_code == 200
-    content = viewer_dashboard.content.decode()
-    assert contacts_url not in content
-    assert "/app/accounting/" not in content
+    viewer_content = viewer_dashboard.content.decode()
+    assert "/app/colleagues/" in viewer_content
+    assert "/app/accounting/" not in viewer_content
 
 
 def _archived_contact(setup, name="بایگانی‌شده"):

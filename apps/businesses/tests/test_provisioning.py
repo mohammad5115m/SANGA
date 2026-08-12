@@ -126,7 +126,7 @@ def test_provision_business_rejects_an_invalid_phone():
 
 @pytest.mark.django_db
 def test_provision_user_command_attaches_to_an_existing_business():
-    call_command("provision_business", "--name=سنگ مهتاب", "--owner-phone=09127770020")
+    call_command("provision_business", "--name=سنگ مهتاب", "--owner-phone=09127770020", "--seats=3")
     business = Business.objects.get(name="سنگ مهتاب")
 
     call_command(
@@ -146,6 +146,34 @@ def test_provision_user_command_attaches_to_an_existing_business():
 
 
 @pytest.mark.django_db
+def test_provision_business_records_the_plan_and_seats():
+    call_command(
+        "provision_business",
+        "--name=سنگ بیننده",
+        "--owner-phone=09127770050",
+        "--plan=browse",
+        "--seats=4",
+        "--active-until=2030-01-01",
+    )
+    business = Business.objects.get(name="سنگ بیننده")
+    assert business.plan == Business.Plan.BROWSE
+    assert business.seat_limit == 4
+    assert str(business.active_until) == "2030-01-01"
+
+
+@pytest.mark.django_db
+def test_provision_user_respects_the_seat_limit():
+    """The owner already occupies the single default seat."""
+    call_command("provision_business", "--name=سنگ تک‌نفره", "--owner-phone=09127770060")
+    business = Business.objects.get(name="سنگ تک‌نفره")
+
+    with pytest.raises(CommandError) as exc:
+        call_command("provision_user", "--phone=09127770061", f"--business={business.slug}")
+    assert "سقف کاربران" in str(exc.value)
+    assert not User.objects.filter(phone="09127770061").exists()
+
+
+@pytest.mark.django_db
 def test_provision_user_refuses_an_unknown_business():
     with pytest.raises(CommandError):
         call_command("provision_user", "--phone=09127770030", "--business=does-not-exist")
@@ -154,7 +182,7 @@ def test_provision_user_refuses_an_unknown_business():
 
 @pytest.mark.django_db
 def test_provision_user_refuses_a_duplicate_membership():
-    call_command("provision_business", "--name=سنگ ستاره", "--owner-phone=09127770040")
+    call_command("provision_business", "--name=سنگ ستاره", "--owner-phone=09127770040", "--seats=3")
     business = Business.objects.get(name="سنگ ستاره")
 
     call_command("provision_user", "--phone=09127770041", f"--business={business.slug}")

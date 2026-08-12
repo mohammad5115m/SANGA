@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import INQUIRIES_RESPOND
+from apps.businesses.permissions import LEADS_MANAGE
 from apps.inventory.models import InventoryLot
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_user
@@ -26,10 +26,10 @@ class PurchaseRequestError(Exception):
 def _require_respond(membership: BusinessMembership | None, message: str) -> None:
     """Posting demand, quoting on it, and accepting a quote are all the same
     kind of act — committing the business to a counterparty — so they share the
-    existing ``inquiries.respond`` capability. Viewers, who may browse the demand
+    existing ``leads.manage`` capability. Viewers, who may browse the demand
     board, are excluded.
     """
-    if membership is None or not membership.has_capability(INQUIRIES_RESPOND):
+    if membership is None or not membership.has_capability(LEADS_MANAGE):
         raise PurchaseRequestError(message)
 
 

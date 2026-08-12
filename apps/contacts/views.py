@@ -8,7 +8,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import CUSTOMERS_MANAGE
+from apps.businesses.permissions import LEADS_MANAGE
 
 from .forms import ContactForm
 from .models import Contact
@@ -32,7 +32,7 @@ def _get_owned_contact(request: HttpRequest, contact_id) -> Contact:
 
 
 @business_login_required
-@require_capability(CUSTOMERS_MANAGE)
+@require_capability(LEADS_MANAGE)
 def contact_list(request: HttpRequest) -> HttpResponse:
     q = request.GET.get("q", "").strip()
     # Archived contacts are hidden by default, but they must stay reachable:
@@ -47,7 +47,7 @@ def contact_list(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(CUSTOMERS_MANAGE)
+@require_capability(LEADS_MANAGE)
 def contact_detail(request: HttpRequest, contact_id) -> HttpResponse:
     contact = _get_owned_contact(request, contact_id)
 
@@ -68,7 +68,7 @@ def contact_detail(request: HttpRequest, contact_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(CUSTOMERS_MANAGE)
+@require_capability(LEADS_MANAGE)
 @require_http_methods(["GET", "POST"])
 def contact_create(request: HttpRequest) -> HttpResponse:
     form = ContactForm(request.POST or None, business=request.business)
@@ -96,7 +96,7 @@ def contact_create(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(CUSTOMERS_MANAGE)
+@require_capability(LEADS_MANAGE)
 @require_http_methods(["GET", "POST"])
 def contact_edit(request: HttpRequest, contact_id) -> HttpResponse:
     contact = _get_owned_contact(request, contact_id)
@@ -132,7 +132,7 @@ def contact_edit(request: HttpRequest, contact_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(CUSTOMERS_MANAGE)
+@require_capability(LEADS_MANAGE)
 @require_http_methods(["GET", "POST"])
 def contact_archive(request: HttpRequest, contact_id) -> HttpResponse:
     contact = _get_owned_contact(request, contact_id)
@@ -149,7 +149,7 @@ def contact_archive(request: HttpRequest, contact_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(CUSTOMERS_MANAGE)
+@require_capability(LEADS_MANAGE)
 @require_http_methods(["POST"])
 def contact_restore(request: HttpRequest, contact_id) -> HttpResponse:
     contact = _get_owned_contact(request, contact_id)

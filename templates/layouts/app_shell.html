@@ -14,12 +14,9 @@
     </div>
     <nav class="topbar-nav" aria-label="ناوبری">
       <a class="topbar-link {% if request.resolver_match.app_name == 'businesses' and request.resolver_match.url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'businesses:dashboard' %}">خانه</a>
-      <a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}" href="{% url 'inventory:lot_list' %}">موجودی</a>
+      <a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}" href="{% url 'inventory:lot_list' %}">موجودی من</a>
       <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}" href="{% url 'marketplace:home' %}">بازار</a>
-      <a class="topbar-link {% if request.resolver_match.app_name == 'purchase_requests' %}is-active{% endif %}" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
-      {% if 'customers.manage' in capabilities %}
-        <a class="topbar-link {% if request.resolver_match.app_name == 'contacts' %}is-active{% endif %}" href="{% url 'contacts:list' %}">مخاطبین</a>
-      {% endif %}
+      <a class="topbar-link {% if request.resolver_match.url_name == 'colleagues' or request.resolver_match.url_name == 'colleague_detail' %}is-active{% endif %}" href="{% url 'businesses:colleagues' %}">لیست همکاران</a>
       {% if 'ledger.view' in capabilities %}
         <a class="topbar-link {% if request.resolver_match.app_name == 'accounting' %}is-active{% endif %}" href="{% url 'accounting:index' %}">دفتر حساب</a>
       {% endif %}

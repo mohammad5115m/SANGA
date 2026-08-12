@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import CATALOG_MANAGE, INQUIRIES_RESPOND, INQUIRIES_VIEW
+from apps.businesses.permissions import CATALOG_MANAGE, LEADS_MANAGE, LEADS_VIEW
 from apps.inquiries.models import Inquiry
 
 from .forms import CustomCatalogForm
@@ -105,7 +105,7 @@ def catalog_detail(request: HttpRequest, catalog_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_VIEW)
+@require_capability(LEADS_VIEW)
 def inquiry_inbox(request: HttpRequest) -> HttpResponse:
     inquiries = (
         Inquiry.objects.filter(business=request.business)
@@ -120,7 +120,7 @@ def inquiry_inbox(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_RESPOND)
+@require_capability(LEADS_MANAGE)
 @require_POST
 def inquiry_update_status(request: HttpRequest, inquiry_id) -> HttpResponse:
     inquiry = get_object_or_404(Inquiry, pk=inquiry_id, business=request.business)

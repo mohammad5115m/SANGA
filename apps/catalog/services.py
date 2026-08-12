@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.businesses.entitlements import MANAGE_CATALOGS, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import CATALOG_MANAGE
 from apps.inventory.freshness import stock_view
@@ -26,6 +27,10 @@ class CatalogError(Exception):
 def _require_catalog_manage(membership: BusinessMembership) -> None:
     if membership is None or not membership.has_capability(CATALOG_MANAGE):
         raise CatalogError("اجازه مدیریت کاتالوگ را ندارید.")
+    try:
+        require_entitlement(membership.business, MANAGE_CATALOGS)
+    except EntitlementError as exc:
+        raise CatalogError(exc.message) from exc
 
 
 def b2c_price_context(lot: InventoryLot) -> dict:

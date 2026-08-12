@@ -173,7 +173,7 @@
           <div class="empty-state">استعلام بی‌پاسخی ندارید.</div>
         {% endfor %}
       </div>
-      {% if unanswered_inquiry_count and 'inquiries.view' in capabilities %}
+      {% if unanswered_inquiry_count and 'leads.view' in capabilities %}
         <div class="btn-row">
           <a class="btn btn-secondary btn-sm" href="{% url 'catalog_manage:inquiries' %}">پاسخ به استعلام‌ها</a>
         </div>

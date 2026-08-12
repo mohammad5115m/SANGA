@@ -6,7 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import INQUIRIES_RESPOND
+from apps.businesses.permissions import LEADS_MANAGE
 from apps.businesses.services import create_business_for_owner
 from apps.core.testing import make_item, make_product
 from apps.inventory.models import InventoryLot
@@ -35,7 +35,7 @@ def demand(db):
 
     buyer_m = BusinessMembership.objects.get(user=buyer_user, business=buyer)
     seller_m = BusinessMembership.objects.get(user=seller_user, business=seller)
-    # Viewers may browse the demand board but hold no inquiries.respond.
+    # Viewers may browse the demand board but hold no leads.manage.
     viewer_m = BusinessMembership.objects.create(
         user=viewer_user,
         business=buyer,
@@ -120,7 +120,7 @@ def test_closing_a_purchase_request_requires_the_capability(demand):
 
 
 def test_accepting_an_offer_uses_the_purchase_request_capability(demand):
-    """Accepting is part of running your own purchase request, so ``inquiries.respond``
+    """Accepting is part of running your own purchase request, so ``leads.manage``
     is the only capability involved — and it is enough on its own.
     """
     pr = _make_request(demand)
@@ -131,7 +131,7 @@ def test_accepting_an_offer_uses_the_purchase_request_capability(demand):
         business=demand["buyer"],
         role=BusinessMembership.Role.STAFF,
         status=BusinessMembership.Status.ACTIVE,
-        permissions=[INQUIRIES_RESPOND],
+        permissions=[LEADS_MANAGE],
     )
 
     decide_offer(offer=offer, membership=buyer_staff, accept=True)

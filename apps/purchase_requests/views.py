@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import INQUIRIES_RESPOND, INQUIRIES_VIEW, LEDGER_MANAGE
+from apps.businesses.permissions import LEADS_MANAGE, LEADS_VIEW, LEDGER_MANAGE
 
 from .forms import PurchaseOfferForm, PurchaseRequestForm
 from .models import PurchaseOffer
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 @business_login_required
-@require_capability(INQUIRIES_VIEW)
+@require_capability(LEADS_VIEW)
 def my_list(request: HttpRequest) -> HttpResponse:
     if not request.business:
         return redirect("businesses:no_business")
@@ -41,7 +41,7 @@ def my_list(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_VIEW)
+@require_capability(LEADS_VIEW)
 def network_list(request: HttpRequest) -> HttpResponse:
     if not request.business:
         return redirect("businesses:no_business")
@@ -50,7 +50,7 @@ def network_list(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_RESPOND)
+@require_capability(LEADS_MANAGE)
 @require_http_methods(["GET", "POST"])
 def create(request: HttpRequest) -> HttpResponse:
     if not request.business:
@@ -75,7 +75,7 @@ def create(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_VIEW)
+@require_capability(LEADS_VIEW)
 def detail(request: HttpRequest, pr_id) -> HttpResponse:
     if not request.business:
         return redirect("businesses:no_business")
@@ -97,7 +97,7 @@ def detail(request: HttpRequest, pr_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_RESPOND)
+@require_capability(LEADS_MANAGE)
 @require_POST
 def close(request: HttpRequest, pr_id) -> HttpResponse:
     pr = get_own_request(request.business, pr_id) if request.business else None
@@ -114,7 +114,7 @@ def close(request: HttpRequest, pr_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_VIEW)
+@require_capability(LEADS_VIEW)
 @require_http_methods(["GET", "POST"])
 def network_detail(request: HttpRequest, pr_id) -> HttpResponse:
     if not request.business:
@@ -124,9 +124,9 @@ def network_detail(request: HttpRequest, pr_id) -> HttpResponse:
         messages.error(request, "این درخواست در شبکه قابل مشاهده نیست.")
         return redirect("purchase_requests:network_list")
 
-    # Browsing the demand board only needs inquiries.view; quoting on it needs
-    # inquiries.respond, which the service enforces again.
-    can_offer = request.membership.has_capability(INQUIRIES_RESPOND)
+    # Browsing the demand board only needs leads.view; quoting on it needs
+    # leads.manage, which the service enforces again.
+    can_offer = request.membership.has_capability(LEADS_MANAGE)
     my_offer = my_offer_for(pr, request.business)
     if request.method == "POST" and not can_offer:
         messages.error(request, "دسترسی لازم برای ارسال پیشنهاد را ندارید.")
@@ -159,7 +159,7 @@ def network_detail(request: HttpRequest, pr_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INQUIRIES_RESPOND)
+@require_capability(LEADS_MANAGE)
 @require_POST
 def offer_decide(request: HttpRequest, offer_id) -> HttpResponse:
     offer = get_object_or_404(

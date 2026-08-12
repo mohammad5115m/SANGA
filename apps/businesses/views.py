@@ -9,12 +9,21 @@ from django.views.decorators.http import require_http_methods
 
 from .dashboard import dashboard_data
 from .decorators import business_login_required, require_capability
+from .directory import (
+    colleague_businesses,
+    filter_colleagues,
+    get_colleague,
+    representative_of,
+)
+from .entitlements import entitlements_for, seats_remaining
 from .forms import BusinessProfileForm
 from .models import BusinessMembership
-from .permissions import BUSINESS_SETTINGS, TEAM_MANAGE
+from .permissions import BUSINESS_SETTINGS, LEDGER_VIEW, TEAM_MANAGE, label_for
 from .services import BusinessServiceError, complete_onboarding, update_business_profile
 
 logger = logging.getLogger(__name__)
+
+COLLEAGUE_ROWS = 60
 
 
 @business_login_required
@@ -125,7 +134,62 @@ def settings_view(request: HttpRequest) -> HttpResponse:
 @require_capability(TEAM_MANAGE)
 def team_list(request: HttpRequest) -> HttpResponse:
     members = request.business.memberships.select_related("user").order_by("joined_at")
-    return render(request, "businesses/team.html", {"members": members})
+    return render(
+        request,
+        "businesses/team.html",
+        {
+            "members": members,
+            "seats_remaining": seats_remaining(request.business),
+            "seat_limit": request.business.seat_limit,
+            "capability_label": label_for,
+        },
+    )
+
+
+# --- colleague directory ------------------------------------------------------
+
+
+@business_login_required
+def colleague_list(request: HttpRequest) -> HttpResponse:
+    """«لیست همکاران» — every eligible Business, no manual entry required."""
+    if not request.business:
+        return redirect("businesses:no_business")
+
+    q = request.GET.get("q", "").strip()
+    qs = filter_colleagues(colleague_businesses(request.business), q=q)
+    return render(
+        request,
+        "businesses/colleague_list.html",
+        {"colleagues": qs[:COLLEAGUE_ROWS], "q": q},
+    )
+
+
+@business_login_required
+def colleague_detail(request: HttpRequest, business_id) -> HttpResponse:
+    if not request.business:
+        return redirect("businesses:no_business")
+
+    colleague = get_colleague(request.business, business_id)
+    if colleague is None:
+        messages.error(request, "این همکار در دسترس نیست.")
+        return redirect("businesses:colleagues")
+
+    from apps.inventory.policy import eligible_items
+
+    items = eligible_items(
+        audience="colleague",
+        viewer_business=request.business,
+        seller_business=colleague,
+    )[:12]
+
+    context = {
+        "colleague": colleague,
+        "representative": representative_of(colleague),
+        "items": items,
+        "can_view_ledger": request.membership.has_capability(LEDGER_VIEW),
+        "colleague_entitlements": entitlements_for(colleague),
+    }
+    return render(request, "businesses/colleague_detail.html", context)
 
 
 @business_login_required

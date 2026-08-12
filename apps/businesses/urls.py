@@ -14,5 +14,7 @@ urlpatterns = [
     path("onboarding/done/", views.onboarding_done, name="onboarding_done"),
     path("settings/", views.settings_view, name="settings"),
     path("team/", views.team_list, name="team"),
+    path("colleagues/", views.colleague_list, name="colleagues"),
+    path("colleagues/<uuid:business_id>/", views.colleague_detail, name="colleague_detail"),
     path("switch/", views.switch_business, name="switch_business"),
 ]

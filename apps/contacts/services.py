@@ -5,7 +5,7 @@ import logging
 from django.db import IntegrityError, transaction
 
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import CUSTOMERS_MANAGE
+from apps.businesses.permissions import LEADS_MANAGE
 
 from .models import Contact
 from .selectors import is_linkable_business
@@ -22,7 +22,7 @@ class ContactError(Exception):
 
 
 def _require_manage(membership: BusinessMembership | None) -> None:
-    if membership is None or not membership.has_capability(CUSTOMERS_MANAGE):
+    if membership is None or not membership.has_capability(LEADS_MANAGE):
         raise ContactError("اجازه مدیریت مخاطبین را ندارید.")
 
 

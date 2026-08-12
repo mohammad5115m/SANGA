@@ -16,11 +16,36 @@ class MembershipInline(admin.TabularInline):
 
 @admin.register(Business)
 class BusinessAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "city", "verification_status", "status", "created_at")
-    list_filter = ("verification_status", "status")
+    list_display = (
+        "name",
+        "slug",
+        "city",
+        "plan",
+        "seat_limit",
+        "active_until",
+        "verification_status",
+        "status",
+    )
+    list_filter = ("plan", "verification_status", "status")
     search_fields = ("name", "slug", "phone", "city")
     prepopulated_fields = {"slug": ("name",)}
     inlines = [WarehouseInline, MembershipInline]
+    fieldsets = (
+        (None, {"fields": ("name", "slug", "logo")}),
+        ("تماس", {"fields": ("phone", "city", "province", "address", "website")}),
+        (
+            "اشتراک",
+            {
+                "fields": ("plan", "seat_limit", "active_until"),
+                "description": (
+                    "پلن «فقط مشاهده» اجازه ثبت و انتشار محصول، فروش و صدور فاکتور را نمی‌دهد. "
+                    "خالی گذاشتن «اعتبار تا» یعنی بدون انقضا."
+                ),
+            },
+        ),
+        ("وضعیت", {"fields": ("status", "verification_status")}),
+        ("پیشرفته", {"classes": ("collapse",), "fields": ("settings", "onboarding_step", "onboarding_completed_at")}),
+    )
 
 
 @admin.register(BusinessMembership)

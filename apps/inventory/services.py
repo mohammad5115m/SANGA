@@ -9,6 +9,12 @@ from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils import timezone
 
+from apps.businesses.entitlements import (
+    CREATE_PRODUCTS,
+    PUBLISH_PRODUCTS,
+    EntitlementError,
+    require_entitlement,
+)
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import (
     INVENTORY_CONFIRM,
@@ -46,6 +52,18 @@ def _require(membership: BusinessMembership, capability: str) -> None:
         raise InventoryError("دسترسی لازم برای این عملیات را ندارید.")
 
 
+def _require_plan(business: Business, entitlement: str) -> None:
+    """Plan gate, enforced here rather than by hiding navigation.
+
+    A browse-only Business that is stopped only by a missing menu item is not
+    stopped at all — the form still posts.
+    """
+    try:
+        require_entitlement(business, entitlement)
+    except EntitlementError as exc:
+        raise InventoryError(exc.message) from exc
+
+
 def _require_owner(lot: InventoryLot, membership: BusinessMembership) -> None:
     if lot.business_id != membership.business_id:
         raise InventoryError("دسترسی به این محصول وجود ندارد.")
@@ -70,6 +88,7 @@ def create_or_get_product(
     applications: list[Application] | None = None,
 ) -> Product:
     _require(membership, INVENTORY_CREATE)
+    _require_plan(business, CREATE_PRODUCTS)
     if product_id:
         product = Product.objects.filter(business=business, pk=product_id, is_active=True).first()
         if product is None:
@@ -115,6 +134,7 @@ def create_draft_item(
     slab_count: int | None = None,
 ) -> InventoryLot:
     _require(membership, INVENTORY_CREATE)
+    _require_plan(business, CREATE_PRODUCTS)
     if product.business_id != business.id:
         raise InventoryError("محصول متعلق به این کسب‌وکار نیست.")
 
@@ -186,6 +206,8 @@ def update_item(
     changing_publish = any(key in fields and getattr(lot, key) != fields[key] for key in publish_keys)
     if changing_publish and not membership.has_capability(INVENTORY_PUBLISH):
         raise InventoryError("اجازه تغییر وضعیت انتشار را ندارید.")
+    if fields.get("is_visible") and not lot.is_visible:
+        _require_plan(lot.business, PUBLISH_PRODUCTS)
 
     allowed = {
         "grade",
@@ -258,6 +280,8 @@ def _set_price(*, lot: InventoryLot, membership: BusinessMembership, tier_code: 
 def set_item_visibility(*, lot: InventoryLot, membership: BusinessMembership, is_visible: bool) -> InventoryLot:
     _require(membership, INVENTORY_PUBLISH)
     _require_owner(lot, membership)
+    if is_visible:
+        _require_plan(lot.business, PUBLISH_PRODUCTS)
     lot.is_visible = bool(is_visible)
     if lot.is_visible:
         lot.status = InventoryLot.Status.ACTIVE
@@ -270,6 +294,8 @@ def publish_item(*, lot: InventoryLot, membership: BusinessMembership, is_visibl
     """Take an item out of draft, optionally publishing it at the same time."""
     _require(membership, INVENTORY_PUBLISH)
     _require_owner(lot, membership)
+    if is_visible:
+        _require_plan(lot.business, PUBLISH_PRODUCTS)
     lot.status = InventoryLot.Status.ACTIVE
     lot.is_visible = bool(is_visible)
     if lot.stock_confirmed_at is None:
@@ -487,6 +513,7 @@ def reorder_lot_media(*, lot: InventoryLot, membership: BusinessMembership, medi
 @transaction.atomic
 def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> InventoryLot:
     _require(membership, INVENTORY_CREATE)
+    _require_plan(lot.business, CREATE_PRODUCTS)
     _require_owner(lot, membership)
 
     clone = InventoryLot.objects.create(

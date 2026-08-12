@@ -1,0 +1,74 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}{{ colleague.name }} | همکاران{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div class="brand-lockup">
+      {% if colleague.logo %}
+        <img class="business-logo" src="{{ colleague.logo.url }}" alt="{{ colleague.name }}">
+      {% else %}
+        <span class="brand-mark" aria-hidden="true"></span>
+      {% endif %}
+      <div>
+        <h1 class="page-title">{{ colleague.name }}</h1>
+        <p class="page-lead">
+          {% if colleague.city %}{{ colleague.city }}{% endif %}
+          {% if colleague.province %} · {{ colleague.province }}{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <section class="panel stack-sm">
+    <h2 class="section-title">اطلاعات تماس</h2>
+    {% if colleague.phone %}
+      <div class="kv"><span>تلفن</span><strong dir="ltr">{{ colleague.phone }}</strong></div>
+    {% endif %}
+    {% if representative %}
+      <div class="kv">
+        <span>نماینده</span>
+        <strong>{{ representative.user.full_name|default:representative.user.phone }}</strong>
+      </div>
+    {% endif %}
+    {% if colleague.address %}
+      <div class="kv"><span>آدرس</span><strong>{{ colleague.address }}</strong></div>
+    {% endif %}
+    {% if colleague.website %}
+      <div class="kv"><span>وب‌سایت</span><strong dir="ltr">{{ colleague.website }}</strong></div>
+    {% endif %}
+  </section>
+
+  <section class="stack-md">
+    <div class="toolbar">
+      <h2 class="section-title">محصولات این همکار</h2>
+      <a class="btn btn-ghost btn-sm" href="{% url 'marketplace:home' %}?q={{ colleague.name|urlencode }}">
+        همه محصولات
+      </a>
+    </div>
+    <div class="list-stack">
+      {% for item in items %}
+        <a class="lot-card" href="{% url 'marketplace:lot_detail' item.id %}">
+          <div class="lot-body">
+            <div class="list-title">{{ item.product.commercial_name }}</div>
+            <div class="muted">
+              {{ item.product.stone_type }}{% if item.grade %} · {{ item.grade }}{% endif %}
+            </div>
+          </div>
+        </a>
+      {% empty %}
+        <div class="empty-state">این همکار فعلاً محصول منتشرشده‌ای ندارد.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if can_view_ledger %}
+    <section class="panel stack-md">
+      <h2 class="section-title">حساب و فاکتورها</h2>
+      <p class="muted">دفتر حساب و فاکتورهای این همکار در فازهای بعدی به این صفحه اضافه می‌شود.</p>
+      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:index' %}">دفتر حساب</a>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

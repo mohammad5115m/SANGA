@@ -23,9 +23,7 @@
     <button class="btn btn-primary" type="submit">ذخیره</button>
   </form>
   <div class="btn-row">
-    {% if 'customers.manage' in capabilities %}
-      <a class="btn btn-secondary" href="{% url 'contacts:list' %}">مخاطبین</a>
-    {% endif %}
+    <a class="btn btn-secondary" href="{% url 'businesses:colleagues' %}">لیست همکاران</a>
     {% if 'ledger.view' in capabilities %}
       <a class="btn btn-secondary" href="{% url 'accounting:index' %}">دفتر حساب</a>
     {% endif %}
@@ -33,11 +31,11 @@
     {% if 'catalog.manage' in capabilities %}
       <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
     {% endif %}
-    {% if 'inquiries.view' in capabilities %}
+    {% if 'leads.view' in capabilities %}
       <a class="btn btn-ghost" href="{% url 'catalog_manage:inquiries' %}">استعلام‌ها</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'marketplace:home' %}">بازار همکاران</a>
-    {% if 'inquiries.view' in capabilities %}
+    {% if 'leads.view' in capabilities %}
       <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
       <a class="btn btn-ghost" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
     {% endif %}
