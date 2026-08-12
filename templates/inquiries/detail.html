@@ -1,0 +1,70 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}استعلام {{ inquiry.name }} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">{{ inquiry.name }}</h1>
+      <p class="page-lead" dir="ltr">{{ inquiry.phone }}</p>
+    </div>
+    <span class="badge">{{ inquiry.get_status_display }}</span>
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="kv"><span>تاریخ</span><strong>{{ inquiry.created_at|date:"Y/m/d H:i" }}</strong></div>
+    <div class="kv"><span>منبع</span><strong>{{ inquiry.get_source_display }}</strong></div>
+    {% if inquiry.lead.is_verified %}
+      <div class="kv"><span>شماره</span><strong>تأیید شده</strong></div>
+    {% endif %}
+    {% if inquiry.message %}
+      <div class="kv"><span>توضیح مشتری</span><strong>{{ inquiry.message }}</strong></div>
+    {% endif %}
+    {% if inquiry.lead %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'inquiries:lead_detail' inquiry.lead.id %}">
+        سوابق این مشتری
+      </a>
+    {% endif %}
+  </section>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">محصولات درخواستی</h2>
+    <div class="list-stack">
+      {% for line in inquiry.items.all %}
+        <div class="list-item">
+          <div>
+            {# The snapshot name, so the request still reads correctly after the
+               product is renamed or withdrawn. #}
+            <div class="list-title">{{ line.product_name }}</div>
+            {% if line.requested_qty_sqm %}
+              <div class="muted">{{ line.requested_qty_sqm }} متر مربع</div>
+            {% endif %}
+          </div>
+          {% if line.item %}
+            <a class="btn btn-ghost btn-sm" href="{% url 'inventory:lot_detail' line.item.id %}">محصول</a>
+          {% endif %}
+        </div>
+      {% empty %}
+        <div class="empty-state">محصول مشخصی انتخاب نشده است.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if can_manage %}
+    <form method="post" action="{% url 'inquiries:set_status' inquiry.id %}" class="panel stack-md">
+      {% csrf_token %}
+      <h2 class="section-title">وضعیت</h2>
+      <label class="field">
+        <span class="field-label">وضعیت جدید</span>
+        <select class="field-input" name="status">
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if inquiry.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">ذخیره</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

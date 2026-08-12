@@ -132,6 +132,109 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     )
 
 
+# --- customer verification ----------------------------------------------------
+#
+# Deliberately a separate pair of functions from the staff login above, sharing
+# only the hashing and rate-limiting primitives. A customer OTP:
+#   * never creates a User,
+#   * never calls ``login()``,
+#   * uses its own ``Purpose``, so a code issued for one flow cannot be replayed
+#     against the other.
+#
+# The provider abstraction is the same, so plugging in a production SMS gateway
+# lights up both flows at once.
+
+
+def request_customer_otp(phone: str, *, request: HttpRequest | None = None) -> OTPRequestResult:
+    """Send a verification code to a retail customer."""
+    phone = normalize_phone(phone)
+    if not (phone.startswith("09") and len(phone) == 11):
+        raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
+
+    now = timezone.now()
+    cooldown = settings.OTP_REQUEST_COOLDOWN_SECONDS
+    recent = (
+        OTPChallenge.objects.filter(phone=phone, purpose=OTPChallenge.Purpose.CUSTOMER)
+        .order_by("-created_at")
+        .first()
+    )
+    if recent and (now - recent.created_at).total_seconds() < cooldown:
+        raise OTPRateLimitError("لطفاً کمی صبر کنید و دوباره تلاش کنید.")
+
+    hour_ago = now - timedelta(hours=1)
+    hourly = OTPChallenge.objects.filter(
+        phone=phone,
+        purpose=OTPChallenge.Purpose.CUSTOMER,
+        created_at__gte=hour_ago,
+    ).count()
+    if hourly >= settings.OTP_MAX_REQUESTS_PER_HOUR:
+        raise OTPRateLimitError("تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید.")
+
+    code = "".join(secrets.choice("0123456789") for _ in range(settings.OTP_LENGTH))
+    expires_at = now + timedelta(seconds=settings.OTP_EXPIRY_SECONDS)
+
+    with transaction.atomic():
+        OTPChallenge.objects.create(
+            phone=phone,
+            code_hash=_hash_code(code),
+            purpose=OTPChallenge.Purpose.CUSTOMER,
+            max_attempts=settings.OTP_MAX_ATTEMPTS,
+            expires_at=expires_at,
+            request_ip=_client_ip(request),
+            user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:255] if request else "",
+        )
+
+    try:
+        get_sms_provider().send(SmsMessage(phone=phone, body=f"کد تأیید سنگا: {code}"))
+    except Exception:
+        logger.exception("Failed to send customer OTP")
+        raise OTPError("ارسال پیامک با مشکل روبه‌رو شد. دوباره تلاش کنید.") from None
+
+    return OTPRequestResult(
+        phone=phone,
+        expires_at=expires_at,
+        cooldown_seconds=cooldown,
+        dev_code=code if settings.DEBUG and settings.SMS_PROVIDER == "console" else None,
+    )
+
+
+def verify_customer_otp(phone: str, code: str) -> bool:
+    """Confirm a customer's phone. Returns ``True``; raises otherwise.
+
+    Creates nothing and logs nobody in. The caller records the outcome on a
+    ``CustomerLead``, which is not an account.
+    """
+    phone = normalize_phone(phone)
+    code = normalize_digits((code or "").strip())
+    if not code.isdigit():
+        raise OTPValidationError("کد وارد شده معتبر نیست.")
+
+    challenge = (
+        OTPChallenge.objects.filter(
+            phone=phone,
+            purpose=OTPChallenge.Purpose.CUSTOMER,
+            is_used=False,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if challenge is None:
+        raise OTPValidationError("کد معتبری یافت نشد. دوباره درخواست دهید.")
+    if challenge.is_expired:
+        raise OTPValidationError("کد منقضی شده است. دوباره درخواست دهید.")
+    if challenge.attempts >= challenge.max_attempts:
+        raise OTPValidationError("تعداد تلاش‌ها تمام شده است. دوباره درخواست دهید.")
+
+    if challenge.code_hash != _hash_code(code):
+        challenge.attempts += 1
+        challenge.save(update_fields=["attempts"])
+        raise OTPValidationError("کد وارد شده نادرست است.")
+
+    challenge.is_used = True
+    challenge.save(update_fields=["is_used"])
+    return True
+
+
 def verify_login_otp(phone: str, code: str, *, request: HttpRequest) -> User:
     phone = normalize_phone(phone)
     code = normalize_digits((code or "").strip())

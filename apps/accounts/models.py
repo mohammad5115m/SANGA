@@ -39,7 +39,13 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class OTPChallenge(models.Model):
     class Purpose(models.TextChoices):
+        #: Staff logging into a provisioned platform account.
         LOGIN = "login", "ورود"
+        #: A retail customer confirming their phone when submitting an inquiry.
+        #: Kept as a separate purpose so a code issued for one can never be
+        #: replayed against the other — a customer verification must never
+        #: become a session.
+        CUSTOMER = "customer", "تأیید مشتری"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone = models.CharField(max_length=20, db_index=True)

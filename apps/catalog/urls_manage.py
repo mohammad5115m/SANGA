@@ -11,10 +11,4 @@ urlpatterns = [
     path("new/", views_manage.catalog_create, name="create"),
     path("<uuid:catalog_id>/", views_manage.catalog_detail, name="detail"),
     path("<uuid:catalog_id>/edit/", views_manage.catalog_edit, name="edit"),
-    path("inquiries/", views_manage.inquiry_inbox, name="inquiries"),
-    path(
-        "inquiries/<uuid:inquiry_id>/status/",
-        views_manage.inquiry_update_status,
-        name="inquiry_update_status",
-    ),
 ]

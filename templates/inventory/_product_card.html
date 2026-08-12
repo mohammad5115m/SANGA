@@ -30,3 +30,6 @@ Expects: card = {lot, product, price, stock, primary_media, supplier?}, card_url
     </div>
   </div>
 </a>
+{% if show_select %}
+  {% include "catalog/_select_button.html" with is_selected=card.is_selected %}
+{% endif %}

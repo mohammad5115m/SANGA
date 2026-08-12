@@ -13,10 +13,12 @@
 
   {% include "inventory/_filter_bar.html" %}
 
+  {% include "catalog/_selection_bar.html" %}
+
   <div class="catalog-grid">
     {% for card in cards %}
       {% url 'catalog:lot_detail' card.lot.business.slug card.lot.id as card_url %}
-      {% include "inventory/_product_card.html" %}
+      {% include "inventory/_product_card.html" with show_select=True %}
     {% empty %}
       <div class="empty-state">محصولی با این فیلترها پیدا نشد. فیلترها را ساده‌تر کنید.</div>
     {% endfor %}

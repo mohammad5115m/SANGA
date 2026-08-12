@@ -32,7 +32,11 @@
       <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
     {% endif %}
     {% if 'leads.view' in capabilities %}
-      <a class="btn btn-ghost" href="{% url 'catalog_manage:inquiries' %}">استعلام‌ها</a>
+      <a class="btn btn-ghost" href="{% url 'inquiries:inbox' %}">استعلام‌ها</a>
+      <a class="btn btn-ghost" href="{% url 'inquiries:leads' %}">مشتریان</a>
+    {% endif %}
+    {% if 'invoice.view' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'invoicing:list' %}">فاکتورها</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'marketplace:home' %}">بازار همکاران</a>
     {% if 'purchase.request' in capabilities %}

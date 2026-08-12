@@ -1,0 +1,38 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}{{ lead.name }} | مشتریان{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">{{ lead.name }}</h1>
+      <p class="page-lead" dir="ltr">{{ lead.phone }}</p>
+    </div>
+    {% if lead.is_verified %}<span class="badge badge-accent">شماره تأیید شده</span>{% endif %}
+  </div>
+
+  <section class="stack-md">
+    <h2 class="section-title">استعلام‌های قبلی</h2>
+    <div class="list-stack">
+      {% for inquiry in inquiries %}
+        <a class="list-item" href="{% url 'inquiries:detail' inquiry.id %}">
+          <div>
+            <div class="list-title">{{ inquiry.created_at|date:"Y/m/d" }}</div>
+            <div class="muted">
+              {% for line in inquiry.items.all %}
+                {{ line.product_name }}{% if not forloop.last %}، {% endif %}
+              {% empty %}
+                بدون محصول مشخص
+              {% endfor %}
+            </div>
+          </div>
+          <span class="badge">{{ inquiry.get_status_display }}</span>
+        </a>
+      {% empty %}
+        <div class="empty-state">استعلامی ثبت نشده است.</div>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}

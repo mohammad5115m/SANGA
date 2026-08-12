@@ -34,9 +34,9 @@ ATTENTION_ROWS = 8
 COLLEAGUE_LOT_ROWS = 6
 PENDING_ROWS = 5
 
-# «بی‌پاسخ»: nobody has replied yet. Once the inquiry is marked تماس گرفته‌شده or
-# در حال مذاکره someone is on it, so it is no longer a task waiting on the team.
-UNANSWERED_INQUIRY_STATUSES = (Inquiry.Status.NEW, Inquiry.Status.VIEWED)
+# «بی‌پاسخ»: nobody has replied yet. Once the inquiry is marked تماس گرفته‌شده
+# somebody is on it, so it is no longer a task waiting on the team.
+UNANSWERED_INQUIRY_STATUSES = (Inquiry.Status.NEW,)
 
 ATTENTION_NEEDS_CONFIRMATION = "نیاز به تأیید موجودی"
 ATTENTION_PRICE_EXPIRED = "قیمت نیاز به بررسی دارد"

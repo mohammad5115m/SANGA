@@ -12,6 +12,7 @@ from apps.inquiries.models import Inquiry
 from apps.inquiries.services import InquiryError, create_inquiry
 from apps.inventory.forms import ItemFilterForm
 
+from . import cart
 from .forms import InquiryForm
 from .selectors import (
     filter_public_lots,
@@ -45,10 +46,18 @@ def public_search(request: HttpRequest) -> HttpResponse:
     form = ItemFilterForm(request.GET or None)
     qs = filter_public_lots(public_items(), spec=form.to_spec())
     cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
+    selected = set(cart.selected_ids(request))
+    for card in cards:
+        card["is_selected"] = str(card["lot"].id) in selected
     return render(
         request,
         "catalog/public_search.html",
-        {"filter_form": form, "cards": cards, "compare_ids": _compare_ids(request)},
+        {
+            "filter_form": form,
+            "cards": cards,
+            "compare_ids": _compare_ids(request),
+            "selection_count": cart.count(request),
+        },
     )
 
 
@@ -58,6 +67,9 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
     form = ItemFilterForm(request.GET or None)
     qs = filter_public_lots(public_catalog_lots(business), spec=form.to_spec())
     cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
+    selected = set(cart.selected_ids(request))
+    for card in cards:
+        card["is_selected"] = str(card["lot"].id) in selected
     return render(
         request,
         "catalog/storefront.html",
@@ -66,6 +78,7 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
             "filter_form": form,
             "cards": cards,
             "compare_ids": _compare_ids(request),
+            "selection_count": cart.count(request),
         },
     )
 
@@ -86,7 +99,7 @@ def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse
                 name=form.cleaned_data["name"],
                 phone=form.cleaned_data["phone"],
                 message=form.cleaned_data.get("message", ""),
-                source=Inquiry.Source.LOT_DETAIL,
+                source=Inquiry.Source.ITEM_DETAIL,
                 requester=request.user,
             )
         except InquiryError as exc:

@@ -5,12 +5,10 @@ import logging
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import CATALOG_MANAGE, LEADS_MANAGE, LEADS_VIEW
-from apps.inquiries.models import Inquiry
+from apps.businesses.permissions import CATALOG_MANAGE
 
 from .forms import CustomCatalogForm
 from .models import CustomCatalog
@@ -102,39 +100,3 @@ def catalog_detail(request: HttpRequest, catalog_id) -> HttpResponse:
             "storefront_url": storefront_url,
         },
     )
-
-
-@business_login_required
-@require_capability(LEADS_VIEW)
-def inquiry_inbox(request: HttpRequest) -> HttpResponse:
-    inquiries = (
-        Inquiry.objects.filter(business=request.business)
-        .select_related("lot", "lot__product", "custom_catalog")
-        .order_by("-created_at")[:100]
-    )
-    return render(
-        request,
-        "catalog/inquiry_inbox.html",
-        {"inquiries": inquiries, "status_choices": Inquiry.Status.choices},
-    )
-
-
-@business_login_required
-@require_capability(LEADS_MANAGE)
-@require_POST
-def inquiry_update_status(request: HttpRequest, inquiry_id) -> HttpResponse:
-    inquiry = get_object_or_404(Inquiry, pk=inquiry_id, business=request.business)
-    new_status = request.POST.get("status", "")
-    if new_status not in Inquiry.Status.values:
-        messages.error(request, "وضعیت انتخاب‌شده معتبر نیست.")
-        return redirect("catalog_manage:inquiries")
-
-    inquiry.status = new_status
-    now = timezone.now()
-    if inquiry.viewed_at is None:
-        inquiry.viewed_at = now
-    if new_status == Inquiry.Status.CONTACTED and inquiry.contacted_at is None:
-        inquiry.contacted_at = now
-    inquiry.save(update_fields=["status", "viewed_at", "contacted_at", "updated_at"])
-    messages.success(request, "وضعیت استعلام به‌روزرسانی شد.")
-    return redirect("catalog_manage:inquiries")
