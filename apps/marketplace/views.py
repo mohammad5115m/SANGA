@@ -7,14 +7,13 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 
 from apps.businesses.decorators import business_login_required
+from apps.core.pagination import paginate
 from apps.inventory.forms import ItemFilterForm
 
 from .selectors import filter_marketplace_lots, get_marketplace_lot, marketplace_lots_for
 from .services import b2b_price_context, marketplace_lot_card
 
 logger = logging.getLogger(__name__)
-
-MAX_CARDS = 80
 
 
 @business_login_required
@@ -24,11 +23,12 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
 
     form = ItemFilterForm(request.GET or None)
     qs = filter_marketplace_lots(marketplace_lots_for(request.business), spec=form.to_spec())
-    cards = [marketplace_lot_card(lot, request.business) for lot in qs[:MAX_CARDS]]
+    page = paginate(request, qs)
+    cards = [marketplace_lot_card(lot, request.business) for lot in page.object_list]
     return render(
         request,
         "marketplace/home.html",
-        {"filter_form": form, "cards": cards},
+        {"filter_form": form, "cards": cards, "page": page},
     )
 
 

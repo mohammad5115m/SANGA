@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
+from apps.core.pagination import ROW_PAGE_SIZE, paginate
 from apps.inventory.policy import get_eligible_item
 from apps.invoicing.services import InvoiceError, create_invoice_for_trade
 
@@ -32,8 +33,6 @@ from .services import (
 )
 
 logger = logging.getLogger(__name__)
-
-ROWS = 60
 
 STATUS_FILTERS = (
     ("", "همه"),
@@ -89,10 +88,11 @@ def request_create(request: HttpRequest, item_id) -> HttpResponse:
 def sent_list(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "")
     qs = filter_requests(sent_requests(request.business), status=status)
+    page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "trading/sent_list.html",
-        {"requests": qs[:ROWS], "status": status, "status_filters": STATUS_FILTERS},
+        {"requests": page.object_list, "page": page, "status": status, "status_filters": STATUS_FILTERS},
     )
 
 
@@ -125,10 +125,11 @@ def sent_detail(request: HttpRequest, request_id) -> HttpResponse:
 def received_list(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "")
     qs = filter_requests(received_requests(request.business), status=status)
+    page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "trading/received_list.html",
-        {"requests": qs[:ROWS], "status": status, "status_filters": STATUS_FILTERS},
+        {"requests": page.object_list, "page": page, "status": status, "status_filters": STATUS_FILTERS},
     )
 
 
@@ -247,10 +248,11 @@ def direct_sale(request: HttpRequest) -> HttpResponse:
 @business_login_required
 @require_capability(PURCHASE_REQUEST)
 def trade_list(request: HttpRequest) -> HttpResponse:
+    page = paginate(request, trades_for_seller(request.business), per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "trading/trade_list.html",
-        {"trades": trades_for_seller(request.business)[:ROWS]},
+        {"trades": page.object_list, "page": page},
     )
 
 

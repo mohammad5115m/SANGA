@@ -8,6 +8,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from apps.businesses.models import Business
+from apps.core.pagination import paginate
 from apps.inventory.forms import ItemFilterForm
 
 from . import cart
@@ -26,7 +27,6 @@ from .services import b2c_price_context, public_lot_card, record_catalog_view
 logger = logging.getLogger(__name__)
 
 COMPARE_SESSION_KEY = "b2c_compare_lot_ids"
-MAX_CARDS = 60
 
 
 def _business_or_404(slug: str) -> Business:
@@ -43,7 +43,8 @@ def public_search(request: HttpRequest) -> HttpResponse:
     """Login-free product discovery across every eligible seller."""
     form = ItemFilterForm(request.GET or None)
     qs = filter_public_lots(public_items(), spec=form.to_spec())
-    cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
+    page = paginate(request, qs)
+    cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
     for card in cards:
         card["is_selected"] = str(card["lot"].id) in selected
@@ -53,6 +54,7 @@ def public_search(request: HttpRequest) -> HttpResponse:
         {
             "filter_form": form,
             "cards": cards,
+            "page": page,
             "compare_ids": _compare_ids(request),
             "selection_count": cart.count(request),
         },
@@ -64,7 +66,8 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
     business = _business_or_404(business_slug)
     form = ItemFilterForm(request.GET or None)
     qs = filter_public_lots(public_catalog_lots(business), spec=form.to_spec())
-    cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
+    page = paginate(request, qs)
+    cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
     for card in cards:
         card["is_selected"] = str(card["lot"].id) in selected
@@ -75,6 +78,7 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
             "business": business,
             "filter_form": form,
             "cards": cards,
+            "page": page,
             "compare_ids": _compare_ids(request),
             "selection_count": cart.count(request),
         },
@@ -153,13 +157,14 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
     # before.
     notes = catalog_notes(catalog)
     selected = set(cart.selected_ids(request))
+    page = paginate(request, catalog.resolved_items)
     cards = [
         {
             **public_lot_card(item),
             "note": notes.get(str(item.pk), ""),
             "is_selected": str(item.pk) in selected,
         }
-        for item in getattr(catalog, "resolved_items", [])
+        for item in page.object_list
     ]
 
     return render(
@@ -169,6 +174,7 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
             "catalog": catalog,
             "business": catalog.business,
             "cards": cards,
+            "page": page,
             "share_url": request.build_absolute_uri(),
             "selection_count": cart.count(request),
         },

@@ -17,6 +17,7 @@ from apps.businesses.permissions import (
     PRICES_EDIT,
     PRICES_VIEW,
 )
+from apps.core.pagination import paginate
 from apps.pricing.models import LotPrice
 from apps.pricing.services import resolve_visible_prices
 
@@ -105,16 +106,17 @@ def lot_list(request: HttpRequest) -> HttpResponse:
         spec=form.to_spec(),
         state=form.state_value,
     )
+    page = paginate(request, qs)
     can_view_prices = request.membership.has_capability(PRICES_VIEW)
     rows = []
-    for lot in qs[:100]:
+    for lot in page.object_list:
         prices = resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices)
         primary = next((m for m in lot.media.all() if m.is_primary), None) or next(iter(lot.media.all()), None)
         rows.append({"lot": lot, "stock": stock_view(lot), "prices": prices, "primary_media": primary})
     return render(
         request,
         "inventory/lot_list.html",
-        {"filter_form": form, "rows": rows, "can_view_prices": can_view_prices},
+        {"filter_form": form, "rows": rows, "page": page, "can_view_prices": can_view_prices},
     )
 
 
