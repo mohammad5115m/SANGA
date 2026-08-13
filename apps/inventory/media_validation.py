@@ -44,6 +44,20 @@ _ISOBMFF_BRANDS = (
 #: EBML magic, shared by Matroska and WebM.
 _EBML_MAGIC = b"\x1a\x45\xdf\xa3"
 
+#: Longest edge SANGA will decode. Well past any phone camera; a product photo
+#: does not need 20,000 pixels of anything.
+MAX_IMAGE_DIMENSION = 12_000
+
+#: Total pixels SANGA will decode, which is the number that actually bounds
+#: memory. A decoded pixel costs about four bytes, so this is roughly 240 MB at
+#: worst — survivable on one request, fatal if several arrive together.
+#:
+#: The byte limit does not cover this. Compression ratios of several thousand to
+#: one are ordinary for synthetic images, so a 40 KB PNG that passes a 10 MB
+#: check can still expand to gigabytes when decoded. That is the decompression
+#: bomb, and the only defence is a limit on the decoded size.
+MAX_IMAGE_PIXELS = 60_000_000
+
 
 class MediaValidationError(Exception):
     def __init__(self, message: str) -> None:
@@ -59,6 +73,26 @@ def _head(upload: UploadedFile, size: int = _PROBE_BYTES) -> bytes:
     return head or b""
 
 
+TOO_LARGE_MESSAGE = (
+    f"ابعاد تصویر بیش از حد مجاز است (حداکثر {MAX_IMAGE_DIMENSION} پیکسل در هر ضلع)."
+)
+
+
+def _check_size(width: int, height: int) -> None:
+    """Refuse before decoding, using the header's declared dimensions.
+
+    Order matters: this runs against the size Pillow read from the header, so a
+    bomb is refused without ever being expanded. Checking afterwards would mean
+    the memory had already been spent.
+    """
+    if width <= 0 or height <= 0:
+        raise MediaValidationError("این فایل یک تصویر معتبر نیست.")
+    if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+        raise MediaValidationError(TOO_LARGE_MESSAGE)
+    if width * height > MAX_IMAGE_PIXELS:
+        raise MediaValidationError(TOO_LARGE_MESSAGE)
+
+
 def verify_image(upload: UploadedFile) -> str:
     """Decode the file and return its real format.
 
@@ -66,26 +100,60 @@ def verify_image(upload: UploadedFile) -> str:
     once to check the container parses, once to force the pixel data to decode.
     A header that parses over truncated or corrupt data is exactly the case the
     second open catches.
+
+    Between the two, the declared dimensions are checked. The byte limit applied
+    before this does not bound the decoded size at all — compression ratios in
+    the thousands are ordinary for synthetic images, so a 40 KB PNG can expand to
+    gigabytes of pixels — and the expansion happens during ``load()``. Refusing
+    on the header is the only point at which the memory has not been spent yet.
+
+    ``Image.MAX_IMAGE_PIXELS`` is set alongside rather than relied upon: Pillow
+    raises for images beyond twice that value but only *warns* between one and
+    two times it, and a warning does not stop a decode.
     """
+    import warnings
+
     from PIL import Image, UnidentifiedImageError
 
-    upload.seek(0)
-    try:
-        with Image.open(upload) as probe:
-            image_format = (probe.format or "").upper()
-            probe.verify()
-    except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
-        raise MediaValidationError("این فایل یک تصویر معتبر نیست.") from exc
+    # Belt and braces with the explicit check below. Pillow's own limit catches
+    # formats whose header size we did not read, and can be reached from inside
+    # load() on a multi-frame image.
+    Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
-    if image_format not in ALLOWED_IMAGE_FORMATS:
-        raise MediaValidationError("قالب تصویر پشتیبانی نمی‌شود. از jpg، png، webp یا gif استفاده کنید.")
-
-    upload.seek(0)
+    # One finally around the whole thing: the caller stores from this same
+    # stream, so it has to be back at the start however this exits — including
+    # on the size refusal between the two decodes.
     try:
-        with Image.open(upload) as image:
-            image.load()
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise MediaValidationError("این تصویر ناقص یا خراب است.") from exc
+        upload.seek(0)
+        try:
+            with Image.open(upload) as probe:
+                image_format = (probe.format or "").upper()
+                width, height = probe.size
+                probe.verify()
+        except Image.DecompressionBombError as exc:
+            raise MediaValidationError(TOO_LARGE_MESSAGE) from exc
+        except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
+            raise MediaValidationError("این فایل یک تصویر معتبر نیست.") from exc
+
+        if image_format not in ALLOWED_IMAGE_FORMATS:
+            raise MediaValidationError(
+                "قالب تصویر پشتیبانی نمی‌شود. از jpg، png، webp یا gif استفاده کنید."
+            )
+
+        _check_size(width, height)
+
+        upload.seek(0)
+        try:
+            with warnings.catch_warnings():
+                # Pillow warns rather than raises in the band between one and two
+                # times MAX_IMAGE_PIXELS. A warning is not a defence, so promote it.
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(upload) as image:
+                    image.load()
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+            raise MediaValidationError(TOO_LARGE_MESSAGE) from exc
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise MediaValidationError("این تصویر ناقص یا خراب است.") from exc
     finally:
         upload.seek(0)
 
@@ -93,7 +161,28 @@ def verify_image(upload: UploadedFile) -> str:
 
 
 def verify_video(upload: UploadedFile) -> str:
-    """Check the container signature and return the family it belongs to."""
+    """Check the container signature and return the family it belongs to.
+
+    **This is a container check, not a validity check, and the difference is
+    deliberate.** It establishes that the bytes begin as an MP4/MOV/WebM rather
+    than as a script or an executable, which is the property that matters for
+    something a browser will be handed. It does not establish that the stream
+    decodes, that its codecs are ones any player supports, or how long it is.
+
+    Full validation means ffprobe, which means ffmpeg in the image: a large
+    dependency with a large CVE history, pulled in for an MVP that stores short
+    product clips. The deferral is recorded here rather than implied, and what
+    stands in for it is stated so the gap is a decision rather than an oversight:
+
+    * a 60 MB size limit, applied before any of this (``services.MAX_VIDEO_BYTES``);
+    * a closed list of containers;
+    * ``Content-Type`` and ``X-Content-Type-Options: nosniff`` on the stored
+      object, so a file that turns out not to be a video is still never executed
+      in SANGA's origin.
+
+    Revisit when video becomes a real part of the product rather than an
+    occasional attachment.
+    """
     head = _head(upload)
     if len(head) < 12:
         raise MediaValidationError("این فایل یک ویدیوی معتبر نیست.")

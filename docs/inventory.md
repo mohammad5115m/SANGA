@@ -1,4 +1,5 @@
-# Inventory — سنگا (SANGA)
+# Inventory
+ — سنگا (SANGA)
 
 ## 1. Two concepts, kept apart
 
@@ -157,10 +158,42 @@ becomes optional.
 `is_primary` and `caption`. Sellers can reorder, delete and choose the cover
 image.
 
-Uploads are validated on extension **and** content type, with size ceilings of
-10 MB for images and 60 MB for video. The browser-supplied `Content-Type` is
-treated as a hint only: a caller can set any header they like, so trusting it
-alone would let an arbitrary file through under an image label.
+Uploads are validated on their **bytes**, not on what they claim to be. The
+extension, the browser's `Content-Type` and `mimetypes.guess_type` are all
+supplied by the caller and all agree with each other about a file that is not an
+image at all, so `payload.html` renamed to `stone.jpg` used to pass every check.
+
+Images go through `apps/inventory/media_validation.py`:
+
+| Check | Limit | Why |
+|-------|-------|-----|
+| Bytes | 10 MB | Refused before anything is decoded |
+| Format | JPEG, PNG, WebP, GIF | A valid TIFF is a valid image and still not a product photo |
+| Longest edge | 12,000 px | Well past any camera |
+| Total pixels | 60 million | The number that actually bounds memory |
+| Decodes fully | `verify()` then `load()` | A header parses over truncated data; the pixels do not |
+
+The pixel limit is the one that is easy to leave out, and the byte limit does not
+substitute for it. Compression ratios in the thousands are ordinary for synthetic
+images, so a 40 KB PNG declaring 30,000 × 30,000 passes a 10 MB check and then
+asks for gigabytes while decoding. The dimensions are therefore read from the
+header and refused **before** `load()` — after it, the memory has already been
+spent. `Image.MAX_IMAGE_PIXELS` is set alongside the explicit check rather than
+relied upon, because Pillow only *warns* between one and two times that value,
+and a warning does not stop a decode.
+
+Video is checked against its **container signature only** — MP4/MOV/WebM — and
+this is a deliberate limitation rather than an oversight. Full validation means
+ffprobe, which means ffmpeg in the image: a large dependency with a large CVE
+history, for a product that stores occasional short clips. What stands in for it
+is the 60 MB size limit, the closed container list, and `Content-Type` plus
+`X-Content-Type-Options: nosniff` on the stored object, so a file that turns out
+not to be a video is still never executed in SANGA's origin. Revisit when video
+becomes a real part of the product.
+
+None of this is a virus scanner and none of it claims to be. The property being
+defended is narrower and worth having on its own: whatever reaches storage and is
+served back to a browser is a media file.
 
 ## 9. Deletion
 
