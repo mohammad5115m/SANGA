@@ -68,12 +68,14 @@ def busy(db):
             unit_price=Decimal("1000000"),
             buyer_business=buyer,
         )
+        # A walk-in document alongside the colleague sale above, so the invoice
+        # list has both counterparty kinds to render.
         create_manual_invoice(
             business=seller,
             membership=seller_m,
             lines=[{"product_name": item.product.commercial_name, "quantity": Decimal("5"),
                     "unit_price": Decimal("1000000"), "item": item}],
-            buyer_business=buyer,
+            customer_name=f"مشتری {index}",
         )
 
     return {"seller": seller, "buyer": buyer, "items": items}
@@ -90,8 +92,9 @@ def _login(client, business):
 @pytest.mark.parametrize(
     ("url_name", "budget"),
     [
-        # Measured counts are 5-8. The budget leaves room for a session or shell
-        # change without leaving room for eight extra per-row queries.
+        # Measured counts are 5-9, including the paginator's COUNT. The budget
+        # leaves room for a session or shell change without leaving room for
+        # eight extra per-row queries — which is the only thing it is guarding.
         ("inventory:lot_list", 12),
         ("marketplace:home", 12),
         ("trading:received_list", 12),
@@ -140,7 +143,10 @@ def test_a_shared_catalog_does_not_scale_queries_with_rows(client, busy, django_
         rules={"stone_type": "تراورتن"},
     )
     url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
-    with django_assert_max_num_queries(12):
+    # One higher than the other lists: a rule catalog resolves its membership as a
+    # subquery, which the paginator's COUNT then wraps. Still flat in row count,
+    # which is what this file exists to prove.
+    with django_assert_max_num_queries(13):
         assert client.get(url).status_code == 200
 
 

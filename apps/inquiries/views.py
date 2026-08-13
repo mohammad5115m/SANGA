@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import LEADS_MANAGE, LEADS_VIEW
+from apps.core.pagination import ROW_PAGE_SIZE, paginate
 
 from .models import Inquiry
 from .selectors import (
@@ -22,8 +23,6 @@ from .selectors import (
 from .services import InquiryError, mark_inquiry_viewed, set_inquiry_status
 
 logger = logging.getLogger(__name__)
-
-ROWS = 60
 
 STATUS_FILTERS = (
     ("", "همه"),
@@ -41,11 +40,13 @@ def inquiry_inbox(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "")
     q = request.GET.get("q", "").strip()
     qs = filter_inquiries(inquiries_for(request.business), status=status, q=q)
+    page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "inquiries/inbox.html",
         {
-            "inquiries": qs[:ROWS],
+            "inquiries": page.object_list,
+            "page": page,
             "status": status,
             "q": q,
             "status_filters": STATUS_FILTERS,
@@ -98,10 +99,11 @@ def inquiry_set_status(request: HttpRequest, inquiry_id) -> HttpResponse:
 @require_capability(LEADS_VIEW)
 def lead_list(request: HttpRequest) -> HttpResponse:
     q = request.GET.get("q", "").strip()
+    page = paginate(request, filter_leads(leads_for(request.business), q=q), per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "inquiries/lead_list.html",
-        {"leads": filter_leads(leads_for(request.business), q=q)[:ROWS], "q": q},
+        {"leads": page.object_list, "page": page, "q": q},
     )
 
 

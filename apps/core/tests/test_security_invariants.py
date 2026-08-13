@@ -307,15 +307,18 @@ def test_a_finalized_sale_moves_the_ledger_exactly_once(world):
 
 @pytest.mark.django_db
 def test_an_invoice_does_not_change_when_the_product_does(world):
-    from apps.invoicing.services import create_manual_invoice
+    from apps.invoicing.models import SalesInvoice
+    from apps.trading.services import record_direct_sale
 
-    invoice = create_manual_invoice(
-        business=world["seller"],
+    trade = record_direct_sale(
+        seller_business=world["seller"],
         membership=owner_membership(world["seller"]),
-        lines=[{"product_name": "تراورتن آزمون", "quantity": Decimal("10"),
-                "unit_price": Decimal("1000000"), "item": world["item"]}],
+        item=world["item"],
+        quantity_sqm=Decimal("10"),
+        unit_price=Decimal("1000000"),
         buyer_business=world["colleague"],
     )
+    invoice = SalesInvoice.objects.get(trade=trade)
     product = world["item"].product
     product.commercial_name = "نام تازه"
     product.save(update_fields=["commercial_name"])

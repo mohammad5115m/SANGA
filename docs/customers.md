@@ -14,6 +14,22 @@ being used.
 /search/  →  select products  →  /inquiry/  →  identify  →  verify  →  saved
 ```
 
+### There is exactly one way in
+
+Every public entry point funnels into that pipeline: a card in search results, the
+«درخواست استعلام» button on a product page, «استعلام موجودی» on a stale quantity,
+and a shared catalog all add the product to the selection and continue from
+`/inquiry/`.
+
+The product page and the shared catalog used to carry their own name/phone forms
+that called `create_inquiry` directly. The most obvious button on the most visited
+public page therefore recorded an inquiry with an unverified phone, no requested
+quantity and — on the catalog — no product rows at all, while the designed flow
+next to it asked for all three. Two workflows for one intention, disagreeing about
+what an inquiry even contains.
+
+Those forms are gone. `lot_detail` and `shared_catalog` are GET-only.
+
 ## 2. One inquiry, several products
 
 V1 modelled one inquiry per product, so a customer shopping for a floor, a facade
@@ -34,6 +50,26 @@ Public search covers every seller, so a selection can too. At submission the
 selection is split by seller and **one inquiry is created per seller**, each
 containing only that seller's products. One seller must never see what a customer
 asked another.
+
+### One submission, one set of inquiries
+
+`submit_public_inquiry()` writes them all in **one transaction**, keyed by a
+`submission_id` minted before the OTP is sent and carried in the session.
+`uniq_inquiry_per_submission_and_seller` makes the token unique per seller.
+
+Both properties matter, and neither is available to the per-seller service:
+
+- **All or nothing.** The loop used to run outside any transaction, so a failure
+  on the third seller left the first two committed while the page reported that
+  the submission had failed. The customer had no way to tell which sellers had
+  heard them.
+- **Retry-safe.** A refresh, a double-tapped submit button on a slow connection,
+  or a retry after a failure carries the same token and is handed the inquiries
+  that already exist rather than creating a second set.
+
+Seller notifications are scheduled with `transaction.on_commit`, so a notification
+is never sent for an inquiry that rolled back, and a failing notification backend
+cannot lose a saved inquiry.
 
 ## 3. Customers are not platform Users
 
@@ -108,3 +144,9 @@ When an item's stock confirmation lapses, its display degrades to «استعلا
 موجودی» and a buyer can ask whether the quantity still holds. That is recorded
 as a normal inquiry so it lands in the same inbox, and the seller answers by
 either confirming stock or marking the product ناموجود.
+
+It runs through the same pipeline as every other public inquiry — the button
+selects the product and seeds the question, then identity and OTP follow — so the
+phone behind it is verified like every other. Keeping a low-friction exception
+here would have meant one class of inquiry whose phone number nobody had checked,
+and no way for a seller to tell which kind they were looking at.

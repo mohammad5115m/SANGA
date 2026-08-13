@@ -5,13 +5,15 @@ import logging
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
+from apps.core.pagination import ROW_PAGE_SIZE, paginate
 from apps.inventory.policy import get_eligible_item
+from apps.invoicing.services import InvoiceError, create_invoice_for_trade
 
-from .forms import FinalizeSaleForm, PurchaseRequestForm, PurchaseRequestResponseForm
+from .forms import DirectSaleForm, FinalizeSaleForm, PurchaseRequestForm, PurchaseRequestResponseForm
 from .models import PurchaseRequest
 from .selectors import (
     filter_requests,
@@ -26,12 +28,11 @@ from .services import (
     cancel_purchase_request,
     create_purchase_request,
     finalize_sale,
+    record_direct_sale,
     respond_to_purchase_request,
 )
 
 logger = logging.getLogger(__name__)
-
-ROWS = 60
 
 STATUS_FILTERS = (
     ("", "همه"),
@@ -87,10 +88,11 @@ def request_create(request: HttpRequest, item_id) -> HttpResponse:
 def sent_list(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "")
     qs = filter_requests(sent_requests(request.business), status=status)
+    page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "trading/sent_list.html",
-        {"requests": qs[:ROWS], "status": status, "status_filters": STATUS_FILTERS},
+        {"requests": page.object_list, "page": page, "status": status, "status_filters": STATUS_FILTERS},
     )
 
 
@@ -123,10 +125,11 @@ def sent_detail(request: HttpRequest, request_id) -> HttpResponse:
 def received_list(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "")
     qs = filter_requests(received_requests(request.business), status=status)
+    page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "trading/received_list.html",
-        {"requests": qs[:ROWS], "status": status, "status_filters": STATUS_FILTERS},
+        {"requests": page.object_list, "page": page, "status": status, "status_filters": STATUS_FILTERS},
     )
 
 
@@ -204,16 +207,52 @@ def finalize(request: HttpRequest, request_id) -> HttpResponse:
     return render(request, "trading/finalize.html", {"pr": purchase_request, "form": form})
 
 
+@business_login_required
+@require_capability(SALE_FINALIZE)
+@require_http_methods(["GET", "POST"])
+def direct_sale(request: HttpRequest) -> HttpResponse:
+    """«ثبت فروش مستقیم» — record a phone or counter sale.
+
+    The authoritative entry point for a sale that never went through a purchase
+    request. It creates the Trade, posts both parties' books and issues the
+    invoice in one transaction, so a colleague sale can never exist as a document
+    with no matching balance.
+    """
+    form = DirectSaleForm(request.POST or None, business=request.business)
+    if request.method == "POST" and form.is_valid():
+        try:
+            trade = record_direct_sale(
+                seller_business=request.business,
+                membership=request.membership,
+                item=form.cleaned_data.get("item"),
+                quantity_sqm=form.cleaned_data["quantity_sqm"],
+                unit_price=form.cleaned_data["unit_price"],
+                buyer_business=form.cleaned_data.get("buyer_business"),
+                customer_name=form.cleaned_data.get("customer_name", ""),
+                customer_phone=form.cleaned_data.get("customer_phone", ""),
+                product_name=form.cleaned_data.get("product_name", ""),
+                note=form.cleaned_data.get("note", ""),
+            )
+        except TradingError as exc:
+            form.add_error(None, exc.message)
+        else:
+            messages.success(request, "فروش ثبت شد.")
+            return redirect("trading:trade_detail", trade_id=trade.id)
+
+    return render(request, "trading/direct_sale.html", {"form": form})
+
+
 # --- trades -------------------------------------------------------------------
 
 
 @business_login_required
 @require_capability(PURCHASE_REQUEST)
 def trade_list(request: HttpRequest) -> HttpResponse:
+    page = paginate(request, trades_for_seller(request.business), per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "trading/trade_list.html",
-        {"trades": trades_for_seller(request.business)[:ROWS]},
+        {"trades": page.object_list, "page": page},
     )
 
 
@@ -227,8 +266,41 @@ def trade_detail(request: HttpRequest, trade_id) -> HttpResponse:
         messages.error(request, "معامله یافت نشد.")
         return redirect("trading:trade_list")
 
+    is_seller = trade.seller_business_id == request.business.id
     return render(
         request,
         "trading/trade_detail.html",
-        {"trade": trade, "is_seller": trade.seller_business_id == request.business.id},
+        {
+            "trade": trade,
+            "is_seller": is_seller,
+            "invoice": trade.invoices.first(),
+            "can_create_invoice": is_seller and request.membership.has_capability(SALE_FINALIZE),
+        },
     )
+
+
+@business_login_required
+@require_capability(SALE_FINALIZE)
+@require_POST
+def trade_create_invoice(request: HttpRequest, trade_id) -> HttpResponse:
+    """Issue the document for a sale that ended up without one.
+
+    Invoice creation is a consequence of finalizing, and it is best-effort so a
+    failure there can never roll back a completed sale. That leaves a narrow gap
+    — a plan that lapsed mid-flow, a transient error — where a finalized trade
+    has no document. Before this there was no way out of it but the admin.
+    """
+    from .selectors import get_trade
+
+    trade = get_trade(request.business, trade_id)
+    if trade is None or trade.seller_business_id != request.business.id:
+        messages.error(request, "معامله یافت نشد.")
+        return redirect("trading:trade_list")
+
+    try:
+        invoice = create_invoice_for_trade(trade=trade, membership=request.membership)
+    except InvoiceError as exc:
+        messages.error(request, exc.message)
+    else:
+        messages.success(request, f"فاکتور {invoice.number} ساخته شد.")
+    return redirect("trading:trade_detail", trade_id=trade.id)

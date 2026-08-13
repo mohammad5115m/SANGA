@@ -1,0 +1,85 @@
+# Production-shaped topology. Not a copy of docker-compose.yml with DEBUG off:
+# the differences are the point.
+#
+#   * no source bind-mount — the image is what runs, and it is what was tested
+#   * no published database or Redis ports — they are reachable only on the
+#     internal network, so a misconfigured firewall is not the only thing
+#     standing between the internet and the database
+#   * migrations are their own one-shot service, run before the web replicas, so
+#     replicas do not race each other through the same schema change
+#   * gunicorn, not runserver
+#
+# TLS terminates at a reverse proxy in front of this. SECURE_PROXY_SSL_HEADER and
+# CSRF_TRUSTED_ORIGINS in config/settings/production.py assume that.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sanga}
+      POSTGRES_USER: ${POSTGRES_USER:-sanga}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: .
+    command: ["migrate"]
+    env_file: [.env]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: .
+    command: ["web"]
+    env_file: [.env]
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: ["worker"]
+    env_file: [.env]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  beat:
+    build: .
+    command: ["beat"]
+    env_file: [.env]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

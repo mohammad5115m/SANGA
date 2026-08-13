@@ -17,6 +17,7 @@ from apps.businesses.permissions import (
     PRICES_EDIT,
     PRICES_VIEW,
 )
+from apps.core.pagination import paginate
 from apps.pricing.models import LotPrice
 from apps.pricing.services import resolve_visible_prices
 
@@ -105,16 +106,17 @@ def lot_list(request: HttpRequest) -> HttpResponse:
         spec=form.to_spec(),
         state=form.state_value,
     )
+    page = paginate(request, qs)
     can_view_prices = request.membership.has_capability(PRICES_VIEW)
     rows = []
-    for lot in qs[:100]:
+    for lot in page.object_list:
         prices = resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices)
         primary = next((m for m in lot.media.all() if m.is_primary), None) or next(iter(lot.media.all()), None)
         rows.append({"lot": lot, "stock": stock_view(lot), "prices": prices, "primary_media": primary})
     return render(
         request,
         "inventory/lot_list.html",
-        {"filter_form": form, "rows": rows, "can_view_prices": can_view_prices},
+        {"filter_form": form, "rows": rows, "page": page, "can_view_prices": can_view_prices},
     )
 
 
@@ -220,6 +222,7 @@ def lot_confirm_stock(request: HttpRequest, lot_id) -> HttpResponse:
                 membership=request.membership,
                 stock_mode=form.cleaned_data["stock_mode"],
                 available_sqm=form.cleaned_data.get("available_sqm"),
+                stock_valid_for_days=form.cleaned_data["stock_valid_for_days"],
             )
         except InventoryError as exc:
             messages.error(request, exc.message)
@@ -304,7 +307,13 @@ def lot_duplicate(request: HttpRequest, lot_id) -> HttpResponse:
     except InventoryError as exc:
         messages.error(request, exc.message)
         return redirect("inventory:lot_detail", lot_id=lot.id)
-    messages.success(request, f"کپی ایجاد شد: {clone.lot_code}")
+    # Said out loud, because a promotion that quietly disappeared looked like a
+    # bug and one that quietly carried over would be worse.
+    messages.success(
+        request,
+        f"کپی ایجاد شد: {clone.lot_code}. قیمت‌ها کپی شدند اما «فروش ویژه» کپی نمی‌شود؛ "
+        "اگر لازم است دوباره آن را تنظیم کنید.",
+    )
     return redirect("inventory:lot_edit", lot_id=clone.id)
 
 
@@ -452,11 +461,16 @@ def quick_add_stock(request: HttpRequest) -> HttpResponse:
     if not data.get("product_id"):
         return redirect("inventory:quick_add_product")
 
+    # A member without prices.edit is not shown the price fields, so they are not
+    # validated either. Validating them anyway made the whole step fail silently
+    # for exactly the role that could not fill them in.
+    can_edit_prices = request.membership.has_capability(PRICES_EDIT)
     stock_form = ItemStockForm(request.POST or None)
     b2b_form = TierPriceForm(request.POST or None, prefix="b2b", tier_label="قیمت همکار")
     b2c_form = TierPriceForm(request.POST or None, prefix="b2c", tier_label="قیمت مشتری")
 
-    if request.method == "POST" and stock_form.is_valid() and b2b_form.is_valid() and b2c_form.is_valid():
+    prices_ok = (b2b_form.is_valid() and b2c_form.is_valid()) if can_edit_prices else True
+    if request.method == "POST" and stock_form.is_valid() and prices_ok:
         product = Product.objects.filter(business=request.business, pk=data["product_id"]).first()
         if product is None:
             messages.error(request, "اطلاعات ناقص است. دوباره شروع کنید.")
@@ -477,6 +491,10 @@ def quick_add_stock(request: HttpRequest) -> HttpResponse:
             "form": stock_form,
             "b2b_form": b2b_form,
             "b2c_form": b2c_form,
+            # Hidden rather than shown-and-rejected: a member without prices.edit
+            # creates the product priced «استعلام قیمت», which is the honest
+            # display for a product whose price nobody has set yet.
+            "can_edit_prices": can_edit_prices,
             "step": 3,
             "total_steps": WIZARD_STEPS,
         },
@@ -502,7 +520,17 @@ def _int_or_none(raw: str | None):
 
 
 def _create_or_update_draft(request, data, product, stock_form, b2b_form, b2c_form):
-    """Create the draft item (or update it if the seller went back a step)."""
+    """Create the draft item (or update it if the seller went back a step).
+
+    Prices are only written by a member who may write them. The wizard used to
+    write them unconditionally, so default staff — who hold ``inventory.create``
+    but not ``prices.edit`` — could enter a workflow they could not finish, and
+    the failure came after the draft had already been saved.
+    """
+    can_price = request.membership.has_capability(PRICES_EDIT)
+    b2b_spec = _price_spec(b2b_form) if can_price else None
+    b2c_spec = _price_spec(b2c_form) if can_price else None
+
     existing = get_business_lot(request.business, data["lot_id"]) if data.get("lot_id") else None
     if existing is not None:
         return update_item(
@@ -513,11 +541,11 @@ def _create_or_update_draft(request, data, product, stock_form, b2b_form, b2c_fo
                 "available_sqm": stock_form.cleaned_data.get("available_sqm") or 0,
                 "stock_valid_for_days": stock_form.cleaned_data["stock_valid_for_days"],
             },
-            b2b_price=_price_spec(b2b_form),
-            b2c_price=_price_spec(b2c_form),
+            b2b_price=b2b_spec,
+            b2c_price=b2c_spec,
         )
 
-    lot = create_draft_item(
+    return create_draft_item(
         business=request.business,
         membership=request.membership,
         product=product,
@@ -535,14 +563,9 @@ def _create_or_update_draft(request, data, product, stock_form, b2b_form, b2c_fo
         width_cm=_decimal_or_none(data.get("width_cm")),
         thickness_mm=_decimal_or_none(data.get("thickness_mm")),
         slab_count=_int_or_none(data.get("slab_count")),
+        b2b_price=b2b_spec,
+        b2c_price=b2c_spec,
     )
-    update_item(
-        lot=lot,
-        membership=request.membership,
-        b2b_price=_price_spec(b2b_form),
-        b2c_price=_price_spec(b2c_form),
-    )
-    return lot
 
 
 @business_login_required

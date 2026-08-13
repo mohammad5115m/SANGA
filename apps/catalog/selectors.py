@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Q, QuerySet
+from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
 
 from apps.businesses.models import Business
 from apps.inventory.filters import ItemFilterSpec
@@ -70,7 +70,7 @@ def get_shareable_catalog(token: str) -> CustomCatalog | None:
     return catalog
 
 
-def resolve_catalog(catalog: CustomCatalog) -> list[InventoryLot]:
+def resolve_catalog(catalog: CustomCatalog) -> QuerySet[InventoryLot]:
     """The products this catalog shows *right now*.
 
     ```text
@@ -83,9 +83,15 @@ def resolve_catalog(catalog: CustomCatalog) -> list[InventoryLot]:
     leaves every catalog immediately, and comes back on its own if it becomes
     available again and still matches. Nobody has to re-curate anything.
 
-    Evaluated at read time, in the database. A rule catalog is live by
-    definition — a new matching product appears without the seller touching the
-    catalog — so there is nothing to cache and nothing to invalidate.
+    Evaluated at read time, **in the database**, and returned as a queryset so a
+    large catalog can be paged rather than loaded whole. The rule matches used to
+    be pulled into a Python ``set`` of primary keys before the manual includes
+    were applied, which meant the cost of rendering page one grew with the size
+    of the entire match.
+
+    A rule catalog is live by definition — a new matching product appears without
+    the seller touching the catalog — so there is nothing to cache and nothing to
+    invalidate.
     """
     eligible = eligible_items(audience="public", seller_business=catalog.business)
 
@@ -98,8 +104,9 @@ def resolve_catalog(catalog: CustomCatalog) -> list[InventoryLot]:
         selected = spec.apply(eligible, audience="public")
         if include_ids:
             # OR the manual additions back in: they are exceptions to the rule,
-            # not further narrowing of it.
-            selected = eligible.filter(Q(pk__in=set(selected.values_list("pk", flat=True))) | Q(pk__in=include_ids))
+            # not further narrowing of it. A subquery rather than a materialized
+            # set, so the database does the work it is for.
+            selected = eligible.filter(Q(pk__in=selected.values("pk")) | Q(pk__in=include_ids))
     else:
         selected = eligible.filter(pk__in=include_ids)
 
@@ -108,20 +115,27 @@ def resolve_catalog(catalog: CustomCatalog) -> list[InventoryLot]:
 
     # No extra prefetch: eligible_items already loaded the B2C tier and media,
     # and adding a second `prices` prefetch would conflict with it.
-    ordered = selected.distinct()
+    selected = selected.distinct()
 
     if catalog.mode == CustomCatalog.Mode.MANUAL:
         # A hand-picked catalog is a presentation, so the seller's ordering wins.
-        position = {
-            str(pk): index
-            for index, pk in enumerate(
-                catalog.items.filter(inclusion=CustomCatalogItem.Inclusion.INCLUDE)
-                .order_by("sort_order", "id")
-                .values_list("lot_id", flat=True)
-            )
-        }
-        return sorted(ordered, key=lambda item: position.get(str(item.pk), 9999))
-    return list(ordered)
+        # Ordered in SQL by the curated positions — a bounded, hand-written list,
+        # unlike the rule matches — so the result stays a pageable queryset.
+        return selected.order_by(_manual_position(catalog), "-updated_at")
+    return selected
+
+
+def _manual_position(catalog: CustomCatalog):
+    ordered_ids = list(
+        catalog.items.filter(inclusion=CustomCatalogItem.Inclusion.INCLUDE)
+        .order_by("sort_order", "id")
+        .values_list("lot_id", flat=True)
+    )
+    return Case(
+        *[When(pk=pk, then=Value(index)) for index, pk in enumerate(ordered_ids)],
+        default=Value(len(ordered_ids)),
+        output_field=IntegerField(),
+    )
 
 
 def catalog_notes(catalog: CustomCatalog) -> dict:

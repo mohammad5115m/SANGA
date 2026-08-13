@@ -22,6 +22,7 @@ from apps.invoicing.services import (
     issue_invoice,
 )
 from apps.pricing.services import ensure_default_tiers
+from apps.trading.services import TradingError, record_direct_sale
 
 
 @pytest.fixture
@@ -59,11 +60,31 @@ def _line(**kwargs) -> dict:
 
 
 def _invoice(shop, **kwargs) -> SalesInvoice:
+    """A colleague invoice — which now has exactly one origin: a direct sale.
+
+    A sale to another Business moves that colleague's account, so it must be
+    backed by a Trade. Typing the document by hand is refused (see
+    ``test_a_colleague_invoice_cannot_be_typed_by_hand``).
+    """
+    params = {
+        "seller_business": shop["seller"],
+        "membership": shop["membership"],
+        "item": shop["item"],
+        "quantity_sqm": Decimal("40"),
+        "unit_price": Decimal("1500000"),
+        "buyer_business": shop["colleague"],
+    }
+    params.update(kwargs)
+    trade = record_direct_sale(**params)
+    return SalesInvoice.objects.get(trade=trade)
+
+
+def _customer_invoice(shop, **kwargs) -> SalesInvoice:
     params = {
         "business": shop["seller"],
         "membership": shop["membership"],
         "lines": [_line()],
-        "buyer_business": shop["colleague"],
+        "customer_name": "آقای رضایی",
     }
     params.update(kwargs)
     return create_manual_invoice(**params)
@@ -74,7 +95,7 @@ def _invoice(shop, **kwargs) -> SalesInvoice:
 
 @pytest.mark.django_db
 def test_an_invoice_keeps_its_own_copy_of_every_line(shop):
-    invoice = _invoice(shop, lines=[_line(item=shop["item"])])
+    invoice = _invoice(shop)
     line = invoice.items.get()
 
     assert line.product_name == "تراورتن عباس‌آباد"
@@ -86,7 +107,7 @@ def test_an_invoice_keeps_its_own_copy_of_every_line(shop):
 
 @pytest.mark.django_db
 def test_renaming_or_repricing_the_product_does_not_change_the_invoice(shop):
-    invoice = _invoice(shop, lines=[_line(item=shop["item"])])
+    invoice = _invoice(shop)
 
     product = shop["item"].product
     product.commercial_name = "نام جدید کاملاً متفاوت"
@@ -105,7 +126,7 @@ def test_renaming_or_repricing_the_product_does_not_change_the_invoice(shop):
 def test_deleting_the_product_does_not_change_the_invoice(shop):
     from apps.inventory.services import delete_item
 
-    invoice = _invoice(shop, lines=[_line(item=shop["item"])])
+    invoice = _invoice(shop)
     outcome = delete_item(lot=shop["item"], membership=shop["membership"])
     assert outcome == "archived", "a product on an invoice must not be purged"
 
@@ -193,13 +214,69 @@ def test_an_invoice_needs_a_buyer(shop):
 @pytest.mark.django_db
 def test_an_invoice_needs_at_least_one_line(shop):
     with pytest.raises(InvoiceError):
-        _invoice(shop, lines=[])
+        _customer_invoice(shop, lines=[])
 
 
 @pytest.mark.django_db
 def test_a_business_cannot_invoice_itself(shop):
-    with pytest.raises(InvoiceError):
+    with pytest.raises(TradingError):
         _invoice(shop, buyer_business=shop["seller"])
+
+
+# --- one commercial event, one representation ---------------------------------
+
+
+@pytest.mark.django_db
+def test_a_colleague_invoice_cannot_be_typed_by_hand(shop):
+    """The regression this rule exists for.
+
+    Hand-typing a colleague invoice produced a valid-looking document while the
+    colleague's balance stayed at zero: one sale, described two ways, only one of
+    which counted.
+    """
+    with pytest.raises(InvoiceError):
+        create_manual_invoice(
+            business=shop["seller"],
+            membership=shop["membership"],
+            lines=[_line()],
+            buyer_business=shop["colleague"],
+        )
+    assert not SalesInvoice.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_direct_colleague_sale_produces_trade_ledger_and_invoice_together(shop):
+    from apps.accounting.models import LedgerEntry
+    from apps.accounting.selectors import current_balance
+    from apps.trading.models import Trade
+
+    invoice = _invoice(shop)
+
+    trade = Trade.objects.get()
+    assert invoice.trade_id == trade.id
+    assert invoice.total_amount == trade.total_amount == Decimal("60000000.00")
+    assert current_balance(shop["seller"], shop["colleague"]) == Decimal("60000000.00")
+    assert current_balance(shop["colleague"], shop["seller"]) == Decimal("-60000000.00")
+    assert LedgerEntry.objects.filter(related_trade=trade).count() == 2
+
+
+@pytest.mark.django_db
+def test_one_trade_can_never_have_two_invoices(shop):
+    """The database says so, not just the service."""
+    from django.db import IntegrityError, transaction
+
+    invoice = _invoice(shop)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        SalesInvoice.objects.create(
+            seller_business=shop["seller"],
+            number="99999",
+            counterparty_type=SalesInvoice.Counterparty.BUSINESS,
+            buyer_business=shop["colleague"],
+            buyer_name="سنگ همکار",
+            trade=invoice.trade,
+            issue_date=invoice.issue_date,
+            total_amount=Decimal("1"),
+        )
 
 
 # --- visibility ---------------------------------------------------------------
@@ -223,10 +300,13 @@ def test_a_third_business_cannot_see_it(shop):
 @pytest.mark.django_db
 def test_invoices_between_two_businesses_covers_both_directions(shop):
     _invoice(shop)
-    create_manual_invoice(
-        business=shop["colleague"],
+    record_direct_sale(
+        seller_business=shop["colleague"],
         membership=owner_membership(shop["colleague"]),
-        lines=[_line()],
+        item=None,
+        product_name="گرانیت نطنز",
+        quantity_sqm=Decimal("10"),
+        unit_price=Decimal("2000000"),
         buyer_business=shop["seller"],
     )
     assert invoices_between(shop["seller"], shop["colleague"]).count() == 2
@@ -240,7 +320,7 @@ def test_a_browse_only_business_cannot_issue_invoices(shop):
     shop["seller"].plan = Business.Plan.BROWSE
     shop["seller"].save(update_fields=["plan"])
     with pytest.raises(InvoiceError):
-        _invoice(shop)
+        _customer_invoice(shop)
 
 
 @pytest.mark.django_db

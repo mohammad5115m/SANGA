@@ -8,8 +8,8 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.directory import colleague_businesses, get_colleague
 from apps.businesses.permissions import INVOICE_MANAGE, INVOICE_VIEW
+from apps.core.pagination import ROW_PAGE_SIZE, paginate
 
 from .forms import InvoiceLineFormSet, ManualInvoiceForm
 from .models import SalesInvoice
@@ -18,8 +18,6 @@ from .services import InvoiceError, cancel_invoice, create_manual_invoice, issue
 
 logger = logging.getLogger(__name__)
 
-ROWS = 60
-
 
 @business_login_required
 @require_capability(INVOICE_VIEW)
@@ -27,11 +25,13 @@ def invoice_list(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "")
     q = request.GET.get("q", "").strip()
     qs = filter_invoices(invoices_for(request.business), status=status, q=q)
+    page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
         "invoicing/list.html",
         {
-            "invoices": qs[:ROWS],
+            "invoices": page.object_list,
+            "page": page,
             "status": status,
             "q": q,
             "status_choices": SalesInvoice.Status.choices,
@@ -90,15 +90,11 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
             for line in formset.cleaned_data
             if line and not line.get("DELETE") and line.get("product_name")
         ]
-        colleague = None
-        if form.cleaned_data.get("buyer_business"):
-            colleague = get_colleague(request.business, form.cleaned_data["buyer_business"].id)
         try:
             invoice = create_manual_invoice(
                 business=request.business,
                 membership=request.membership,
                 lines=lines,
-                buyer_business=colleague,
                 customer_name=form.cleaned_data.get("customer_name", ""),
                 customer_phone=form.cleaned_data.get("customer_phone", ""),
                 notes=form.cleaned_data.get("notes", ""),
@@ -110,11 +106,7 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
             messages.success(request, f"فاکتور {invoice.number} صادر شد.")
             return redirect("invoicing:detail", invoice_id=invoice.id)
 
-    return render(
-        request,
-        "invoicing/form.html",
-        {"form": form, "formset": formset, "colleagues": colleague_businesses(request.business)},
-    )
+    return render(request, "invoicing/form.html", {"form": form, "formset": formset})
 
 
 @business_login_required

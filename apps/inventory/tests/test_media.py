@@ -30,6 +30,11 @@ PNG = (
     b"\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 
+# A real ISO-BMFF header: [box size][ftyp][major brand]. Uploads are checked
+# against the container signature now, so a thousand zero bytes named .mp4 is
+# refused — which is the whole point, and means the fixture has to be genuine.
+MP4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2" + b"\x00" * 64
+
 
 @pytest.fixture
 def shop(db):
@@ -47,7 +52,7 @@ def _image(name="a.png") -> SimpleUploadedFile:
 
 
 def _video(name="a.mp4") -> SimpleUploadedFile:
-    return SimpleUploadedFile(name, b"\x00" * 1024, content_type="video/mp4")
+    return SimpleUploadedFile(name, MP4, content_type="video/mp4")
 
 
 def _add(shop, upload, **kwargs):

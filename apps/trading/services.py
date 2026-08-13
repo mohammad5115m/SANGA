@@ -14,7 +14,8 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils import timezone
 
-from apps.accounting.services import post_trade_for_sale
+from apps.accounting.services import post_trade_entries
+from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.entitlements import (
     FINALIZE_SALES,
     RECEIVE_PURCHASE_REQUESTS,
@@ -43,6 +44,13 @@ class TradingError(Exception):
 def _require(membership: BusinessMembership, capability: str) -> None:
     if membership is None or not membership.has_capability(capability):
         raise TradingError("دسترسی لازم برای این عملیات را ندارید.")
+    # A suspended or expired tenant does not buy either. Browse-only accounts can
+    # send purchase requests without any seller entitlement, so without this the
+    # buying side had no operational gate at all.
+    try:
+        require_operational(membership.business)
+    except NotOperationalError as exc:
+        raise TradingError(exc.message) from exc
 
 
 def _require_plan(business: Business, entitlement: str) -> None:
@@ -299,10 +307,10 @@ def finalize_sale(
     locked.status = PurchaseRequest.Status.COMPLETED
     locked.save(update_fields=["status", "updated_at"])
 
-    # One transaction covers: create Trade → post the ledger → link an invoice.
+    # One transaction covers: create Trade → post both books → link an invoice.
     # If the ledger post fails, the whole finalization rolls back rather than
     # leaving a sale that never reached the books.
-    post_trade_for_sale(trade=trade, membership=membership)
+    post_trade_entries(trade=trade, membership=membership)
     safe_create_invoice_for_trade(trade=trade, membership=membership)
 
     _notify_business(
@@ -386,7 +394,8 @@ def record_direct_sale(
     # A finalized sale is a finalized sale, however it was reached. Posting only
     # for request-driven sales would leave the books wrong for every deal agreed
     # over the phone — which is most of them. A walk-in customer has no account,
-    # so post_trade_for_sale returns None for those.
-    post_trade_for_sale(trade=trade, membership=membership)
+    # so post_trade_entries posts nothing for those.
+    post_trade_entries(trade=trade, membership=membership)
     safe_create_invoice_for_trade(trade=trade, membership=membership)
+    logger.info("Direct sale recorded trade=%s seller=%s total=%s", trade.id, seller_business.id, trade.total_amount)
     return trade

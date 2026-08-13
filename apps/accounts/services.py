@@ -9,6 +9,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import login
 from django.db import transaction
+from django.db.models import F
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -64,30 +65,101 @@ def _client_ip(request: HttpRequest | None) -> str | None:
     return request.META.get("REMOTE_ADDR")
 
 
+def _enforce_request_limits(*, phone: str, purpose: str, request: HttpRequest | None) -> None:
+    """Cooldown, per-phone hourly cap, and a per-IP cap across both purposes.
+
+    The per-IP cap is the one that was missing. Everything else keys on the phone
+    number, so a caller with a list of numbers could request a code for each in
+    turn and never touch a limit — SANGA pays the gateway for every one of them,
+    and every recipient gets an unexplained message. The IP is not a strong
+    identity, but a limit that costs an attacker a proxy per hundred messages is
+    worth far more than no limit at all.
+
+    Challenge rows are written for unprovisioned phones too, so these counters
+    behave identically whether or not the number belongs to an account. Skipping
+    them would turn the rate limiter itself into a phone-enumeration oracle.
+    """
+    now = timezone.now()
+    hour_ago = now - timedelta(hours=1)
+
+    recent = (
+        OTPChallenge.objects.filter(phone=phone, purpose=purpose).order_by("-created_at").first()
+    )
+    if recent and (now - recent.created_at).total_seconds() < settings.OTP_REQUEST_COOLDOWN_SECONDS:
+        raise OTPRateLimitError("لطفاً کمی صبر کنید و دوباره تلاش کنید.")
+
+    per_phone = OTPChallenge.objects.filter(
+        phone=phone, purpose=purpose, created_at__gte=hour_ago
+    ).count()
+    if per_phone >= settings.OTP_MAX_REQUESTS_PER_HOUR:
+        raise OTPRateLimitError("تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید.")
+
+    ip = _client_ip(request)
+    if ip:
+        per_ip = OTPChallenge.objects.filter(request_ip=ip, created_at__gte=hour_ago).count()
+        if per_ip >= settings.OTP_MAX_REQUESTS_PER_IP_PER_HOUR:
+            logger.warning("OTP request rate limit hit for one source address")
+            raise OTPRateLimitError("تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید.")
+
+
+def _claim_challenge(*, phone: str, purpose: str, code: str) -> OTPChallenge:
+    """Consume a one-time code, or record the failed attempt. Serialized.
+
+    Read-check-write with no lock let two requests carrying the same correct code
+    both pass: each read ``is_used=False``, each concluded it had won, and a code
+    that is one-time by definition was used twice. Wrong guesses had the mirror
+    problem — concurrent attempts read the same counter and wrote back the same
+    increment, so the attempt limit could be walked past by simply guessing in
+    parallel.
+
+    The row is locked for the whole decision, the attempt counter moves with an
+    ``F()`` expression rather than a value read earlier, and the burn is a
+    conditional update so only the transaction that actually flips ``is_used``
+    is allowed to treat the code as spent.
+
+    The refusal is raised *after* the transaction closes, never inside it. An
+    exception thrown from within would roll the block back and take the attempt
+    increment with it, so every wrong guess would be free and the attempt limit
+    would never be reached.
+    """
+    refusal: str | None = None
+    challenge: OTPChallenge | None = None
+
+    with transaction.atomic():
+        challenge = (
+            OTPChallenge.objects.select_for_update()
+            .filter(phone=phone, purpose=purpose, is_used=False)
+            .order_by("-created_at")
+            .first()
+        )
+        if challenge is None:
+            refusal = "کد معتبری یافت نشد. دوباره درخواست دهید."
+        elif challenge.is_expired:
+            refusal = "کد منقضی شده است. دوباره درخواست دهید."
+        elif challenge.attempts >= challenge.max_attempts:
+            refusal = "تعداد تلاش‌ها تمام شده است. دوباره درخواست دهید."
+        elif challenge.code_hash != _hash_code(code):
+            OTPChallenge.objects.filter(pk=challenge.pk).update(attempts=F("attempts") + 1)
+            refusal = "کد وارد شده نادرست است."
+        elif not OTPChallenge.objects.filter(pk=challenge.pk, is_used=False).update(is_used=True):
+            refusal = "کد معتبری یافت نشد. دوباره درخواست دهید."
+
+    if refusal is not None:
+        raise OTPValidationError(refusal)
+
+    challenge.is_used = True
+    return challenge
+
+
 def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPRequestResult:
     phone = normalize_phone(phone)
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
 
+    _enforce_request_limits(phone=phone, purpose=OTPChallenge.Purpose.LOGIN, request=request)
+
     now = timezone.now()
     cooldown = settings.OTP_REQUEST_COOLDOWN_SECONDS
-    recent = (
-        OTPChallenge.objects.filter(phone=phone, purpose=OTPChallenge.Purpose.LOGIN)
-        .order_by("-created_at")
-        .first()
-    )
-    if recent and (now - recent.created_at).total_seconds() < cooldown:
-        raise OTPRateLimitError("لطفاً کمی صبر کنید و دوباره تلاش کنید.")
-
-    hour_ago = now - timedelta(hours=1)
-    hourly_count = OTPChallenge.objects.filter(
-        phone=phone,
-        purpose=OTPChallenge.Purpose.LOGIN,
-        created_at__gte=hour_ago,
-    ).count()
-    if hourly_count >= settings.OTP_MAX_REQUESTS_PER_HOUR:
-        raise OTPRateLimitError("تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید.")
-
     code = "".join(secrets.choice("0123456789") for _ in range(settings.OTP_LENGTH))
     expires_at = now + timedelta(seconds=settings.OTP_EXPIRY_SECONDS)
     user_agent = ""
@@ -151,25 +223,10 @@ def request_customer_otp(phone: str, *, request: HttpRequest | None = None) -> O
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
 
+    _enforce_request_limits(phone=phone, purpose=OTPChallenge.Purpose.CUSTOMER, request=request)
+
     now = timezone.now()
     cooldown = settings.OTP_REQUEST_COOLDOWN_SECONDS
-    recent = (
-        OTPChallenge.objects.filter(phone=phone, purpose=OTPChallenge.Purpose.CUSTOMER)
-        .order_by("-created_at")
-        .first()
-    )
-    if recent and (now - recent.created_at).total_seconds() < cooldown:
-        raise OTPRateLimitError("لطفاً کمی صبر کنید و دوباره تلاش کنید.")
-
-    hour_ago = now - timedelta(hours=1)
-    hourly = OTPChallenge.objects.filter(
-        phone=phone,
-        purpose=OTPChallenge.Purpose.CUSTOMER,
-        created_at__gte=hour_ago,
-    ).count()
-    if hourly >= settings.OTP_MAX_REQUESTS_PER_HOUR:
-        raise OTPRateLimitError("تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید.")
-
     code = "".join(secrets.choice("0123456789") for _ in range(settings.OTP_LENGTH))
     expires_at = now + timedelta(seconds=settings.OTP_EXPIRY_SECONDS)
 
@@ -209,29 +266,7 @@ def verify_customer_otp(phone: str, code: str) -> bool:
     if not code.isdigit():
         raise OTPValidationError("کد وارد شده معتبر نیست.")
 
-    challenge = (
-        OTPChallenge.objects.filter(
-            phone=phone,
-            purpose=OTPChallenge.Purpose.CUSTOMER,
-            is_used=False,
-        )
-        .order_by("-created_at")
-        .first()
-    )
-    if challenge is None:
-        raise OTPValidationError("کد معتبری یافت نشد. دوباره درخواست دهید.")
-    if challenge.is_expired:
-        raise OTPValidationError("کد منقضی شده است. دوباره درخواست دهید.")
-    if challenge.attempts >= challenge.max_attempts:
-        raise OTPValidationError("تعداد تلاش‌ها تمام شده است. دوباره درخواست دهید.")
-
-    if challenge.code_hash != _hash_code(code):
-        challenge.attempts += 1
-        challenge.save(update_fields=["attempts"])
-        raise OTPValidationError("کد وارد شده نادرست است.")
-
-    challenge.is_used = True
-    challenge.save(update_fields=["is_used"])
+    _claim_challenge(phone=phone, purpose=OTPChallenge.Purpose.CUSTOMER, code=code)
     return True
 
 
@@ -241,35 +276,11 @@ def verify_login_otp(phone: str, code: str, *, request: HttpRequest) -> User:
     if not code.isdigit():
         raise OTPValidationError("کد وارد شده معتبر نیست.")
 
-    challenge = (
-        OTPChallenge.objects.filter(
-            phone=phone,
-            purpose=OTPChallenge.Purpose.LOGIN,
-            is_used=False,
-        )
-        .order_by("-created_at")
-        .first()
-    )
-    if challenge is None:
-        raise OTPValidationError("کد معتبری یافت نشد. دوباره درخواست دهید.")
-
-    if challenge.is_expired:
-        raise OTPValidationError("کد منقضی شده است. دوباره درخواست دهید.")
-
-    if challenge.attempts >= challenge.max_attempts:
-        raise OTPValidationError("تعداد تلاش‌ها تمام شده است. دوباره درخواست دهید.")
-
-    if challenge.code_hash != _hash_code(code):
-        challenge.attempts += 1
-        challenge.save(update_fields=["attempts"])
-        raise OTPValidationError("کد وارد شده نادرست است.")
-
-    # Burn the challenge outside the login transaction and before deciding the
-    # outcome. Doing it inside would let the rollback on refusal hand the code
-    # back to the caller, so a correct code for an unprovisioned phone could be
+    # Claimed in its own transaction, outside the login one and before the
+    # outcome is decided. Doing it inside would let the rollback on refusal hand
+    # the code back, so a correct code for an unprovisioned phone could be
     # replayed the moment that phone is provisioned.
-    challenge.is_used = True
-    challenge.save(update_fields=["is_used"])
+    _claim_challenge(phone=phone, purpose=OTPChallenge.Purpose.LOGIN, code=code)
 
     # Authentication never creates an account. Platform Users exist only because
     # a Platform Admin provisioned them.

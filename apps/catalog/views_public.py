@@ -8,12 +8,10 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from apps.businesses.models import Business
-from apps.inquiries.models import Inquiry
-from apps.inquiries.services import InquiryError, create_inquiry
+from apps.core.pagination import paginate
 from apps.inventory.forms import ItemFilterForm
 
 from . import cart
-from .forms import InquiryForm
 from .selectors import (
     catalog_notes,
     filter_public_lots,
@@ -29,7 +27,6 @@ from .services import b2c_price_context, public_lot_card, record_catalog_view
 logger = logging.getLogger(__name__)
 
 COMPARE_SESSION_KEY = "b2c_compare_lot_ids"
-MAX_CARDS = 60
 
 
 def _business_or_404(slug: str) -> Business:
@@ -46,7 +43,8 @@ def public_search(request: HttpRequest) -> HttpResponse:
     """Login-free product discovery across every eligible seller."""
     form = ItemFilterForm(request.GET or None)
     qs = filter_public_lots(public_items(), spec=form.to_spec())
-    cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
+    page = paginate(request, qs)
+    cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
     for card in cards:
         card["is_selected"] = str(card["lot"].id) in selected
@@ -56,6 +54,7 @@ def public_search(request: HttpRequest) -> HttpResponse:
         {
             "filter_form": form,
             "cards": cards,
+            "page": page,
             "compare_ids": _compare_ids(request),
             "selection_count": cart.count(request),
         },
@@ -67,7 +66,8 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
     business = _business_or_404(business_slug)
     form = ItemFilterForm(request.GET or None)
     qs = filter_public_lots(public_catalog_lots(business), spec=form.to_spec())
-    cards = [public_lot_card(lot) for lot in qs[:MAX_CARDS]]
+    page = paginate(request, qs)
+    cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
     for card in cards:
         card["is_selected"] = str(card["lot"].id) in selected
@@ -78,42 +78,19 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
             "business": business,
             "filter_form": form,
             "cards": cards,
+            "page": page,
             "compare_ids": _compare_ids(request),
             "selection_count": cart.count(request),
         },
     )
 
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET"])
 def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse:
     business = _business_or_404(business_slug)
     lot = get_public_lot(business, lot_id)
     if lot is None:
         return render(request, "catalog/not_found.html", {"business": business}, status=404)
-
-    form = InquiryForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            create_inquiry(
-                business=business,
-                lot=lot,
-                name=form.cleaned_data["name"],
-                phone=form.cleaned_data["phone"],
-                message=form.cleaned_data.get("message", ""),
-                source=Inquiry.Source.ITEM_DETAIL,
-                requester=request.user,
-            )
-        except InquiryError as exc:
-            form.add_error(None, exc.message)
-        except Exception:
-            logger.exception("Public inquiry failed")
-            form.add_error(None, "ارسال استعلام با خطا روبه‌رو شد. دوباره تلاش کنید.")
-        else:
-            return render(
-                request,
-                "catalog/inquiry_thanks.html",
-                {"business": business, "lot": lot},
-            )
 
     from apps.inventory.freshness import stock_view
 
@@ -128,7 +105,7 @@ def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse
             "stock": stock_view(lot),
             "media_items": list(lot.media.all()),
             "related_cards": [public_lot_card(item) for item in related_public_lots(lot)],
-            "inquiry_form": form,
+            "is_selected": cart.contains(request, lot.pk),
             "compare_ids": _compare_ids(request),
             "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
         },
@@ -166,35 +143,13 @@ def shared_item(request: HttpRequest, public_token: str) -> HttpResponse:
     )
 
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET"])
 def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
     catalog = get_shareable_catalog(share_token)
     if catalog is None:
         return render(request, "catalog/catalog_unavailable.html", status=404)
 
-    if request.method == "GET":
-        record_catalog_view(catalog)
-
-    form = InquiryForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            create_inquiry(
-                business=catalog.business,
-                custom_catalog=catalog,
-                name=form.cleaned_data["name"],
-                phone=form.cleaned_data["phone"],
-                message=form.cleaned_data.get("message", ""),
-                source=Inquiry.Source.CUSTOM_CATALOG,
-                requester=request.user,
-            )
-        except InquiryError as exc:
-            form.add_error(None, exc.message)
-        else:
-            return render(
-                request,
-                "catalog/inquiry_thanks.html",
-                {"business": catalog.business, "catalog": catalog},
-            )
+    record_catalog_view(catalog)
 
     # resolve_catalog already intersected the rules and the manual overrides with
     # the public eligibility queryset, so everything here is showable.
@@ -202,13 +157,14 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
     # before.
     notes = catalog_notes(catalog)
     selected = set(cart.selected_ids(request))
+    page = paginate(request, catalog.resolved_items)
     cards = [
         {
             **public_lot_card(item),
             "note": notes.get(str(item.pk), ""),
             "is_selected": str(item.pk) in selected,
         }
-        for item in getattr(catalog, "resolved_items", [])
+        for item in page.object_list
     ]
 
     return render(
@@ -218,7 +174,7 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
             "catalog": catalog,
             "business": catalog.business,
             "cards": cards,
-            "inquiry_form": form,
+            "page": page,
             "share_url": request.build_absolute_uri(),
             "selection_count": cart.count(request),
         },

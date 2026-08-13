@@ -13,6 +13,8 @@ urlpatterns = [
     path("sent/", views.sent_list, name="sent_list"),
     path("sent/<uuid:request_id>/", views.sent_detail, name="sent_detail"),
     path("request/<uuid:item_id>/", views.request_create, name="request_create"),
+    path("direct-sale/", views.direct_sale, name="direct_sale"),
     path("trades/", views.trade_list, name="trade_list"),
     path("trades/<uuid:trade_id>/", views.trade_detail, name="trade_detail"),
+    path("trades/<uuid:trade_id>/invoice/", views.trade_create_invoice, name="trade_create_invoice"),
 ]

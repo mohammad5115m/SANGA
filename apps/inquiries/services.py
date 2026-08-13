@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
@@ -100,6 +100,7 @@ def create_inquiry(
     source: str = Inquiry.Source.PUBLIC_SEARCH,
     requester=None,
     verified: bool = False,
+    submission_id=None,
 ) -> Inquiry:
     """Save one inquiry covering one or more products.
 
@@ -109,7 +110,15 @@ def create_inquiry(
 
     Products belonging to another business are rejected outright rather than
     silently dropped: a crafted request must not look like it worked.
+
+    Passing ``submission_id`` makes the call idempotent for this seller: an
+    inquiry already recorded under that token is returned rather than twinned.
     """
+    if submission_id is not None:
+        existing = Inquiry.objects.filter(submission_id=submission_id, business=business).first()
+        if existing is not None:
+            return existing
+
     lead = get_or_create_lead(business=business, name=name, phone=phone, verified=verified)
 
     if custom_catalog is not None and custom_catalog.business_id != business.id:
@@ -126,20 +135,31 @@ def create_inquiry(
         if product.business_id != business.id:
             raise InquiryError("محصول انتخاب‌شده متعلق به این کسب‌وکار نیست.")
 
-    inquiry = Inquiry.objects.create(
-        business=business,
-        lead=lead,
-        # Kept in sync for the single-product case so the dashboard and older
-        # queries still resolve a product without joining InquiryItem.
-        lot=rows[0]["item"] if len(rows) == 1 else None,
-        custom_catalog=custom_catalog,
-        requester=requester if getattr(requester, "is_authenticated", False) else None,
-        name=lead.name,
-        phone=lead.phone,
-        message=(message or "").strip(),
-        source=source,
-        status=Inquiry.Status.NEW,
-    )
+    try:
+        with transaction.atomic():
+            inquiry = Inquiry.objects.create(
+                business=business,
+                submission_id=submission_id,
+                lead=lead,
+                # Kept in sync for the single-product case so the dashboard and
+                # older queries still resolve a product without joining
+                # InquiryItem.
+                lot=rows[0]["item"] if len(rows) == 1 else None,
+                custom_catalog=custom_catalog,
+                requester=requester if getattr(requester, "is_authenticated", False) else None,
+                name=lead.name,
+                phone=lead.phone,
+                message=(message or "").strip(),
+                source=source,
+                status=Inquiry.Status.NEW,
+            )
+    except IntegrityError:
+        # Two submissions of the same token reached the insert together. The
+        # loser reads the winner's row rather than failing the customer.
+        winner = Inquiry.objects.filter(submission_id=submission_id, business=business).first()
+        if winner is None:
+            raise
+        return winner
 
     seen = set()
     for row in rows:
@@ -155,7 +175,9 @@ def create_inquiry(
             note=(row.get("note") or "").strip()[:255],
         )
 
-    _notify_seller(inquiry)
+    # After commit, so a notification is never sent for an inquiry that rolled
+    # back, and a broken notification backend cannot lose a saved inquiry.
+    transaction.on_commit(lambda: _notify_seller(inquiry))
     logger.info(
         "Inquiry created business=%s inquiry=%s items=%s source=%s",
         business.id,
@@ -164,6 +186,55 @@ def create_inquiry(
         source,
     )
     return inquiry
+
+
+@transaction.atomic
+def submit_public_inquiry(
+    *,
+    submission_id,
+    groups: list[dict],
+    name: str,
+    phone: str,
+    message: str = "",
+    source: str = Inquiry.Source.PUBLIC_SEARCH,
+    requester=None,
+    verified: bool = False,
+) -> list[Inquiry]:
+    """Record one public submission that may span several sellers.
+
+    ``groups`` is ``[{"business": Business, "rows": [...]}, ...]`` — the customer's
+    selection already split by seller, because one seller must never see what a
+    customer asked another.
+
+    Two properties this function exists for, neither of which the per-seller
+    service can provide on its own:
+
+    **All or nothing.** The loop used to run outside any transaction, so a
+    failure on the third seller left the first two committed while the page said
+    the submission had failed. The customer then had no way to tell which sellers
+    had heard them.
+
+    **Retry-safe.** Every inquiry carries the submission token, unique per seller,
+    so a refresh, a double-click or a resubmitted form is handed the inquiries
+    that already exist instead of creating a second set.
+    """
+    if not groups:
+        raise InquiryError("هنوز محصولی انتخاب نکرده‌اید.")
+
+    return [
+        create_inquiry(
+            business=group["business"],
+            name=name,
+            phone=phone,
+            message=message,
+            items=group["rows"],
+            source=source,
+            requester=requester,
+            verified=verified,
+            submission_id=submission_id,
+        )
+        for group in groups
+    ]
 
 
 @transaction.atomic

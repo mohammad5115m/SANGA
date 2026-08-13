@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import mimetypes
 import uuid
 from decimal import Decimal
 
@@ -9,6 +8,7 @@ from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils import timezone
 
+from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.entitlements import (
     CREATE_PRODUCTS,
     PUBLISH_PRODUCTS,
@@ -28,6 +28,7 @@ from apps.businesses.permissions import (
 from apps.pricing.models import LotPrice
 from apps.pricing.services import set_lot_price
 
+from .media_validation import MediaValidationError, verify_image, verify_video
 from .models import Application, InventoryLot, LotMedia, Product
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,22 @@ class InventoryError(Exception):
 def _require(membership: BusinessMembership, capability: str) -> None:
     if membership is None or not membership.has_capability(capability):
         raise InventoryError("دسترسی لازم برای این عملیات را ندارید.")
+    _require_operational(membership.business)
+
+
+def _require_operational(business: Business) -> None:
+    """A suspended or expired tenant may read its own records but not change them.
+
+    The plan gate already blocked creating and publishing, because those consult
+    entitlements and a non-operational Business has none. Editing, re-pricing,
+    confirming stock, uploading media and deleting consulted only the member's
+    capability, so a suspended Business could keep working on everything it
+    already had.
+    """
+    try:
+        require_operational(business)
+    except NotOperationalError as exc:
+        raise InventoryError(exc.message) from exc
 
 
 def _require_plan(business: Business, entitlement: str) -> None:
@@ -132,7 +149,18 @@ def create_draft_item(
     width_cm: Decimal | None = None,
     thickness_mm: Decimal | None = None,
     slab_count: int | None = None,
+    b2b_price: dict | None = None,
+    b2c_price: dict | None = None,
 ) -> InventoryLot:
+    """Create the sellable item, with its prices, as one action.
+
+    Prices belong here rather than in a second service call. The wizard used to
+    create the draft and then set the prices in two transactions, so a member
+    without ``prices.edit`` — which the default staff role does not have — got a
+    saved but unpriced draft plus an error, and had to find and clean it up
+    themselves. A service boundary should match what the user thinks of as one
+    action, which here is "add this product".
+    """
     _require(membership, INVENTORY_CREATE)
     _require_plan(business, CREATE_PRODUCTS)
     if product.business_id != business.id:
@@ -173,6 +201,12 @@ def create_draft_item(
         thickness_mm=thickness_mm,
         slab_count=slab_count,
     )
+
+    if b2b_price is not None:
+        _set_price(lot=lot, membership=membership, tier_code="b2b", spec=b2b_price)
+    if b2c_price is not None:
+        _set_price(lot=lot, membership=membership, tier_code="b2c", spec=b2c_price)
+
     logger.info("Draft item created business=%s item=%s", business.id, lot.id)
     return lot
 
@@ -311,6 +345,7 @@ def confirm_item_stock(
     membership: BusinessMembership,
     available_sqm: Decimal | None = None,
     stock_mode: str | None = None,
+    stock_valid_for_days: int | None = None,
 ) -> InventoryLot:
     """Restart the stock validity window, optionally with a new quantity.
 
@@ -329,6 +364,13 @@ def confirm_item_stock(
         if available_sqm < 0:
             raise InventoryError("مقدار موجودی نمی‌تواند منفی باشد.")
         lot.available_sqm = available_sqm
+    if stock_valid_for_days is not None:
+        # The confirmation screen has always asked how long the number should be
+        # trusted for; the view simply never passed the answer on, so the seller
+        # was told the change had been saved while the old window stayed in force.
+        if not 1 <= int(stock_valid_for_days) <= 365:
+            raise InventoryError("مدت اعتبار موجودی باید بین ۱ تا ۳۶۵ روز باشد.")
+        lot.stock_valid_for_days = int(stock_valid_for_days)
 
     lot.stock_confirmed_at = timezone.now()
     lot.save()
@@ -395,34 +437,92 @@ def delete_item(*, lot: InventoryLot, membership: BusinessMembership) -> str:
         return "archived"
 
     item_id = lot.id
+    media = list(lot.media.all())
     lot.prices.all().delete()
     lot.media.all().delete()
     lot.delete()
+    schedule_storage_cleanup(*media)
     logger.info("Item purged item=%s", item_id)
     return "purged"
 
 
-def _classify_upload(upload: UploadedFile) -> str:
-    """Decide image vs video, and refuse anything else.
+UNSUPPORTED_UPLOAD = "فقط تصویر (jpg, png, webp, gif) یا ویدیو (mp4, mov, webm) قابل بارگذاری است."
 
-    The browser-supplied content type is treated as a hint only; the extension
-    has to agree. A caller can set any Content-Type header they like, so trusting
-    it alone would let an arbitrary file through under an image label.
+
+def _claimed_kind(upload: UploadedFile) -> str:
+    """Which check to run, decided by the extension alone.
+
+    Only used to pick a size limit and a validator. It settles nothing: the
+    extension is caller-supplied, and so are Content-Type and
+    ``mimetypes.guess_type`` — which is itself derived from the extension. All
+    three agreed with each other about a file that was not an image at all.
     """
     name = (upload.name or "").lower()
     extension = name[name.rfind(".") :] if "." in name else ""
-    declared = (getattr(upload, "content_type", "") or "").lower()
-    guessed = (mimetypes.guess_type(name)[0] or "").lower()
-
-    if extension in ALLOWED_IMAGE_EXTENSIONS and (
-        not declared or declared.startswith("image/") or guessed.startswith("image/")
-    ):
+    if extension in ALLOWED_IMAGE_EXTENSIONS:
         return LotMedia.Kind.IMAGE
-    if extension in ALLOWED_VIDEO_EXTENSIONS and (
-        not declared or declared.startswith("video/") or guessed.startswith("video/")
-    ):
+    if extension in ALLOWED_VIDEO_EXTENSIONS:
         return LotMedia.Kind.VIDEO
-    raise InventoryError("فقط تصویر (jpg, png, webp, gif) یا ویدیو (mp4, mov, webm) قابل بارگذاری است.")
+    raise InventoryError(UNSUPPORTED_UPLOAD)
+
+
+def _classify_upload(upload: UploadedFile) -> str:
+    """Prove the upload is what its name claims, by reading it.
+
+    Renaming a script to ``stone.jpg`` and posting it as ``image/jpeg`` used to
+    pass every check there was. Images are decoded; videos are matched against
+    their container signature.
+    """
+    kind = _claimed_kind(upload)
+    try:
+        if kind == LotMedia.Kind.IMAGE:
+            verify_image(upload)
+        else:
+            verify_video(upload)
+    except MediaValidationError as exc:
+        raise InventoryError(exc.message) from exc
+    return kind
+
+
+def schedule_storage_cleanup(*media: LotMedia) -> None:
+    """Delete the underlying objects once the transaction commits.
+
+    Django does not remove a ``FileField``'s object when the row goes, so every
+    deleted photo and video used to stay in storage — paid for, and still
+    reachable at its old URL on a bucket served directly.
+
+    On commit rather than inline, because the opposite failure is worse: a
+    rolled-back transaction that had already deleted the file leaves a row
+    pointing at nothing. Failures are logged and swallowed; a missing object is
+    the desired end state, and re-raising here would fail a request whose
+    database work has already been committed.
+    """
+    names = [name for item in media for name in (item.file.name, getattr(item.thumbnail, "name", None)) if name]
+    if not names:
+        return
+
+    storage = media[0].file.storage
+
+    def _delete() -> None:
+        for name in names:
+            try:
+                storage.delete(name)
+            except Exception:  # noqa: BLE001 - cleanup must not break the response
+                logger.warning("Could not delete stored media object %s", name, exc_info=True)
+
+    transaction.on_commit(_delete)
+
+
+def _lock_lot(lot: InventoryLot) -> InventoryLot:
+    """Serialize primary-image changes for one item.
+
+    Two uploads, or two "make this the cover" clicks, arriving together both
+    demoted the current primary and both promoted their own, and the gallery
+    ended up with two covers. The row lock makes them queue; the partial unique
+    index on the model is what holds if anything reaches the database another
+    way.
+    """
+    return InventoryLot.objects.select_for_update().get(pk=lot.pk)
 
 
 @transaction.atomic
@@ -437,10 +537,18 @@ def add_lot_media(
     _require(membership, INVENTORY_MEDIA)
     _require_owner(lot, membership)
 
-    kind = _classify_upload(upload)
-    limit = MAX_IMAGE_BYTES if kind == LotMedia.Kind.IMAGE else MAX_VIDEO_BYTES
+    # Size first, so an oversized upload is refused without being decoded. The
+    # limit comes from the claimed kind; the content check below is what settles
+    # whether that claim was true.
+    limit = MAX_IMAGE_BYTES if _claimed_kind(upload) == LotMedia.Kind.IMAGE else MAX_VIDEO_BYTES
     if (upload.size or 0) > limit:
         raise InventoryError(f"حجم فایل بیش از حد مجاز است (حداکثر {limit // (1024 * 1024)} مگابایت).")
+
+    kind = _classify_upload(upload)
+
+    # Held for the rest of the transaction, so two concurrent uploads cannot both
+    # decide they are the first and both become the cover.
+    _lock_lot(lot)
 
     if is_primary or not lot.media.filter(is_primary=True).exists():
         lot.media.filter(is_primary=True).update(is_primary=False)
@@ -464,12 +572,14 @@ def add_lot_media(
 def delete_lot_media(*, lot: InventoryLot, membership: BusinessMembership, media_id) -> None:
     _require(membership, INVENTORY_MEDIA)
     _require_owner(lot, membership)
+    _lock_lot(lot)
 
     media = lot.media.filter(pk=media_id).first()
     if media is None:
         raise InventoryError("فایل یافت نشد.")
     was_primary = media.is_primary
     media.delete()
+    schedule_storage_cleanup(media)
     if was_primary:
         # Never leave a gallery with no cover: promote whatever is now first.
         replacement = lot.media.order_by("sort_order", "created_at").first()
@@ -482,6 +592,7 @@ def delete_lot_media(*, lot: InventoryLot, membership: BusinessMembership, media
 def set_primary_media(*, lot: InventoryLot, membership: BusinessMembership, media_id) -> None:
     _require(membership, INVENTORY_MEDIA)
     _require_owner(lot, membership)
+    _lock_lot(lot)
 
     media = lot.media.filter(pk=media_id).first()
     if media is None:
@@ -544,6 +655,14 @@ def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> Inve
         is_featured=False,
         is_urgent_sale=False,
     )
+    # Standard prices are copied; the special sale deliberately is not.
+    #
+    # A promotion is a decision about one batch at one moment — «تا آخر هفته» on
+    # the stone in the yard now — and the copy is a different batch the seller is
+    # about to change. Carrying it over silently would have the new item quoting a
+    # discount nobody chose, sometimes with an end date already in the past. The
+    # duplicate screen says so, so the reset is visible rather than a field that
+    # went quiet.
     for price in lot.prices.select_related("tier"):
         set_lot_price(
             lot=clone,

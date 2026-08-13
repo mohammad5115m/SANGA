@@ -17,6 +17,13 @@ from apps.inventory.models import InventoryLot
 from apps.inventory.policy import eligible_items
 
 SESSION_KEY = "public_selection"
+#: Which surface the visitor entered the inquiry flow from, so the seller can
+#: still tell a product-page question from a search-results one now that both go
+#: through the same pipeline.
+SOURCE_KEY = "public_selection_source"
+#: A message the entry point pre-filled — «استعلام موجودی» seeds this, so the
+#: customer does not have to type the question they just clicked.
+MESSAGE_SEED_KEY = "public_selection_message"
 MAX_ITEMS = 20
 
 
@@ -73,8 +80,30 @@ def set_quantity(request, item_id, quantity) -> None:
         _save(request, data)
 
 
+def set_source(request, source: str) -> None:
+    request.session[SOURCE_KEY] = source
+    request.session.modified = True
+
+
+def source(request) -> str:
+    from apps.inquiries.models import Inquiry
+
+    value = request.session.get(SOURCE_KEY)
+    return value if value in Inquiry.Source.values else Inquiry.Source.PUBLIC_SEARCH
+
+
+def set_message_seed(request, message: str) -> None:
+    request.session[MESSAGE_SEED_KEY] = message
+    request.session.modified = True
+
+
+def message_seed(request) -> str:
+    return request.session.get(MESSAGE_SEED_KEY) or ""
+
+
 def clear(request) -> None:
-    request.session.pop(SESSION_KEY, None)
+    for key in (SESSION_KEY, SOURCE_KEY, MESSAGE_SEED_KEY):
+        request.session.pop(key, None)
     request.session.modified = True
 
 

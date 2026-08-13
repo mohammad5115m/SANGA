@@ -7,7 +7,7 @@ from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import OTPVerifyForm, PhoneLoginForm
 from .services import OTPError, request_login_otp, verify_login_otp
@@ -68,8 +68,15 @@ def verify_view(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-@require_http_methods(["GET", "POST"])
+@require_POST
 def logout_view(request: HttpRequest) -> HttpResponse:
+    """POST only.
+
+    Logging out changes state, and accepting GET meant any page anywhere could
+    end a SANGA session — an `<img src="…/auth/logout/">` in an email, a link in
+    a forum post. Harmless-looking on its own, and a reliable way to make the
+    application unusable for someone while they are trying to work.
+    """
     logout(request)
     messages.info(request, "از حساب خارج شدید.")
     return redirect("accounts:login")

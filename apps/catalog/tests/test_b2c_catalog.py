@@ -96,7 +96,7 @@ def test_public_detail_rejects_a_hidden_item(client, seller_setup):
 
 
 @pytest.mark.django_db
-def test_public_detail_shows_only_b2c_and_accepts_an_inquiry(client, seller_setup):
+def test_public_detail_shows_only_b2c(client, seller_setup):
     business = seller_setup["business"]
     lot = seller_setup["public_lot"]
     url = reverse("catalog:lot_detail", kwargs={"business_slug": business.slug, "lot_id": lot.id})
@@ -106,9 +106,31 @@ def test_public_detail_shows_only_b2c_and_accepts_an_inquiry(client, seller_setu
     assert B2B not in content
     assert "قیمت همکار" not in content
 
+
+@pytest.mark.django_db
+def test_the_product_page_cannot_record_an_inquiry_directly(client, seller_setup):
+    """AUD-009. The most obvious button on the most visited public page used to
+    post a name and a phone straight into ``create_inquiry``, so the seller
+    received an unverified number, no quantity and no OTP — while the designed
+    flow next to it asked for all three."""
+    business = seller_setup["business"]
+    lot = seller_setup["public_lot"]
+    url = reverse("catalog:lot_detail", kwargs={"business_slug": business.slug, "lot_id": lot.id})
+
     post = client.post(url, {"name": "مشتری تست", "phone": "09123334455", "message": "لطفاً تماس بگیرید"})
-    assert post.status_code == 200
-    assert Inquiry.objects.filter(business=business, lot=lot, phone="09123334455").exists()
+    assert post.status_code == 405
+    assert not Inquiry.objects.exists()
+
+
+@pytest.mark.django_db
+def test_the_product_page_button_starts_the_verified_flow(client, seller_setup):
+    lot = seller_setup["public_lot"]
+    response = client.post(reverse("catalog:inquiry_start", kwargs={"item_id": lot.id}))
+
+    assert response.status_code == 302
+    assert response.url == reverse("catalog:inquiry_review")
+    assert not Inquiry.objects.exists()
+    assert lot.product.commercial_name in _body(client, reverse("catalog:inquiry_review"))
 
 
 # --- public search ------------------------------------------------------------

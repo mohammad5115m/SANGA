@@ -24,10 +24,11 @@
   {% include "catalog/_public_specs.html" %}
 
   <div class="btn-row">
-    <button class="btn btn-primary" type="button"
-            onclick="document.getElementById('inquiry').scrollIntoView({behavior:'smooth'})">
-      درخواست مشاوره
-    </button>
+    {# One way in: select the product, say how much you need, verify your phone. #}
+    <form method="post" action="{% url 'catalog:inquiry_start' lot.id %}">
+      {% csrf_token %}
+      <button class="btn btn-primary" type="submit">درخواست استعلام</button>
+    </form>
     <form method="post" action="{% url 'catalog:compare_toggle' business.slug lot.id %}">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.path }}">
@@ -38,22 +39,15 @@
     {% include "catalog/_share_actions.html" %}
   </div>
 
-  <section id="inquiry" class="panel stack-md">
-    <h2 class="section-title">استعلام / مشاوره</h2>
-    <form method="post" class="stack-md" novalidate>
-      {% csrf_token %}
-      {% if inquiry_form.non_field_errors %}
-        <div class="alert alert-error">{{ inquiry_form.non_field_errors|striptags }}</div>
-      {% endif %}
-      {% for field in inquiry_form %}
-        <label class="field">
-          <span class="field-label">{{ field.label }}</span>
-          {{ field }}
-          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-        </label>
-      {% endfor %}
-      <button class="btn btn-primary" type="submit">ارسال درخواست</button>
-    </form>
+  <section class="panel stack-sm">
+    <h2 class="section-title">چطور استعلام بگیرم؟</h2>
+    <p class="muted">
+      محصول را انتخاب کنید، متراژ مورد نیازتان را بنویسید و شماره موبایلتان را با کد
+      تأیید مشخص کنید. می‌توانید چند محصول از چند فروشنده را با هم بفرستید.
+    </p>
+    {% if is_selected %}
+      <a class="btn btn-secondary" href="{% url 'catalog:inquiry_review' %}">ادامه استعلام</a>
+    {% endif %}
   </section>
 
   {% if related_cards %}

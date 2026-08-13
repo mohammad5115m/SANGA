@@ -14,13 +14,14 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, fields
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Q, QuerySet
-from django.utils import timezone
+from django.db.models import F, Q, QuerySet
 
 from apps.core.persian import normalize_persian_text
+from apps.pricing.queries import effective_amount_subquery, live_special_subquery
 
 from .models import InventoryLot
 from .policy import Audience
+from .queries import current_quantity_q, effective_stock_mode_q
 
 #: Price tier a given audience's price filters apply to. A public visitor
 #: filtering by price must be filtering B2C numbers, never B2B ones.
@@ -168,45 +169,52 @@ class ItemFilterSpec:
         return self._apply_sort(qs, audience=audience)
 
     def _apply_stock(self, qs: QuerySet[InventoryLot]) -> QuerySet[InventoryLot]:
+        """Quantity questions, answered with the quantity a viewer is shown.
+
+        Both predicates go through :mod:`apps.inventory.queries`, so an item whose
+        confirmation has expired behaves here exactly as it reads on its card:
+        inquiry-only, with no number to compare. Filtering on the stored column
+        instead meant «حداقل ۱۰۰ متر» returned items that, on the same page, said
+        they had no current quantity at all.
+        """
         if self.stock_mode:
-            qs = qs.filter(stock_mode=self.stock_mode)
+            qs = qs.filter(effective_stock_mode_q(self.stock_mode))
         if self.min_qty_sqm is not None:
-            # Unlimited items satisfy any quantity; inquiry items have no number
-            # to compare, so asking for a minimum excludes them.
-            qs = qs.filter(
-                Q(stock_mode=InventoryLot.StockMode.UNLIMITED)
-                | Q(stock_mode=InventoryLot.StockMode.EXACT, available_sqm__gte=self.min_qty_sqm)
-            )
+            qs = qs.filter(current_quantity_q(self.min_qty_sqm))
         return qs
 
     def _apply_price(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
+        """Price questions, answered with the price a viewer is shown.
+
+        The annotation is NULL for an inquiry-mode price and for a fixed one past
+        its validity window, so neither can satisfy a range the viewer cannot see
+        the number behind. A live special sale is the number that counts, because
+        it is the one on the card.
+        """
         tier = _FILTER_TIER.get(audience, "b2c")
         if self.price_min is None and self.price_max is None and not self.only_special:
             return qs
 
-        price_q = Q(prices__tier__code=tier, prices__tier__is_active=True)
+        qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
         if self.price_min is not None:
-            price_q &= Q(prices__amount__gte=self.price_min)
+            qs = qs.filter(_effective_price__gte=self.price_min)
         if self.price_max is not None:
-            price_q &= Q(prices__amount__lte=self.price_max)
+            qs = qs.filter(_effective_price__lte=self.price_max)
         if self.only_special:
-            price_q &= Q(prices__special_amount__isnull=False) & (
-                Q(prices__special_until__isnull=True) | Q(prices__special_until__gt=timezone.now())
-            )
-        return qs.filter(price_q).distinct()
+            qs = qs.annotate(_live_special=live_special_subquery(tier)).filter(_live_special__isnull=False)
+        return qs
 
     def _apply_sort(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
         if self.sort == "confirmed":
             return qs.order_by("-stock_confirmed_at", "-updated_at")
         if self.sort in ("price_asc", "price_desc"):
             tier = _FILTER_TIER.get(audience, "b2c")
-            # Filtering the join to one tier keeps the other audience's numbers
-            # out of the ORDER BY, which would otherwise silently order a public
-            # page by B2B price.
-            direction = "" if self.sort == "price_asc" else "-"
-            return (
-                qs.filter(prices__tier__code=tier, prices__tier__is_active=True)
-                .order_by(f"{direction}prices__amount")
-                .distinct()
-            )
+            # One tier only: ordering across the join would silently sort a public
+            # page by B2B numbers. Items with no current price sort last either
+            # way, because "ارزان‌ترین" must not be led by things that have no
+            # price at all.
+            qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
+            if self.sort == "price_asc":
+                return qs.order_by(F("_effective_price").asc(nulls_last=True), "-updated_at")
+            return qs.order_by(F("_effective_price").desc(nulls_last=True), "-updated_at")
         return qs

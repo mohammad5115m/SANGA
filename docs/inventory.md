@@ -103,7 +103,32 @@ version of the form keeps resolving.
 
 Price filters and price sorting resolve the tier from the audience, so a public
 visitor filtering by price is filtering B2C numbers and a colleague is filtering
-B2B ones.
+B2B ones. The price annotation is a tier-scoped subquery rather than a join, so a
+price filter cannot multiply rows and needs no `.distinct()` to undo the damage.
+
+### Filters answer with the value the viewer is shown
+
+A filter must return what the card says, and the two used to disagree. Cards
+degrade a stale quantity to «استعلام موجودی» and an expired fixed price to
+«استعلام قیمت», but the filters compared the stored `available_sqm`,
+`stock_mode` and `amount` columns directly. «حداقل ۱۰۰ متر» therefore returned
+items that, on the same page, said they had no current quantity, and a price
+range returned items whose own card refused to quote a price.
+
+`apps/inventory/queries.py` and `apps/pricing/queries.py` hold the query half of
+those definitions, beside the property half on the models:
+
+| Question | Answered with |
+|----------|---------------|
+| minimum quantity | `current_quantity_q` — unlimited or a still-confirmed exact number |
+| stock mode | `effective_stock_mode_q` — including everything expired into inquiry |
+| price range and sorting | `effective_amount_subquery` — a live special, else a fresh fixed price, else NULL |
+| «فقط فروش ویژه» | `live_special_subquery` |
+
+An expired number is not a smaller number; it is no number, and it must not
+answer a question about quantity or price. Items with no current price sort last
+in both directions, because «ارزان‌ترین» must not be led by things that have no
+price at all.
 
 ## 6. Applications are a controlled vocabulary
 

@@ -270,21 +270,39 @@ def invoices_in_range(business: Business, window: DateRange) -> QuerySet[SalesIn
 
 
 def invoice_summary(business: Business, window: DateRange) -> dict:
+    """Invoice counts and money, with each number meaning one thing.
+
+    ``total`` sums **issued** invoices only. It used to sum everything that was
+    not cancelled, which quietly included drafts — documents nobody has been sent,
+    that may still change and may never be issued at all. A figure labelled «مبلغ
+    فاکتورها» that moves while somebody is typing a draft is not a total of
+    anything the business can act on.
+
+    Drafts and cancelled documents are still counted, and drafts get their own
+    subtotal, so a voided or unfinished document is visible rather than missing —
+    without any single number doing two jobs.
+    """
     agg = invoices_in_range(business, window).aggregate(
-        # Cancelled invoices are excluded from the total but still counted, so a
-        # voided document is visible rather than simply missing.
-        total=Coalesce(
-            Sum("total_amount", filter=~Q(status=SalesInvoice.Status.CANCELLED)),
+        issued_total=Coalesce(
+            Sum("total_amount", filter=Q(status=SalesInvoice.Status.ISSUED)),
+            Value(ZERO),
+            output_field=MONEY,
+        ),
+        draft_total=Coalesce(
+            Sum("total_amount", filter=Q(status=SalesInvoice.Status.DRAFT)),
             Value(ZERO),
             output_field=MONEY,
         ),
         issued_count=Count("id", filter=Q(status=SalesInvoice.Status.ISSUED)),
+        draft_count=Count("id", filter=Q(status=SalesInvoice.Status.DRAFT)),
         cancelled_count=Count("id", filter=Q(status=SalesInvoice.Status.CANCELLED)),
         total_count=Count("id"),
     )
     return {
-        "total": _money(agg["total"]),
+        "total": _money(agg["issued_total"]),
+        "draft_total": _money(agg["draft_total"]),
         "issued_count": agg["issued_count"],
+        "draft_count": agg["draft_count"],
         "cancelled_count": agg["cancelled_count"],
         "total_count": agg["total_count"],
     }

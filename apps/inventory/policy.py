@@ -17,6 +17,11 @@ from typing import Literal
 
 from django.db.models import Prefetch, QuerySet
 
+from apps.businesses.eligibility import (
+    business_can_sell,
+    business_is_network_eligible,
+    can_sell_q,
+)
 from apps.businesses.models import Business
 from apps.pricing.models import LotPrice
 
@@ -68,7 +73,16 @@ def eligible_items(
     """Items a buyer of ``audience`` is allowed to discover.
 
     An item is eligible when it is not deleted, is currently offered for sale,
-    has been published by its seller, and belongs to an active Business.
+    has been published by its seller, and its seller may currently sell — which
+    means active, subscription current, not refused by platform verification,
+    and on a plan that includes selling.
+
+    That last clause used to be missing, and read eligibility and write
+    entitlement disagreed as a result: a seller could downgrade to browse-only or
+    let their subscription lapse and their published products stayed
+    discoverable, right up until ``create_purchase_request`` re-checked the plan
+    and refused. The buyer's journey ended in an error page for a product the
+    platform had gone on advertising.
 
     Note what is *not* here: stock and price freshness. An item whose quantity
     has gone stale stays discoverable and simply shows «استعلام موجودی» — that
@@ -76,18 +90,21 @@ def eligible_items(
     collapsing the two would hide inventory sellers still want to sell.
     """
     if audience == "colleague":
-        # A suspended viewer sees nothing, and a suspended seller is shown to
-        # nobody. Both directions matter: the second keeps a suspended
-        # business's B2B prices off other people's screens.
-        if viewer_business is None or viewer_business.status != Business.Status.ACTIVE:
+        # A viewer who cannot participate in the network sees nothing, and a
+        # seller who cannot sell is shown to nobody. Both directions matter: the
+        # second keeps such a business's B2B prices off other people's screens.
+        if not business_is_network_eligible(viewer_business):
             return InventoryLot.objects.none()
 
+    if seller_business is not None and not business_can_sell(seller_business):
+        return InventoryLot.objects.none()
+
     qs = InventoryLot.objects.filter(
+        can_sell_q("business"),
         deleted_at__isnull=True,
         is_visible=True,
         availability_status=InventoryLot.Availability.AVAILABLE,
         status=InventoryLot.Status.ACTIVE,
-        business__status=Business.Status.ACTIVE,
     )
 
     if seller_business is not None:

@@ -82,21 +82,23 @@ A reversal cannot itself be reversed, and an entry cannot be reversed twice.
 A sale reaches the books **exactly once**, when the seller finalizes the trade.
 
 ```text
-finalize_sale()
+finalize_sale()  /  record_direct_sale()
   → create Trade
-  → post_trade_for_sale()   ← the books move here, and only here
+  → post_trade_entries()   ← the books move here, and only here
   → create the invoice
   (one transaction)
 ```
 
 Issuing, re-issuing, printing or cancelling the invoice posts **nothing**. There
 is no second way in: `post_manual_entry()` refuses trade entry types outright, so
-a sale cannot be typed by hand either.
+a sale cannot be typed by hand either, and `create_manual_invoice()` refuses a
+colleague counterparty outright, so a document cannot stand in for a sale.
 
 Exactly-once is enforced three ways, so no single mistake breaks it:
 
-1. `select_for_update()` on the counterparty serializes concurrent attempts.
-2. A pre-check under that lock finds an existing live entry and raises
+1. `select_for_update()` on both parties' Business rows serializes concurrent
+   attempts.
+2. A pre-check under those locks finds an existing live entry and raises
    `LedgerDuplicateError`.
 3. `uniq_trade_entry_per_trade` — a partial unique index on
    `(business, related_trade)` scoped to live trade rows — rejects anything that
@@ -105,6 +107,34 @@ Exactly-once is enforced three ways, so no single mistake breaks it:
 `reversed_at__isnull=True` in the constraint means reversing frees the slot, so a
 trade recorded with a wrong amount can be corrected and re-recorded with its link
 intact.
+
+### Both parties keep books
+
+A colleague sale is one commercial event that moves two ledgers:
+
+| Party | Entry | Effect on their own books |
+|-------|-------|---------------------------|
+| Seller | `sale` | the colleague becomes **بدهکار** |
+| Buyer | `purchase` | the colleague becomes **بستانکار** |
+
+Both are written inside the seller's transaction. The buyer's row is not
+bookkeeping the seller is authoring in someone else's name — it is the other half
+of a transaction the buyer is a party to, and the buyer can reverse it from their
+own statement if it is wrong. Posting only the seller's side left «جمع خرید»
+permanently zero for the buyer while the seller's statement said money was owed:
+the same event described two incompatible ways.
+
+Idempotency is evaluated **per side**, so a party who reversed their own entry
+can have it reposted without disturbing the other's book. Each party owns the
+corrections to their own ledger; nothing reaches across the tenant boundary to
+reverse somebody else's row.
+
+Both Business rows are locked in ascending stringified-UUID order. Two trades
+running in opposite directions between the same pair would otherwise deadlock,
+each holding the row the other wants.
+
+A walk-in customer sale posts nothing: there is no colleague account to move, and
+inventing one would create a debtor nobody can settle with.
 
 ### Who is allowed to post it
 
@@ -147,6 +177,23 @@ equals «جمع مطالبات» and the summed `unapplied_credit` equals «جم
 Aging is always computed over the whole account. Statement date and type filters
 are a viewing device and must not change how old a debt is.
 
+## 7.1 Statement footer: three balances, three questions
+
+| Figure | Question |
+|--------|----------|
+| مانده ابتدای دوره | where the account stood before the first visible row |
+| جمع گردش نمایش‌داده‌شده | what the listed entries moved |
+| مانده پایان دوره | the last visible row's running balance |
+
+`balance_after` is a **global** running total: it includes every entry ever
+posted, including the ones a filter has hidden. Filter a statement to «دریافت»
+only and the closing figure reflects sales that are nowhere on screen — so
+closing minus the visible columns did not reconcile, and the footer said nothing
+about why. Stating the opening balance is what makes that legible.
+
+With a date filter, opening + debit − credit = closing. With a type filter it
+deliberately does not, and now the reader can see it.
+
 ## 8. Invoices
 
 Invoices are **historical documents**. `SalesInvoice` and `SalesInvoiceItem`
@@ -162,13 +209,44 @@ This is the deliberate opposite of a catalog, which is always live:
 
 > **Catalog = current. Invoice = historical.**
 
+### One Trade, one invoice
+
+`uniq_invoice_per_trade` is a partial unique index on `trade` for non-null rows.
+The service was idempotent by lookup, which cannot hold under concurrency: two
+requests could both find no invoice for a trade and both create one, documenting
+the same sale twice. The service now locks the seller *before* looking, re-checks
+under the lock, and turns the constraint violation back into the winning
+document, so a double-click still hands both callers the same invoice.
+
+A colleague invoice therefore has exactly one origin: a finalized Trade. Typing
+one by hand is refused — see §5.
+
+### Who may read one
+
+The seller sees every document of their own, including drafts. The buyer sees
+**issued and cancelled** ones.
+
+A draft is the seller still deciding — the number, the lines, whether to issue it
+at all. Showing it to the buyer meant they could read a bill that had not been
+sent and watch it change. A cancelled document stays visible because a buyer who
+was sent one needs to see that it was voided rather than find it missing.
+
 ### Numbering
 
-Sequential per seller, allocated under a `select_for_update()` on the seller's
-Business row, and derived from the highest existing number rather than a count —
-so cancelling an invoice never causes a number to be reused. `count() + 1` looks
-obviously correct and produces duplicates the first time two salespeople issue
-at the same moment.
+Sequential per seller, from `Business.invoice_sequence`, incremented under the
+`select_for_update()` the allocation already held. The counter only moves
+forward, so cancelling an invoice never frees its number for reuse — a gap in the
+sequence means something.
+
+It replaced a scan of every invoice the Business had ever issued, performed in
+Python to find the maximum, while holding the lock every other salesperson was
+queued behind: both the transaction time and the contention grew with the length
+of the seller's history. `businesses.0005` seeds each counter from that same
+highest-number-so-far, because starting at zero would reissue numbers that
+already exist.
+
+`count() + 1` looks obviously correct and produces duplicates the first time two
+salespeople issue at the same moment.
 
 ### Cancelling
 
