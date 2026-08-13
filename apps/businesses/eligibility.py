@@ -52,15 +52,8 @@ from .models import Business
 
 #: Verification states that remove a Business from the shared network.
 #:
-#: Deliberately a denylist. ``verification_status`` defaults to ``unverified``
-#: and nothing in provisioning sets it, so requiring ``VERIFIED`` would empty
-#: every directory and marketplace on the day it shipped — a policy change
-#: disguised as a bug fix. ``docs/data-model.md`` also calls the field "platform
-#: trust, deliberately independent of status".
-#:
-#: What the field *can* mean today is a decision the platform has actually taken:
-#: REJECTED and SUSPENDED are explicit refusals, and a Business carrying one has
-#: no business appearing in other people's search results.
+#: Explicit platform refusals. Kept as a named set because they are refusals
+#: rather than an absence of approval, and the messages a human sees differ.
 UNTRUSTED_VERIFICATION_STATES: frozenset[str] = frozenset(
     {
         Business.VerificationStatus.REJECTED,
@@ -68,14 +61,26 @@ UNTRUSTED_VERIFICATION_STATES: frozenset[str] = frozenset(
     }
 )
 
-def _requires_verification() -> bool:
-    """Whether only VERIFIED Businesses join the shared network.
 
-    Off by default. It exists so the switch is a one-line configuration change
-    on the day the platform starts verifying accounts, rather than a code change
-    made under time pressure.
+def _requires_verification() -> bool:
+    """Whether only VERIFIED Businesses join the shared network. On by default.
+
+    This was a denylist — everything except REJECTED and SUSPENDED participated —
+    for a reason that was true at the time: ``verification_status`` defaults to
+    ``unverified``, nothing in provisioning set it, and flipping to an allowlist
+    would have emptied every directory on the day it shipped.
+
+    That reasoning fixed the wrong half. SANGA has no public signup: a Business
+    exists because a platform admin provisioned it, so "approved" is a decision
+    somebody has already made and the field should record it. The fix is to make
+    provisioning set the field and to backfill the businesses that predate it
+    (``businesses.0006``), not to keep the policy loose because the data was
+    empty.
+
+    Still a setting, because a development or demo environment seeded with
+    unverified fixtures should not be an empty site. Production defaults to on.
     """
-    return bool(getattr(settings, "SANGA_REQUIRE_VERIFIED_FOR_NETWORK", False))
+    return bool(getattr(settings, "SANGA_REQUIRE_VERIFIED_FOR_NETWORK", True))
 
 
 def business_can_use_app(business: Business | None) -> bool:
@@ -93,7 +98,7 @@ def business_can_use_app(business: Business | None) -> bool:
 def business_is_network_eligible(business: Business | None) -> bool:
     """Should this Business be visible to anyone other than itself?
 
-    Active, subscription current, and not carrying an explicit platform refusal.
+    Active, subscription current, and — in production — verified by the platform.
     """
     if business is None:
         return False

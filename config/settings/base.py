@@ -189,6 +189,15 @@ OTP_MAX_REQUESTS_PER_IP_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_IP_PER_HOUR", d
 
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@sanga.local")
 
+#: Only platform-verified Businesses appear in the colleague directory, the
+#: colleague marketplace, public search and shared catalogs.
+#:
+#: On by default. SANGA has no self-service signup, so provisioning an account is
+#: itself the approval, and ``create_business_for_owner`` records it. The setting
+#: exists so a development or demo database seeded with unverified fixtures is not
+#: an empty site; it is not a way to run production with an open network.
+SANGA_REQUIRE_VERIFIED_FOR_NETWORK = env.bool("SANGA_REQUIRE_VERIFIED_FOR_NETWORK", default=True)
+
 # Content-Security-Policy knobs; see apps.core.middleware.
 # Report-only first is how a policy survives contact with a live site.
 CSP_REPORT_ONLY = env.bool("CSP_REPORT_ONLY", default=False)

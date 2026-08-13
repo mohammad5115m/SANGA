@@ -30,10 +30,11 @@ from apps.marketplace.selectors import marketplace_lots_for
 from apps.pricing.services import ensure_default_tiers
 from apps.trading.services import TradingError, create_purchase_request
 
-VERIFICATION_STATES = [
+#: Everything short of an approval. Refused states are separated because the
+#: platform said no to those, rather than not yet having said yes.
+UNAPPROVED_VERIFICATION_STATES = [
     Business.VerificationStatus.UNVERIFIED,
     Business.VerificationStatus.PENDING,
-    Business.VerificationStatus.VERIFIED,
 ]
 REFUSED_VERIFICATION_STATES = [
     Business.VerificationStatus.REJECTED,
@@ -77,17 +78,27 @@ def _expire(business: Business) -> Business:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("verification", VERIFICATION_STATES)
-def test_an_unverified_business_still_participates(pair, verification):
-    """Verification is a denylist, not an allowlist.
+def test_provisioning_marks_a_business_verified(pair):
+    """Provisioning *is* the approval: SANGA has no self-service signup, so a
+    Business exists because an operator checked who it was.
 
-    ``verification_status`` defaults to ``unverified`` and nothing in
-    provisioning sets it, so requiring VERIFIED would empty every directory on
-    the day it shipped.
-    """
-    _set(pair["seller"], verification_status=verification)
+    This is the half that used to be missing, and its absence was why the policy
+    had to be a denylist — it could not require an approval that nothing ever
+    recorded."""
+    assert pair["seller"].verification_status == Business.VerificationStatus.VERIFIED
     assert business_is_network_eligible(pair["seller"]) is True
     assert business_can_sell(pair["seller"]) is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("verification", UNAPPROVED_VERIFICATION_STATES)
+def test_an_unapproved_business_is_not_on_the_network(pair, verification):
+    """Only approved businesses participate. Not-yet-approved is not approved."""
+    _set(pair["seller"], verification_status=verification)
+    assert business_is_network_eligible(pair["seller"]) is False
+    assert business_can_sell(pair["seller"]) is False
+    # It can still operate on its own records; it is simply not shown to others.
+    assert business_can_use_app(pair["seller"]) is True
 
 
 @pytest.mark.django_db
@@ -97,8 +108,27 @@ def test_a_refused_business_leaves_the_network(pair, verification):
     _set(pair["seller"], verification_status=verification)
     assert business_is_network_eligible(pair["seller"]) is False
     assert business_can_sell(pair["seller"]) is False
-    # It can still operate on its own records; it is simply not shown to others.
     assert business_can_use_app(pair["seller"]) is True
+
+
+@pytest.mark.django_db
+def test_the_policy_can_be_relaxed_for_a_demo_database(pair, settings):
+    """The setting exists so a database seeded with unverified fixtures is not an
+    empty site. Production defaults to requiring approval."""
+    _set(pair["seller"], verification_status=Business.VerificationStatus.UNVERIFIED)
+    assert business_is_network_eligible(pair["seller"]) is False
+
+    settings.SANGA_REQUIRE_VERIFIED_FOR_NETWORK = False
+    assert business_is_network_eligible(pair["seller"]) is True
+
+
+@pytest.mark.django_db
+def test_relaxing_the_policy_never_readmits_a_refused_business(pair, settings):
+    """The two are different rules: one is "not yet approved", the other is
+    "the platform said no"."""
+    settings.SANGA_REQUIRE_VERIFIED_FOR_NETWORK = False
+    _set(pair["seller"], verification_status=Business.VerificationStatus.REJECTED)
+    assert business_is_network_eligible(pair["seller"]) is False
 
 
 @pytest.mark.django_db

@@ -28,6 +28,7 @@ def create_business_for_owner(
     city: str = "",
     province: str = "",
     phone: str = "",
+    verified: bool = True,
 ) -> Business:
     """Provision a Business and make ``owner`` its Owner.
 
@@ -36,6 +37,13 @@ def create_business_for_owner(
     the ``provision_business`` command or used Django admin. Callers are
     responsible for having established that authority — the function itself
     cannot see a request.
+
+    Provisioning marks the Business VERIFIED, because in a platform with no
+    self-service signup that is what provisioning *means*: an operator has
+    already checked who this is. Leaving the field at its ``unverified`` default
+    was what forced network eligibility to be a denylist — the policy could not
+    require an approval that nothing ever recorded. Pass ``verified=False`` to
+    provision an account that still has to be reviewed.
     """
     name = (name or "").strip()
     if len(name) < 2:
@@ -47,6 +55,9 @@ def create_business_for_owner(
         province=province.strip(),
         phone=phone.strip() or owner.phone,
         onboarding_step=2,
+        verification_status=(
+            Business.VerificationStatus.VERIFIED if verified else Business.VerificationStatus.PENDING
+        ),
     )
     BusinessMembership.objects.create(
         user=owner,
