@@ -15,10 +15,10 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
+from apps.businesses.permissions import LEADS_MANAGE
 from apps.core.persian import normalize_phone
 from apps.inventory.models import InventoryLot
-from apps.notifications.models import Notification
-from apps.notifications.services import notify_user
+from apps.notifications.services import notify_business
 
 from .models import CustomerLead, Inquiry, InquiryItem
 
@@ -266,30 +266,25 @@ def create_stock_inquiry(
 
 
 def _notify_seller(inquiry: Inquiry) -> None:
-    """Tell the people who can act on it.
+    """Tell the members who handle customer leads.
 
-    Owners and managers only. Notifying a ten-person team about every inquiry is
-    how notification lists stop being read.
+    Was OWNER and MANAGER by role, which excluded exactly the wrong people: the
+    default ``staff`` salesperson holds ``leads.manage`` and is the person who
+    calls the customer back, and they were the one member guaranteed not to hear
+    that a customer had asked about a product.
     """
     product_count = inquiry.items.count()
     body = f"{inquiry.name} ({inquiry.phone})"
     if product_count:
         body += f" · {product_count} محصول"
 
-    recipients = BusinessMembership.objects.filter(
-        business=inquiry.business,
-        status=BusinessMembership.Status.ACTIVE,
-        role__in=[BusinessMembership.Role.OWNER, BusinessMembership.Role.MANAGER],
-    ).select_related("user")
-    for membership in recipients:
-        notify_user(
-            user=membership.user,
-            business=inquiry.business,
-            kind=Notification.Kind.GENERAL,
-            title="استعلام جدید مشتری",
-            body=body,
-            link=f"/app/leads/inquiries/{inquiry.id}/",
-        )
+    notify_business(
+        inquiry.business,
+        capability=LEADS_MANAGE,
+        title="استعلام جدید مشتری",
+        body=body,
+        link=f"/app/leads/inquiries/{inquiry.id}/",
+    )
 
 
 @transaction.atomic

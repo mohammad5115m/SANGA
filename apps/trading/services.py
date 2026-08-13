@@ -27,8 +27,7 @@ from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
 from apps.inventory.models import InventoryLot
 from apps.inventory.policy import get_eligible_item
 from apps.invoicing.services import safe_create_invoice_for_trade
-from apps.notifications.models import Notification
-from apps.notifications.services import notify_user
+from apps.notifications.services import notify_business
 
 from .models import PurchaseRequest, Trade, TradeItem
 
@@ -142,26 +141,14 @@ def _header_snapshot(lines: list[dict]) -> dict:
     }
 
 
-def _notify_business(business: Business, *, title: str, body: str, link: str) -> None:
-    """Tell the people who can act on this.
+def _notify_business(business: Business, *, capability: str, title: str, body: str, link: str) -> None:
+    """Tell the members who hold the capability this notification is about.
 
-    Owners and managers only: notifying every member of a large team about every
-    request is how notification lists get ignored.
+    Was OWNER and MANAGER by role, which meant the default ``staff`` salesperson
+    — who holds ``purchase.request`` and ``sale.finalize`` and does this work —
+    never heard that a purchase request had arrived.
     """
-    recipients = BusinessMembership.objects.filter(
-        business=business,
-        status=BusinessMembership.Status.ACTIVE,
-        role__in=[BusinessMembership.Role.OWNER, BusinessMembership.Role.MANAGER],
-    ).select_related("user")
-    for membership in recipients:
-        notify_user(
-            user=membership.user,
-            business=business,
-            kind=Notification.Kind.GENERAL,
-            title=title,
-            body=body,
-            link=link,
-        )
+    notify_business(business, capability=capability, title=title, body=body, link=link)
 
 
 #: What to tell someone acting on a request that has already finished. Keyed by
@@ -271,6 +258,9 @@ def create_purchase_request(
 
     _notify_business(
         seller,
+        # Whoever can respond to it. Answering a request is the work this
+        # notification exists to prompt.
+        capability=PURCHASE_REQUEST,
         title="درخواست خرید جدید",
         body=f"{buyer_business.name} برای «{visible.product.commercial_name}» درخواست خرید ثبت کرد.",
         link=f"/app/trading/received/{request.id}/",
@@ -338,6 +328,7 @@ def respond_to_purchase_request(
         locked.save(update_fields=["status", "seller_note", "decided_at", "updated_at"])
         _notify_business(
             locked.buyer_business,
+            capability=PURCHASE_REQUEST,
             title="درخواست خرید رد شد",
             body=f"{locked.seller_business.name} درخواست شما را نپذیرفت.",
             link=f"/app/trading/sent/{locked.id}/",
@@ -371,6 +362,7 @@ def respond_to_purchase_request(
     )
     _notify_business(
         locked.buyer_business,
+        capability=PURCHASE_REQUEST,
         title="درخواست خرید پذیرفته شد",
         body=f"{locked.seller_business.name} با درخواست شما موافقت کرد.",
         link=f"/app/trading/sent/{locked.id}/",
@@ -457,6 +449,9 @@ def finalize_sale(
 
     _notify_business(
         locked.buyer_business,
+        # The buyer's side of a finalized sale: their account has just moved, so
+        # this goes to whoever tracks what they have bought.
+        capability=PURCHASE_REQUEST,
         title="فروش نهایی شد",
         body=f"{locked.seller_business.name} فروش «{trade.summary_label}» را نهایی کرد.",
         link=f"/app/trading/sent/{locked.id}/",
