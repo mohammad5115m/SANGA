@@ -1,0 +1,33 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}درخواست خرید | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">درخواست خرید</h1>
+    <p class="page-lead">{{ item.product.commercial_name }} — {{ item.business.name }}</p>
+  </div>
+
+  <section class="panel stack-sm">
+    <div class="kv"><span>قیمت همکار</span><strong dir="ltr">{{ price.label }}</strong></div>
+    {% if item.grade %}<div class="kv"><span>سورت</span><strong>{{ item.grade }}</strong></div>{% endif %}
+    {% if item.thickness_mm %}<div class="kv"><span>ضخامت</span><strong>{{ item.thickness_mm }} mm</strong></div>{% endif %}
+  </section>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-block" type="submit">ارسال درخواست</button>
+  </form>
+</section>
+{% endblock %}

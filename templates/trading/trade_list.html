@@ -1,0 +1,36 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}فروش‌های نهایی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">خرید و فروش</h1>
+    <p class="page-lead">فروش‌هایی که نهایی کرده‌اید</p>
+  </div>
+
+  <div class="tab-row">
+    <a class="tab" href="{% url 'trading:received_list' %}">درخواست‌های خرید دریافتی</a>
+    <a class="tab" href="{% url 'trading:sent_list' %}">درخواست‌های خرید ارسالی</a>
+    <a class="tab is-active" href="{% url 'trading:trade_list' %}">فروش‌های نهایی</a>
+  </div>
+
+  <div class="list-stack">
+    {% for trade in trades %}
+      <a class="lot-card" href="{% url 'trading:trade_detail' trade.id %}">
+        <div class="lot-body">
+          <div class="list-title">{{ trade.product_name }}</div>
+          <div class="muted">{{ trade.counterparty_label }} · {{ trade.finalized_at|date:"Y/m/d" }}</div>
+          <div class="muted" dir="ltr">
+            {{ trade.quantity_sqm }} m² × {{ trade.unit_price|rial }} =
+            {{ trade.total_amount|rial }} {{ trade.currency }}
+          </div>
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state">هنوز فروشی نهایی نشده است.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

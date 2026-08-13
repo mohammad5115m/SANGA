@@ -7,7 +7,8 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 
-from .models import Business, BusinessMembership, Warehouse
+from .entitlements import EntitlementError, require_seat_available
+from .models import Business, BusinessMembership
 from .permissions import BUSINESS_SETTINGS, TEAM_MANAGE, defaults_for_role
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,14 @@ def create_business_for_owner(
     province: str = "",
     phone: str = "",
 ) -> Business:
+    """Provision a Business and make ``owner`` its Owner.
+
+    Platform-admin only. There is no public route into this function: SANGA has
+    no self-service signup, so a Business exists only because an operator ran
+    the ``provision_business`` command or used Django admin. Callers are
+    responsible for having established that authority — the function itself
+    cannot see a request.
+    """
     name = (name or "").strip()
     if len(name) < 2:
         raise BusinessServiceError("نام کسب‌وکار خیلی کوتاه است.")
@@ -46,37 +55,8 @@ def create_business_for_owner(
         permissions=defaults_for_role(BusinessMembership.Role.OWNER),
         status=BusinessMembership.Status.ACTIVE,
     )
-    logger.info("Business created id=%s owner=%s", business.id, owner.id)
+    logger.info("Business provisioned id=%s owner=%s", business.id, owner.id)
     return business
-
-
-@transaction.atomic
-def add_warehouse(
-    *,
-    business: Business,
-    name: str,
-    city: str = "",
-    address: str = "",
-    is_default: bool = False,
-) -> Warehouse:
-    name = (name or "").strip()
-    if not name:
-        raise BusinessServiceError("نام انبار الزامی است.")
-    if Warehouse.objects.filter(business=business, name=name).exists():
-        raise BusinessServiceError("انباری با این نام از قبل وجود دارد.")
-
-    make_default = is_default or not Warehouse.objects.filter(business=business).exists()
-    warehouse = Warehouse.objects.create(
-        business=business,
-        name=name,
-        city=city.strip() or business.city,
-        address=address.strip(),
-        is_default=make_default,
-    )
-    if business.onboarding_step < 3:
-        business.onboarding_step = 3
-        business.save(update_fields=["onboarding_step", "updated_at"])
-    return warehouse
 
 
 def update_business_profile(
@@ -103,6 +83,7 @@ def complete_onboarding(business: Business) -> Business:
     return business
 
 
+@transaction.atomic
 def invite_member(
     *,
     business: Business,
@@ -110,20 +91,35 @@ def invite_member(
     user: User,
     role: str = BusinessMembership.Role.STAFF,
 ) -> BusinessMembership:
+    """Add or reactivate a member, within the Business's seat limit.
+
+    The seat check happens here rather than at login: lowering a limit must not
+    lock out people who are already working, it should bite the next time
+    somebody is added.
+    """
     if not actor_membership.has_capability(TEAM_MANAGE):
         raise BusinessServiceError("اجازه مدیریت تیم را ندارید.")
-    membership, created = BusinessMembership.objects.get_or_create(
+
+    existing = BusinessMembership.objects.filter(user=user, business=business).first()
+    if existing is not None and existing.status == BusinessMembership.Status.ACTIVE:
+        return existing
+
+    try:
+        require_seat_available(business)
+    except EntitlementError as exc:
+        raise BusinessServiceError(exc.message) from exc
+
+    if existing is not None:
+        existing.status = BusinessMembership.Status.ACTIVE
+        existing.role = role
+        existing.permissions = defaults_for_role(role)
+        existing.save()
+        return existing
+
+    return BusinessMembership.objects.create(
         user=user,
         business=business,
-        defaults={
-            "role": role,
-            "permissions": defaults_for_role(role),
-            "status": BusinessMembership.Status.ACTIVE,
-        },
+        role=role,
+        permissions=defaults_for_role(role),
+        status=BusinessMembership.Status.ACTIVE,
     )
-    if not created and membership.status == BusinessMembership.Status.SUSPENDED:
-        membership.status = BusinessMembership.Status.ACTIVE
-        membership.role = role
-        membership.permissions = defaults_for_role(role)
-        membership.save()
-    return membership

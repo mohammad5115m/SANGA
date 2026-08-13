@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from django.utils import timezone
 
 from apps.accounting.services import post_entry
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.services import add_warehouse, create_business_for_owner
-from apps.contacts.services import archive_contact, create_contact
+from apps.businesses.services import create_business_for_owner
+from apps.core.testing import expire_stock, make_business, make_item, make_product
 from apps.inquiries.models import Inquiry
-from apps.inventory.models import InventoryLot, Product
-from apps.purchase_requests.models import PurchaseOffer, PurchaseRequest
-from apps.pricing.services import ensure_default_tiers, set_lot_prices
+from apps.pricing.services import ensure_default_tiers
+from apps.trading.models import PurchaseRequest
 
 User = get_user_model()
 
@@ -36,87 +33,34 @@ def shop(db):
     membership = BusinessMembership.objects.get(user=owner, business=business)
     colleague_m = BusinessMembership.objects.get(user=colleague_owner, business=colleague)
 
-    warehouse = add_warehouse(business=business, name="انبار اصلی", is_default=True)
-    colleague_wh = add_warehouse(business=colleague, name="انبار همکار", is_default=True)
-    product = Product.objects.create(
-        business=business, commercial_name="مرمریت اصلی", stone_type="مرمریت"
+    product = make_product(business, commercial_name="مرمریت اصلی", stone_type="مرمریت")
+    colleague_product = make_product(colleague, commercial_name="تراورتن همکار")
+
+    priced = make_item(business, product=product, lot_code="OK-1", b2b="1000000", b2c="2000000")
+    unpriced = make_item(business, product=product, lot_code="NOPRICE-1")
+    stale = make_item(business, product=product, lot_code="STALE-1", b2b="900000", b2c="1900000")
+    expire_stock(stale)
+
+    colleague_lot = make_item(
+        colleague, product=colleague_product, lot_code="COL-1", b2b="1500000", b2c="2500000"
     )
-    colleague_product = Product.objects.create(
-        business=colleague, commercial_name="تراورتن همکار", stone_type="تراورتن"
+    colleague_private = make_item(
+        colleague, product=colleague_product, lot_code="COL-PRIV", is_visible=False
     )
 
-    def make_lot(owner_business, wh, prod, code, **kwargs):
-        return InventoryLot.objects.create(
-            business=owner_business,
-            product=prod,
-            warehouse=wh,
-            lot_code=code,
-            available_sqm=Decimal("40"),
-            original_sqm=Decimal("40"),
-            **kwargs,
-        )
-
-    priced = make_lot(
-        business,
-        warehouse,
-        product,
-        "OK-1",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.COLLEAGUES,
-        inventory_confirmed_at=timezone.now(),
-    )
-    set_lot_prices(lot=priced, b2b_amount=Decimal("1000000"), b2c_amount=Decimal("2000000"))
-    unpriced = make_lot(
-        business,
-        warehouse,
-        product,
-        "NOPRICE-1",
-        status=InventoryLot.Status.AVAILABLE,
-        inventory_confirmed_at=timezone.now(),
-    )
-    stale = make_lot(
-        business,
-        warehouse,
-        product,
-        "STALE-1",
-        status=InventoryLot.Status.NEEDS_CONFIRMATION,
-        inventory_confirmed_at=timezone.now() - timedelta(days=20),
-    )
-    set_lot_prices(lot=stale, b2b_amount=Decimal("900000"), b2c_amount=Decimal("1900000"))
-
-    colleague_lot = make_lot(
-        colleague,
-        colleague_wh,
-        colleague_product,
-        "COL-1",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.COLLEAGUES,
-        inventory_confirmed_at=timezone.now(),
-    )
-    set_lot_prices(lot=colleague_lot, b2b_amount=Decimal("1500000"), b2c_amount=Decimal("2500000"))
-    colleague_private = make_lot(
-        colleague,
-        colleague_wh,
-        colleague_product,
-        "COL-PRIV",
-        status=InventoryLot.Status.AVAILABLE,
-        visibility=InventoryLot.Visibility.PRIVATE,
-        inventory_confirmed_at=timezone.now(),
-    )
-
-    debtor = create_contact(business=business, membership=membership, display_name="بدهکار بزرگ")
-    creditor = create_contact(business=business, membership=membership, display_name="بستانکار بزرگ")
+    debtor = make_business(name="بدهکار بزرگ", owner_phone="09127770101")
+    creditor = make_business(name="بستانکار بزرگ", owner_phone="09127770102")
     post_entry(
         business=business,
-        contact=debtor,
+        counterparty=debtor,
         membership=membership,
-        entry_type="sale",
+        entry_type="adjust_debit",
         amount=Decimal("5000000"),
         description="فروش",
     )
     post_entry(
         business=business,
-        contact=creditor,
+        counterparty=creditor,
         membership=membership,
         entry_type="payment_received",
         amount=Decimal("2000000"),
@@ -133,14 +77,13 @@ def shop(db):
         phone="09121110001",
         status=Inquiry.Status.CONTACTED,
     )
-    request_ = PurchaseRequest.objects.create(
-        business=business, title="تقاضای مرمریت", required_qty_sqm=Decimal("100")
-    )
-    offer = PurchaseOffer.objects.create(
-        purchase_request=request_,
-        seller_business=colleague,
-        unit_price=Decimal("1200000"),
-        offered_qty_sqm=Decimal("100"),
+    # A colleague asking to buy from us: our task until we answer it.
+    incoming = PurchaseRequest.objects.create(
+        item=priced,
+        seller_business=business,
+        buyer_business=colleague,
+        requested_qty_sqm=Decimal("100"),
+        proposed_unit_price=Decimal("1200000"),
     )
 
     return {
@@ -156,7 +99,7 @@ def shop(db):
         "unpriced": unpriced,
         "stale": stale,
         "priced": priced,
-        "offer": offer,
+        "incoming_request": incoming,
     }
 
 
@@ -187,22 +130,24 @@ def test_the_financial_summary_is_the_ledger_summary(client, shop):
 
 def test_top_debtors_and_creditors_are_labeled_and_linked(client, shop):
     context = _dashboard(client, shop).context
-    assert [row["contact"].id for row in context["top_debtors"]] == [shop["debtor"].id]
+    assert [row["colleague"].id for row in context["top_debtors"]] == [shop["debtor"].id]
     assert context["top_debtors"][0]["balance"]["label"] == "بدهکار"
-    assert [row["contact"].id for row in context["top_creditors"]] == [shop["creditor"].id]
+    assert [row["colleague"].id for row in context["top_creditors"]] == [shop["creditor"].id]
     assert context["top_creditors"][0]["balance"]["label"] == "بستانکار"
 
     body = _dashboard(client, shop).content.decode()
-    assert reverse("accounting:statement", kwargs={"contact_id": shop["debtor"].id}) in body
+    assert reverse("accounting:statement", kwargs={"business_id": shop["debtor"].id}) in body
     assert "بستانکار" in body
 
 
-def test_an_archived_debtor_is_still_listed_and_marked(client, shop):
-    archive_contact(contact=shop["debtor"], membership=shop["membership"])
+def test_a_suspended_debtor_is_still_listed(client, shop):
+    """Suspending a colleague does not settle what they owe."""
+    shop["debtor"].status = "suspended"
+    shop["debtor"].save(update_fields=["status"])
 
     response = _dashboard(client, shop)
-    assert [row["contact"].id for row in response.context["top_debtors"]] == [shop["debtor"].id]
-    assert "بایگانی‌شده" in response.content.decode()
+    assert [row["colleague"].id for row in response.context["top_debtors"]] == [shop["debtor"].id]
+    assert response.context["finance"]["receivable_total"] > 0
 
 
 def test_a_member_without_ledger_view_gets_no_financial_data(client, shop):
@@ -227,7 +172,7 @@ def test_a_member_without_ledger_view_gets_no_financial_data(client, shop):
     assert "5000000" not in body
     assert "خلاصه مالی" not in body
     # The rest of the dashboard still renders for them.
-    assert "محموله‌های نیازمند رسیدگی" in body
+    assert "محصولات نیازمند رسیدگی" in body
 
 
 def test_the_financial_sections_stay_inside_their_own_tenant(client, shop):
@@ -249,14 +194,18 @@ def test_lots_needing_attention_list_both_reasons(client, shop):
     assert set(rows) == {"NOPRICE-1", "STALE-1"}
     assert rows["NOPRICE-1"] == ["بدون قیمت — قابل فروش نیست"]
     assert rows["STALE-1"] == ["نیاز به تأیید موجودی"]
-    assert context["lot_totals"] == {"active": 3, "needs_confirmation": 1, "no_price": 1}
+    assert context["lot_totals"] == {
+        "active": 3,
+        "needs_confirmation": 1,
+        "stale_price": 0,
+        "no_price": 1,
+    }
 
 
-def test_a_lot_that_is_both_unconfirmed_and_unpriced_appears_once_with_both_reasons(
+def test_an_item_that_is_both_unconfirmed_and_unpriced_appears_once_with_both_reasons(
     client, shop
 ):
-    shop["unpriced"].status = InventoryLot.Status.NEEDS_CONFIRMATION
-    shop["unpriced"].save(update_fields=["status"])
+    expire_stock(shop["unpriced"])
 
     rows = [
         row for row in _dashboard(client, shop).context["attention_lots"]
@@ -309,16 +258,28 @@ def test_pending_work_counts_only_unanswered_items(client, shop):
     # The «تماس گرفته‌شده» inquiry is already being handled.
     assert context["unanswered_inquiry_count"] == 1
     assert [i.name for i in context["unanswered_inquiries"]] == ["مشتری تازه"]
-    assert context["unanswered_offer_count"] == 1
-    assert [o.id for o in context["unanswered_offers"]] == [shop["offer"].id]
+    assert context["open_request_count"] == 1
+    assert [r.id for r in context["open_requests"]] == [shop["incoming_request"].id]
 
 
-def test_an_answered_offer_leaves_the_pending_list(client, shop):
-    offer = shop["offer"]
-    offer.status = PurchaseOffer.Status.ACCEPTED
-    offer.save(update_fields=["status"])
+def test_an_accepted_request_stays_on_the_list_until_the_sale_is_finalized(client, shop):
+    """An agreement nobody finalized is unfinished work, not a closed item."""
+    request_ = shop["incoming_request"]
+    request_.status = PurchaseRequest.Status.ACCEPTED
+    request_.final_unit_price = Decimal("1200000")
+    request_.save(update_fields=["status", "final_unit_price"])
 
-    assert _dashboard(client, shop).context["unanswered_offer_count"] == 0
+    context = _dashboard(client, shop).context
+    assert context["open_request_count"] == 1
+    assert context["awaiting_finalize_count"] == 1
+
+
+def test_a_rejected_request_leaves_the_pending_list(client, shop):
+    request_ = shop["incoming_request"]
+    request_.status = PurchaseRequest.Status.REJECTED
+    request_.save(update_fields=["status"])
+
+    assert _dashboard(client, shop).context["open_request_count"] == 0
 
 
 def test_pending_work_is_tenant_scoped(client, shop):
@@ -326,8 +287,8 @@ def test_pending_work_is_tenant_scoped(client, shop):
     context = client.get(DASHBOARD).context
 
     assert context["unanswered_inquiry_count"] == 0
-    # The offer the colleague *sent* is somebody else's decision, not its own task.
-    assert context["unanswered_offer_count"] == 0
+    # The request the colleague *sent* is somebody else's decision, not its own task.
+    assert context["open_request_count"] == 0
 
 
 # --- empty state and cost ---------------------------------------------------
@@ -344,19 +305,24 @@ def test_a_brand_new_business_gets_a_coherent_empty_dashboard(client, db):
     assert response.context["finance"]["contact_count"] == 0
     assert response.context["attention_lots"] == []
     assert list(response.context["colleague_lots"]) == []
-    assert "هنوز محموله‌ای ثبت نکرده‌اید" in body
-    assert "هنوز مخاطبی ندارید" in body
-    assert "استعلام بی‌پاسخی ندارید" in body
+    assert "هنوز محصولی ثبت نکرده‌اید" in body
+    assert "بدهکاری ندارید" in body
+    # Empty sections are hidden rather than rendered as five empty frames; the
+    # counters at the top still say zero.
+    assert response.context["unanswered_inquiry_count"] == 0
+    assert response.context["open_request_count"] == 0
 
 
 def test_the_dashboard_query_count_stays_bounded(client, shop, django_assert_max_num_queries):
     _login(client, shop["owner"], shop["business"])
-    # A fully-populated dashboard costs 14: session + user + the two membership
-    # lookups in the middleware, then exactly one query per piece of data —
-    # summary, top debtors, top creditors, lot totals, lots needing attention,
-    # colleague lots, and a count plus a page for each of the two pending lists.
-    # The bound is that 14 plus a little slack for shell/session changes; it is
-    # flat in the number of rows, so an N+1 anywhere on the page (five debtors,
-    # eight lots, six colleague lots, ten pending rows) breaks it immediately.
-    with django_assert_max_num_queries(16):
+    # The dashboard costs one query per section: session and membership lookups
+    # in the middleware, then the financial summary, top debtors, top creditors,
+    # lot totals, lots needing attention, colleague products, the two pending
+    # lists with their counts, and recent trades and invoices.
+    #
+    # The point of the bound is that it is **flat in the number of rows**. Five
+    # debtors, eight products, six colleague products and ten pending rows all
+    # render without extra queries, so an N+1 anywhere on the page breaks this
+    # immediately.
+    with django_assert_max_num_queries(20):
         assert client.get(DASHBOARD).status_code == 200

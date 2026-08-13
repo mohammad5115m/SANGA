@@ -5,12 +5,12 @@
 <section class="stack-lg">
   <div>
     <h1 class="page-title">ثبت سند مالی</h1>
-    <p class="page-lead">{{ contact.display_name }}</p>
+    <p class="page-lead">{{ colleague.name }}</p>
   </div>
 
   <section class="panel stack-md">
     <p class="muted">
-      «فروش» و «پرداخت» مخاطب را بدهکارتر می‌کند؛
+      «پرداخت» و «اصلاح بدهکار» همکار را بدهکارتر می‌کند؛
       «خرید» و «دریافت» او را بستانکارتر می‌کند. برای اصلاح دستی، ذکر دلیل الزامی است.
     </p>
     <form method="post" class="stack-md" novalidate>
@@ -25,7 +25,7 @@
       {% endfor %}
       <div class="btn-row">
         <button class="btn btn-primary" type="submit">ثبت سند</button>
-        <a class="btn btn-ghost" href="{% url 'accounting:statement' contact.id %}">انصراف</a>
+        <a class="btn btn-ghost" href="{% url 'accounting:statement' colleague.id %}">انصراف</a>
       </div>
     </form>
   </section>

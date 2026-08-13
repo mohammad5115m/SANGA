@@ -1,0 +1,37 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}{{ product.commercial_name }} | {{ business.name }}{% endblock %}
+
+{% block extra_head %}
+{% include "catalog/_open_graph.html" %}
+{% endblock %}
+
+{% block content %}
+{# The per-product share link. Resolved through the public audience even for a
+   logged-in colleague, so a B2B price can never appear on this page. #}
+<section class="stack-lg">
+  {% include "inventory/_gallery.html" %}
+
+  <div>
+    <h1 class="page-title">{{ product.commercial_name }}</h1>
+    <p class="page-lead">{{ business.name }}{% if business.city %} · {{ business.city }}{% endif %}</p>
+    <div class="catalog-price catalog-price-lg">{{ price.label }}</div>
+    {% if price.is_special %}
+      <div class="badge badge-special">
+        فروش ویژه{% if price.special_until %} تا {{ price.special_until|date:"Y/m/d" }}{% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {% include "catalog/_public_specs.html" %}
+
+  {% if lot.description %}
+    <section class="panel"><p>{{ lot.description|linebreaksbr }}</p></section>
+  {% endif %}
+
+  <div class="btn-row">
+    <a class="btn btn-primary" href="{% url 'catalog:lot_detail' business.slug lot.id %}">درخواست استعلام</a>
+    {% include "catalog/_share_actions.html" %}
+  </div>
+</section>
+{% endblock %}

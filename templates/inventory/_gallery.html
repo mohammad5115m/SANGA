@@ -1,0 +1,36 @@
+{% comment %}
+Product media gallery: the primary image large, everything else as thumbnails,
+videos inline.
+
+Expects: media_items (already ordered; primary first is not assumed)
+{% endcomment %}
+<div class="gallery gallery-lg" x-data="{ active: 0 }">
+  {% for media in media_items %}
+    <div class="gallery-slide" {% if not forloop.first %}x-show="active === {{ forloop.counter0 }}" x-cloak{% endif %}>
+      {% if media.kind == "video" %}
+        <video controls preload="metadata" playsinline>
+          <source src="{{ media.file.url }}">
+        </video>
+      {% else %}
+        <img src="{{ media.file.url }}" alt="{{ media.caption|default:'' }}" loading="lazy">
+      {% endif %}
+      {% if media.caption %}<div class="gallery-caption">{{ media.caption }}</div>{% endif %}
+    </div>
+  {% empty %}
+    <div class="empty-state">تصویری ثبت نشده است</div>
+  {% endfor %}
+</div>
+
+{% if media_items|length > 1 %}
+  <div class="gallery-thumbs">
+    {% for media in media_items %}
+      <button type="button" class="gallery-thumb" @click="active = {{ forloop.counter0 }}">
+        {% if media.kind == "video" %}
+          <span class="gallery-thumb-video">ویدیو</span>
+        {% else %}
+          <img src="{{ media.file.url }}" alt="" loading="lazy">
+        {% endif %}
+      </button>
+    {% endfor %}
+  </div>
+{% endif %}

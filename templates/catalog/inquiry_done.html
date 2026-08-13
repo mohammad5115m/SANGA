@@ -1,0 +1,41 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}درخواست ثبت شد | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  {# The request is already saved on the server. Sharing is offered afterwards
+     and never instead: a seller must not depend on a message the customer may
+     not have sent. #}
+  <div class="empty-state empty-state-lg">
+    <h1 class="page-title">درخواست شما ثبت شد</h1>
+    <p class="page-lead">فروشنده درخواست شما را دریافت کرد و با شما تماس می‌گیرد.</p>
+  </div>
+
+  {% for inquiry in inquiries %}
+    <section class="panel stack-sm">
+      <div class="kv"><span>فروشنده</span><strong>{{ inquiry.business.name }}</strong></div>
+      {% if inquiry.business.phone %}
+        <div class="kv"><span>تلفن فروشنده</span><strong dir="ltr">{{ inquiry.business.phone }}</strong></div>
+      {% endif %}
+      <div class="kv"><span>محصولات</span><strong>{{ inquiry.items.all|length }} مورد</strong></div>
+      <ul class="stack-sm">
+        {% for line in inquiry.items.all %}
+          <li>
+            {{ line.product_name }}
+            {% if line.requested_qty_sqm %} — {{ line.requested_qty_sqm }} m²{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+
+  <section class="panel stack-md">
+    <h2 class="section-title">اشتراک‌گذاری (اختیاری)</h2>
+    <p class="muted">اگر می‌خواهید، می‌توانید این جستجو را با دیگران به اشتراک بگذارید.</p>
+    {% include "catalog/_share_actions.html" %}
+  </section>
+
+  <a class="btn btn-ghost btn-block" href="{% url 'catalog:public_search' %}">جستجوی محصولات بیشتر</a>
+</section>
+{% endblock %}

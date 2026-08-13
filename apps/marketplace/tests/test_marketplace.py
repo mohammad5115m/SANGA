@@ -3,212 +3,216 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
-from django.utils import timezone
 
-from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.services import add_warehouse, create_business_for_owner
-from apps.inventory.models import InventoryLot, Product
-from apps.marketplace.selectors import get_marketplace_lot, marketplace_lots_for
-from apps.marketplace.services import b2b_price_context
-from apps.pricing.services import ensure_default_tiers, set_lot_prices
-
-User = get_user_model()
+from apps.businesses.models import Business
+from apps.core.testing import expire_price, expire_stock, make_business, make_item, make_product
+from apps.inventory.filters import ItemFilterSpec
+from apps.inventory.models import InventoryLot
+from apps.marketplace.selectors import filter_marketplace_lots, get_marketplace_lot, marketplace_lots_for
+from apps.pricing.services import ensure_default_tiers
 
 
 @pytest.fixture
-def two_businesses(db):
+def network(db):
     ensure_default_tiers()
-    owner_a = User.objects.create_user(phone="09126660001", full_name="تأمین")
-    owner_b = User.objects.create_user(phone="09126660002", full_name="خریدار")
-    supplier = create_business_for_owner(owner=owner_a, name="تأمین‌کننده آلفا", city="محلات")
-    buyer = create_business_for_owner(owner=owner_b, name="خریدار بتا", city="تهران")
-    wh = add_warehouse(business=supplier, name="انبار", is_default=True)
-    membership_a = BusinessMembership.objects.get(user=owner_a, business=supplier)
-    membership_b = BusinessMembership.objects.get(user=owner_b, business=buyer)
-    product = Product.objects.create(business=supplier, commercial_name="مرمریت شبکه", stone_type="مرمریت")
-
-    def make_lot(code, visibility, b2b="1000000", b2c="2000000"):
-        lot = InventoryLot.objects.create(
-            business=supplier,
-            product=product,
-            warehouse=wh,
-            lot_code=code,
-            status=InventoryLot.Status.AVAILABLE,
-            visibility=visibility,
-            available_sqm=Decimal("50"),
-            original_sqm=Decimal("50"),
-            inventory_confirmed_at=timezone.now(),
-        )
-        set_lot_prices(lot=lot, b2b_amount=Decimal(b2b), b2c_amount=Decimal(b2c))
-        return lot
-
-    return {
-        "owner_a": owner_a,
-        "owner_b": owner_b,
-        "supplier": supplier,
-        "buyer": buyer,
-        "membership_a": membership_a,
-        "membership_b": membership_b,
-        "colleagues_lot": make_lot("NET-1", InventoryLot.Visibility.COLLEAGUES, "1500000", "2500000"),
-        "private_lot": make_lot("HID-1", InventoryLot.Visibility.PRIVATE, "1700000", "2700000"),
-        "public_lot": make_lot("PUB-1", InventoryLot.Visibility.PUBLIC, "1800000", "2800000"),
-    }
-
-
-def _login_as_buyer(client, ctx) -> None:
-    client.force_login(ctx["owner_b"])
-    session = client.session
-    session["current_business_id"] = str(ctx["buyer"].id)
-    session.save()
-
-
-@pytest.mark.django_db
-def test_b2b_context_excludes_b2c(two_businesses):
-    ctx = b2b_price_context(two_businesses["colleagues_lot"])
-    assert ctx["amount"] == Decimal("1500000")
-    assert "b2c" not in ctx
-    assert "2500000" not in str(ctx)
-
-
-@pytest.mark.django_db
-def test_any_business_sees_colleagues_and_public_lots(two_businesses):
-    """No partnership of any kind exists between these two businesses."""
-    codes = set(marketplace_lots_for(two_businesses["buyer"]).values_list("lot_code", flat=True))
-    assert codes == {"NET-1", "PUB-1"}
-
-
-@pytest.mark.django_db
-def test_colleagues_lot_carries_b2b_price_only(two_businesses):
-    lot = get_marketplace_lot(two_businesses["buyer"], two_businesses["colleagues_lot"].id)
-    assert lot is not None
-    assert {price.tier.code for price in lot.prices.all()} == {"b2b"}
-    assert b2b_price_context(lot)["amount"] == Decimal("1500000")
-
-
-@pytest.mark.django_db
-def test_colleagues_lot_detail_page_opens_for_any_business(client, two_businesses):
-    _login_as_buyer(client, two_businesses)
-    lot = two_businesses["colleagues_lot"]
-
-    response = client.get(reverse("marketplace:lot_detail", kwargs={"lot_id": lot.id}))
-    assert response.status_code == 200
-    content = response.content.decode("utf-8").replace(",", "")
-    assert "NET-1" in content
-    assert "1500000" in content
-    assert "2500000" not in content
-
-
-@pytest.mark.django_db
-def test_private_lot_never_visible(two_businesses):
-    private_lot = two_businesses["private_lot"]
-    assert get_marketplace_lot(two_businesses["buyer"], private_lot.id) is None
-    # The owner reaches it through its own inventory, not the marketplace.
-    assert get_marketplace_lot(two_businesses["supplier"], private_lot.id) is None
-
-
-@pytest.mark.django_db
-def test_private_lot_detail_is_refused(client, two_businesses):
-    _login_as_buyer(client, two_businesses)
-    private_lot = two_businesses["private_lot"]
-
-    response = client.get(reverse("marketplace:lot_detail", kwargs={"lot_id": private_lot.id}), follow=True)
-    assert response.redirect_chain
-    content = response.content.decode("utf-8").replace(",", "")
-    assert "HID-1" not in content
-    assert "1700000" not in content
-
-
-@pytest.mark.django_db
-def test_marketplace_excludes_viewers_own_lots(two_businesses):
-    codes = set(marketplace_lots_for(two_businesses["supplier"]).values_list("lot_code", flat=True))
-    assert codes == set()
-
-
-@pytest.mark.django_db
-def test_marketplace_gate_costs_no_query_per_lot(two_businesses, django_assert_num_queries):
-    codes = marketplace_lots_for(two_businesses["buyer"]).values_list("lot_code", flat=True)
-    with django_assert_num_queries(1):
-        assert sorted(codes) == ["NET-1", "PUB-1"]
-
-
-@pytest.mark.django_db
-def test_a_suspended_viewer_sees_an_empty_marketplace(two_businesses):
-    buyer = two_businesses["buyer"]
-    buyer.status = Business.Status.SUSPENDED
-    buyer.save(update_fields=["status"])
-
-    assert list(marketplace_lots_for(buyer)) == []
-    assert get_marketplace_lot(buyer, two_businesses["colleagues_lot"].id) is None
-
-
-@pytest.mark.django_db
-def test_a_suspended_owners_lots_leave_the_marketplace(two_businesses):
-    supplier = two_businesses["supplier"]
-    supplier.status = Business.Status.SUSPENDED
-    supplier.save(update_fields=["status"])
-
-    buyer = two_businesses["buyer"]
-    assert list(marketplace_lots_for(buyer)) == []
-    # Nor by UUID: the B2B price of a suspended colleague stays out of reach.
-    assert get_marketplace_lot(buyer, two_businesses["public_lot"].id) is None
-
-
-@pytest.mark.django_db
-def test_an_active_business_is_unaffected_by_the_gate(two_businesses):
-    codes = set(marketplace_lots_for(two_businesses["buyer"]).values_list("lot_code", flat=True))
-    assert codes == {"NET-1", "PUB-1"}
-
-
-@pytest.mark.django_db
-def test_the_suspended_lot_detail_page_is_refused(client, two_businesses):
-    _login_as_buyer(client, two_businesses)
-    supplier = two_businesses["supplier"]
-    supplier.status = Business.Status.SUSPENDED
-    supplier.save(update_fields=["status"])
-
-    response = client.get(
-        reverse("marketplace:lot_detail", kwargs={"lot_id": two_businesses["public_lot"].id}),
-        follow=True,
+    supplier = make_business(name="سنگ تأمین", owner_phone="09123330001", city="محلات")
+    buyer = make_business(name="سنگ خریدار", owner_phone="09123330002", city="تهران")
+    item = make_item(
+        supplier,
+        lot_code="SUP-1",
+        product=make_product(supplier, commercial_name="تراورتن عباس‌آباد", quarry_region="عباس‌آباد"),
+        b2b="1000000",
+        b2c="1600000",
     )
-    assert response.redirect_chain
-    content = response.content.decode("utf-8").replace(",", "")
-    assert "PUB-1" not in content
-    assert "1800000" not in content
+    return {"supplier": supplier, "buyer": buyer, "item": item}
+
+
+def _login_owner(client, business):
+    owner = business.memberships.get(role="owner").user
+    client.force_login(owner)
+    session = client.session
+    session["current_business_id"] = str(business.id)
+    session.save()
+    return owner
+
+
+# --- eligibility --------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_marketplace_page_shows_b2b_not_b2c(client, two_businesses):
-    _login_as_buyer(client, two_businesses)
-
-    response = client.get(reverse("marketplace:home"))
-    assert response.status_code == 200
-    content = response.content.decode("utf-8")
-    assert "1500000" in content.replace(",", "")
-    assert "2500000" not in content.replace(",", "")
-    assert "HID-1" not in content
+def test_colleague_sees_another_business_visible_item(network):
+    assert network["item"] in marketplace_lots_for(network["buyer"])
 
 
 @pytest.mark.django_db
-def test_marketplace_hides_supplier_visibility_choice(client, two_businesses):
-    _login_as_buyer(client, two_businesses)
-
-    response = client.get(reverse("marketplace:home"))
-    assert response.status_code == 200
-    content = response.content.decode("utf-8")
-    # The cards are rendered...
-    assert "مرمریت شبکه" in content
-    # ...but whether the supplier published a lot publicly or to colleagues only
-    # is an internal distribution decision and must not reach another business.
-    # (COLLEAGUES.label is not asserted: «همکاران» is also the page's own title.)
-    assert InventoryLot.Visibility.PUBLIC.label not in content
-    assert InventoryLot.Visibility.PRIVATE.label not in content
-    assert InventoryLot.Visibility.COLLEAGUES.value not in content
-    assert InventoryLot.Visibility.PUBLIC.value not in content
+def test_own_items_are_not_in_the_colleague_marketplace(network):
+    assert network["item"] not in marketplace_lots_for(network["supplier"])
 
 
 @pytest.mark.django_db
-def test_anonymous_cannot_open_marketplace(client):
-    response = client.get(reverse("marketplace:home"))
-    assert response.status_code in {302, 301}
+def test_hidden_item_is_not_in_the_marketplace(network):
+    network["item"].is_visible = False
+    network["item"].save()
+    assert network["item"] not in marketplace_lots_for(network["buyer"])
+
+
+@pytest.mark.django_db
+def test_unavailable_item_is_not_in_the_marketplace(network):
+    network["item"].availability_status = InventoryLot.Availability.UNAVAILABLE
+    network["item"].save()
+    assert network["item"] not in marketplace_lots_for(network["buyer"])
+
+
+@pytest.mark.django_db
+def test_deleted_item_is_not_in_the_marketplace(network):
+    from django.utils import timezone
+
+    network["item"].deleted_at = timezone.now()
+    network["item"].save()
+    assert network["item"] not in marketplace_lots_for(network["buyer"])
+
+
+@pytest.mark.django_db
+def test_draft_item_is_not_in_the_marketplace(network):
+    network["item"].status = InventoryLot.Status.DRAFT
+    network["item"].save()
+    assert network["item"] not in marketplace_lots_for(network["buyer"])
+
+
+@pytest.mark.django_db
+def test_stale_stock_stays_in_the_marketplace(network):
+    """«استعلام موجودی» is not «ناموجود»: the item remains discoverable."""
+    expire_stock(network["item"])
+    assert network["item"] in marketplace_lots_for(network["buyer"])
+
+
+@pytest.mark.django_db
+def test_expired_price_keeps_the_item_but_drops_the_number(network, client):
+    expire_price(network["item"], "b2b")
+    assert network["item"] in marketplace_lots_for(network["buyer"])
+
+    _login_owner(client, network["buyer"])
+    body = client.get(reverse("marketplace:home")).content.decode("utf-8")
+    assert "تراورتن عباس‌آباد" in body
+    assert "1000000" not in body.replace(",", "")
+    assert "استعلام قیمت" in body
+
+
+@pytest.mark.django_db
+def test_suspended_viewer_sees_nothing(network):
+    network["buyer"].status = Business.Status.SUSPENDED
+    network["buyer"].save()
+    assert list(marketplace_lots_for(network["buyer"])) == []
+
+
+@pytest.mark.django_db
+def test_suspended_supplier_disappears_from_the_marketplace(network):
+    network["supplier"].status = Business.Status.SUSPENDED
+    network["supplier"].save()
+    assert list(marketplace_lots_for(network["buyer"])) == []
+
+
+@pytest.mark.django_db
+def test_detail_lookup_uses_the_same_gate_as_the_listing(network):
+    network["item"].is_visible = False
+    network["item"].save()
+    assert get_marketplace_lot(network["buyer"], network["item"].id) is None
+
+
+# --- price safety -------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_marketplace_page_shows_b2b_and_never_b2c(network, client):
+    _login_owner(client, network["buyer"])
+    body = client.get(reverse("marketplace:home")).content.decode("utf-8")
+    assert "1000000" in body.replace(",", "")
+    assert "1600000" not in body.replace(",", "")
+
+
+@pytest.mark.django_db
+def test_marketplace_prefetch_loads_only_the_b2b_tier(network):
+    item = marketplace_lots_for(network["buyer"]).first()
+    loaded = {price.tier.code for price in item.prices.all()}
+    assert loaded == {"b2b"}, "a B2C row must not even be in memory on a colleague page"
+
+
+# --- shared filter engine -----------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_filter_by_quarry(network):
+    qs = marketplace_lots_for(network["buyer"])
+    assert network["item"] in filter_marketplace_lots(qs, spec=ItemFilterSpec(quarry_region="عباس‌آباد"))
+    assert network["item"] not in filter_marketplace_lots(qs, spec=ItemFilterSpec(quarry_region="نی‌ریز"))
+
+
+@pytest.mark.django_db
+def test_filter_by_free_text_matches_several_fields(network):
+    qs = marketplace_lots_for(network["buyer"])
+    for term in ("تراورتن", "عباس‌آباد", "SUP-1"):
+        assert network["item"] in filter_marketplace_lots(qs, spec=ItemFilterSpec(q=term)), term
+
+
+@pytest.mark.django_db
+def test_price_filter_uses_the_viewer_tier(network):
+    """A colleague filtering by price is filtering B2B numbers, not B2C ones."""
+    qs = marketplace_lots_for(network["buyer"])
+
+    # 1,000,000 is the B2B price; 1,600,000 is B2C and must not be what matches.
+    assert network["item"] in filter_marketplace_lots(
+        qs, spec=ItemFilterSpec(price_min=Decimal("900000"), price_max=Decimal("1100000"))
+    )
+    assert network["item"] not in filter_marketplace_lots(
+        qs, spec=ItemFilterSpec(price_min=Decimal("1500000"), price_max=Decimal("1700000"))
+    )
+
+
+@pytest.mark.django_db
+def test_filter_combination_narrows(network):
+    qs = marketplace_lots_for(network["buyer"])
+    spec = ItemFilterSpec(stone_type="تراورتن", quarry_region="عباس‌آباد", min_qty_sqm=Decimal("50"))
+    assert network["item"] in filter_marketplace_lots(qs, spec=spec)
+
+    spec = ItemFilterSpec(stone_type="تراورتن", min_qty_sqm=Decimal("5000"))
+    assert network["item"] not in filter_marketplace_lots(qs, spec=spec)
+
+
+@pytest.mark.django_db
+def test_unlimited_stock_satisfies_any_minimum_quantity(network):
+    unlimited = make_item(
+        network["supplier"],
+        lot_code="UNL-1",
+        stock_mode=InventoryLot.StockMode.UNLIMITED,
+        available_sqm="0",
+        b2b="900000",
+    )
+    qs = marketplace_lots_for(network["buyer"])
+    assert unlimited in filter_marketplace_lots(qs, spec=ItemFilterSpec(min_qty_sqm=Decimal("9999")))
+
+
+@pytest.mark.django_db
+def test_filter_spec_round_trips_through_json():
+    spec = ItemFilterSpec(
+        stone_type="تراورتن",
+        applications=["floor"],
+        price_min=Decimal("100"),
+        only_special=True,
+    )
+    restored = ItemFilterSpec.from_dict(spec.to_dict())
+    assert restored.stone_type == "تراورتن"
+    assert restored.applications == ["floor"]
+    assert restored.price_min == Decimal("100")
+    assert restored.only_special is True
+
+
+@pytest.mark.django_db
+def test_filter_spec_ignores_unusable_input():
+    """A hand-edited query string or an older stored rule must not raise."""
+    spec = ItemFilterSpec.from_dict(
+        {"price_min": "not-a-number", "stock_mode": "bogus", "sort": "nope", "unknown_key": 1}
+    )
+    assert spec.price_min is None
+    assert spec.stock_mode == ""
+    assert spec.sort == "recent"

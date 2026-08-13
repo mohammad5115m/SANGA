@@ -1,8 +1,4 @@
-from django.contrib import admin
+"""The marketplace app registers nothing: it owns no models of its own.
 
-from .models import SavedSearch
-
-
-@admin.register(SavedSearch)
-class SavedSearchAdmin(admin.ModelAdmin):
-    list_display = ("name", "business", "user", "notify_enabled", "updated_at")
+It is a read-only view over ``apps.inventory``, scoped to the colleague audience.
+"""

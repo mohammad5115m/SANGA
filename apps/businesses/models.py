@@ -22,6 +22,17 @@ class Business(models.Model):
         ACTIVE = "active", "فعال"
         SUSPENDED = "suspended", "معلق"
 
+    class Plan(models.TextChoices):
+        """What the Business has been given access to.
+
+        Deliberately two values and no billing engine. The MVP needs to tell a
+        browse-only account from a selling one; everything finer than that is a
+        conversation with support, not a state machine.
+        """
+
+        BROWSE = "browse", "فقط مشاهده"
+        SELLER = "seller", "فروشنده"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField("نام کسب‌وکار", max_length=200)
     slug = models.SlugField("نامک", max_length=220, unique=True, allow_unicode=True)
@@ -37,6 +48,13 @@ class Business(models.Model):
     address = models.TextField(blank=True)
     website = models.URLField(blank=True)
     logo = models.ImageField(upload_to="business_logos/", blank=True, null=True)
+
+    plan = models.CharField("پلن", max_length=20, choices=Plan.choices, default=Plan.SELLER)
+    seat_limit = models.PositiveSmallIntegerField("تعداد کاربر مجاز", default=1)
+    # Null means "no expiry set" rather than "expired": a Business provisioned by
+    # an admin who did not fill this in must not lock itself out overnight.
+    active_until = models.DateField("اعتبار تا", null=True, blank=True)
+
     onboarding_step = models.PositiveSmallIntegerField(default=1)
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)
     settings = models.JSONField(default=dict, blank=True)
@@ -102,14 +120,14 @@ class BusinessMembership(models.Model):
     def __str__(self) -> str:
         return f"{self.user} @ {self.business} ({self.role})"
 
-    def clean(self) -> None:
-        if not isinstance(self.permissions, list):
-            raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
-
     def save(self, *args, **kwargs):
         if not self.permissions:
             self.permissions = defaults_for_role(self.role)
         super().save(*args, **kwargs)
+
+    def clean(self) -> None:
+        if not isinstance(self.permissions, list):
+            raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
 
     def has_capability(self, capability: str) -> bool:
         if self.status != self.Status.ACTIVE:

@@ -1,0 +1,74 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}عکس و ویدیو | {{ lot.product.commercial_name }}{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">عکس و ویدیو</h1>
+      <p class="page-lead">{{ lot.product.commercial_name }}</p>
+    </div>
+    <a class="btn btn-ghost" href="{% url 'inventory:lot_detail' lot.id %}">بازگشت</a>
+  </div>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">افزودن فایل</h2>
+    <form method="post" enctype="multipart/form-data" class="stack-md">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="upload">
+      {% for field in form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+        </label>
+      {% endfor %}
+      <p class="muted">تصویر تا ۱۰ مگابایت (jpg, png, webp, gif) · ویدیو تا ۶۰ مگابایت (mp4, mov, webm)</p>
+      <button class="btn btn-primary" type="submit">بارگذاری</button>
+    </form>
+  </section>
+
+  {% if media_items %}
+    {# Ordering is submitted as a list of ids: the seller renumbers the boxes and
+       saves once, rather than nudging items one position at a time. #}
+    <form method="post" class="panel stack-md">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="reorder">
+      <h2 class="section-title">ترتیب نمایش</h2>
+      <div class="media-grid">
+        {% for media in media_items %}
+          <div class="media-tile">
+            {% if media.kind == 'image' %}
+              <img src="{{ media.file.url }}" alt="{{ media.caption }}" loading="lazy">
+            {% else %}
+              <div class="media-tile-video">ویدیو</div>
+            {% endif %}
+            {% if media.is_primary %}<span class="badge badge-accent">تصویر اصلی</span>{% endif %}
+            <input type="hidden" name="order" value="{{ media.id }}">
+            <div class="media-tile-actions">
+              <button class="btn btn-ghost btn-sm" type="submit"
+                      form="media-{{ media.id }}" name="action" value="primary">
+                تصویر اصلی
+              </button>
+              <button class="btn btn-danger btn-sm" type="submit"
+                      form="media-{{ media.id }}" name="action" value="delete">
+                حذف
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <button class="btn btn-secondary" type="submit">ذخیره ترتیب</button>
+    </form>
+
+    {% for media in media_items %}
+      <form method="post" id="media-{{ media.id }}" class="hidden-form">
+        {% csrf_token %}
+        <input type="hidden" name="media_id" value="{{ media.id }}">
+      </form>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">هنوز عکسی اضافه نشده است.</div>
+  {% endif %}
+</section>
+{% endblock %}

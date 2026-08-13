@@ -1,0 +1,30 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}تأیید شماره | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">کد تأیید را وارد کنید</h1>
+    <p class="page-lead">کد به شماره <span dir="ltr">{{ phone }}</span> پیامک شد</p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-block" type="submit">تأیید و ارسال درخواست</button>
+  </form>
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="resend">
+    <button class="btn btn-ghost btn-block" type="submit">ارسال دوباره کد</button>
+  </form>
+</section>
+{% endblock %}

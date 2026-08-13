@@ -1,233 +1,252 @@
 {% extends "layouts/app_shell.html" %}
-{% load humanize %}
+{% load money %}
 
-{% block title %}داشبورد | سنگا{% endblock %}
+{% block title %}خانه | سنگا{% endblock %}
 
 {% block content %}
+{# Operational, not analytical. Top of the page is what needs doing today;
+   numbers and history come after. No charts. #}
 <section class="stack-lg">
-  <div>
-    <h1 class="page-title">سلام{% if request.user.full_name %} {{ request.user.full_name }}{% endif %}</h1>
-    <p class="page-lead">وضعیت مالی و عملیاتی {% if current_business %}«{{ current_business.name }}»{% else %}کسب‌وکار شما{% endif %} در یک نگاه</p>
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">خانه</h1>
+      <p class="page-lead">{{ current_business.name }}</p>
+    </div>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
+      {% if 'invoice.manage' in capabilities %}
+        <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
+      {% endif %}
+    </div>
   </div>
 
-  {% if finance %}
-  <section class="stack-sm">
-    <div class="toolbar">
-      <h2 class="section-title">خلاصه مالی</h2>
-      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:index' %}">دفتر حساب</a>
+  {# --- things waiting on this business --- #}
+  <section class="stack-md">
+    <h2 class="section-title">کارهای امروز</h2>
+    <div class="metric-row">
+      <a class="metric metric-link" href="{% url 'inventory:lot_list' %}?state=needs_stock">
+        <div class="metric-label">نیازمند تأیید موجودی</div>
+        <div class="metric-value">{{ lot_totals.needs_confirmation }}</div>
+      </a>
+      <a class="metric metric-link" href="{% url 'inventory:lot_list' %}">
+        <div class="metric-label">قیمت نیازمند بررسی</div>
+        <div class="metric-value">{{ lot_totals.stale_price }}</div>
+      </a>
+      {% if 'purchase.request' in capabilities %}
+        <a class="metric metric-link" href="{% url 'trading:received_list' %}?status=open">
+          <div class="metric-label">درخواست خرید باز</div>
+          <div class="metric-value">{{ open_request_count }}</div>
+        </a>
+      {% endif %}
+      {% if 'leads.view' in capabilities %}
+        <a class="metric metric-link" href="{% url 'inquiries:inbox' %}?status=open">
+          <div class="metric-label">استعلام بی‌پاسخ</div>
+          <div class="metric-value">{{ unanswered_inquiry_count }}</div>
+        </a>
+      {% endif %}
     </div>
-    <div class="metric-grid">
-      <div class="metric">
-        <div class="metric-label">جمع مطالبات</div>
-        <div class="metric-value amount-debtor">{{ finance.receivable_total|intcomma }}</div>
-        <div class="metric-hint">ریال · {{ finance.debtor_count }} مخاطب بدهکار</div>
+
+    {% if awaiting_finalize_count %}
+      <div class="alert alert-warn">
+        {{ awaiting_finalize_count }} درخواست توافق شده اما فروش آن نهایی نشده است.
+        <a href="{% url 'trading:received_list' %}?status=accepted">مشاهده</a>
       </div>
-      <div class="metric">
-        <div class="metric-label">جمع دیون</div>
-        <div class="metric-value amount-creditor">{{ finance.payable_total|intcomma }}</div>
-        <div class="metric-hint">ریال · {{ finance.creditor_count }} مخاطب بستانکار</div>
-      </div>
-      <div class="metric">
-        <div class="metric-label">مانده کل</div>
-        <div class="metric-value amount-{{ finance.net.state }}">{{ finance.net.amount|intcomma }}</div>
-        <div class="metric-hint">ریال · {{ finance.net.label }}</div>
-      </div>
-    </div>
-    {% if finance.contact_count == 0 %}
-      <div class="empty-state">هنوز مخاطبی ندارید؛ با ثبت اولین مخاطب، دفتر حساب او هم ساخته می‌شود.</div>
     {% endif %}
   </section>
 
-  <section class="panel stack-md">
-    <h2 class="section-title">بزرگ‌ترین بدهکاران و بستانکاران</h2>
-
-    <div class="stack-sm">
-      <h3 class="field-label">بدهکاران (به شما بدهکارند)</h3>
+  {# --- products needing action --- #}
+  {% if attention_lots %}
+    <section class="stack-md">
+      <div class="toolbar">
+        <h2 class="section-title">محصولات نیازمند رسیدگی</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'inventory:lot_list' %}">همه محصولات</a>
+      </div>
       <div class="list-stack">
-        {% for row in top_debtors %}
-          <a class="list-item" href="{% url 'accounting:statement' row.contact.id %}">
+        {% for row in attention_lots %}
+          <a class="list-item" href="{% url 'inventory:lot_detail' row.lot.id %}">
             <div>
-              <div class="list-title">
-                {{ row.contact.display_name }}
-                {% if not row.contact.is_active %}<span class="badge badge-muted">بایگانی‌شده</span>{% endif %}
-              </div>
+              <div class="list-title">{{ row.lot.product.commercial_name }}</div>
+              <div class="muted" dir="ltr">{{ row.lot.lot_code }}</div>
             </div>
-            <div class="ledger-amounts">
-              <strong class="ledger-delta amount-{{ row.balance.state }}">{{ row.balance.amount|intcomma }} ریال</strong>
-              <span class="badge state-badge is-{{ row.balance.state }}">{{ row.balance.label }}</span>
+            <div class="badge-row">
+              {% for reason in row.reasons %}<span class="badge badge-warn">{{ reason }}</span>{% endfor %}
             </div>
           </a>
-        {% empty %}
-          <div class="empty-state">هیچ مخاطبی به شما بدهکار نیست.</div>
         {% endfor %}
       </div>
-    </div>
-
-    <div class="stack-sm">
-      <h3 class="field-label">بستانکاران (شما به آن‌ها بدهکارید)</h3>
-      <div class="list-stack">
-        {% for row in top_creditors %}
-          <a class="list-item" href="{% url 'accounting:statement' row.contact.id %}">
-            <div>
-              <div class="list-title">
-                {{ row.contact.display_name }}
-                {% if not row.contact.is_active %}<span class="badge badge-muted">بایگانی‌شده</span>{% endif %}
-              </div>
-            </div>
-            <div class="ledger-amounts">
-              <strong class="ledger-delta amount-{{ row.balance.state }}">{{ row.balance.amount|intcomma }} ریال</strong>
-              <span class="badge state-badge is-{{ row.balance.state }}">{{ row.balance.label }}</span>
-            </div>
-          </a>
-        {% empty %}
-          <div class="empty-state">به هیچ مخاطبی بدهکار نیستید.</div>
-        {% endfor %}
-      </div>
-    </div>
-  </section>
+    </section>
   {% endif %}
 
-  <section class="panel stack-md">
-    <div class="toolbar">
-      <h2 class="section-title">محموله‌های نیازمند رسیدگی</h2>
-      <a class="btn btn-ghost btn-sm" href="{% url 'inventory:lot_list' %}">همه موجودی</a>
-    </div>
-    <div class="metric-grid">
-      <div class="metric">
-        <div class="metric-label">محموله فعال</div>
-        <div class="metric-value">{{ lot_totals.active }}</div>
+  {# --- open purchase requests --- #}
+  {% if open_requests %}
+    <section class="stack-md">
+      <div class="toolbar">
+        <h2 class="section-title">درخواست‌های خرید</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'trading:received_list' %}">همه</a>
       </div>
-      <a class="metric metric-link {% if lot_totals.needs_confirmation %}metric-warn{% endif %}"
-         href="{% url 'inventory:lot_list' %}?freshness=needs_confirmation">
-        <div class="metric-label">نیاز به تأیید</div>
-        <div class="metric-value">{{ lot_totals.needs_confirmation }}</div>
-      </a>
-      <div class="metric {% if lot_totals.no_price %}metric-warn{% endif %}">
-        <div class="metric-label">بدون قیمت</div>
-        <div class="metric-value">{{ lot_totals.no_price }}</div>
-      </div>
-    </div>
-    <div class="list-stack">
-      {% for row in attention_lots %}
-        <a class="list-item" href="{% url 'inventory:lot_detail' row.lot.id %}">
-          <div>
-            <div class="list-title">{{ row.lot.product.commercial_name }}</div>
-            <div class="muted" dir="ltr">{{ row.lot.lot_code }}</div>
-            <div class="badge-row">
-              {% for reason in row.reasons %}<span class="badge badge-accent">{{ reason }}</span>{% endfor %}
+      <div class="list-stack">
+        {% for pr in open_requests %}
+          <a class="list-item" href="{% url 'trading:received_detail' pr.id %}">
+            <div>
+              <div class="list-title">{{ pr.item.product.commercial_name }}</div>
+              <div class="muted">{{ pr.buyer_business.name }} · {{ pr.agreed_qty_sqm }} m²</div>
             </div>
-          </div>
-        </a>
-      {% empty %}
-        <div class="empty-state">
-          {% if lot_totals.active %}
-            همه محموله‌های فعال تأیید شده‌اند و قیمت دارند.
-          {% else %}
-            هنوز محموله‌ای ثبت نکرده‌اید. با «افزودن موجودی» شروع کنید.
-          {% endif %}
-        </div>
-      {% endfor %}
-    </div>
-  </section>
+            {% include "trading/_status_badge.html" %}
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
 
-  <section class="panel stack-md">
-    <div class="toolbar">
-      <h2 class="section-title">تازه‌ترین محموله‌های همکاران</h2>
-      <a class="btn btn-ghost btn-sm" href="{% url 'marketplace:home' %}">بازار همکاران</a>
-    </div>
-    <div class="list-stack">
-      {% for lot in colleague_lots %}
-        <a class="list-item" href="{% url 'marketplace:lot_detail' lot.id %}">
-          <div>
-            <div class="list-title">{{ lot.product.commercial_name }}</div>
-            <div class="muted">{{ lot.business.name }}{% if lot.warehouse.city %} · {{ lot.warehouse.city }}{% endif %}</div>
-          </div>
-          <div class="muted">{{ lot.available_sqm|floatformat:0 }} متر</div>
-        </a>
-      {% empty %}
-        <div class="empty-state">هنوز محموله‌ای از همکاران منتشر نشده است.</div>
-      {% endfor %}
-    </div>
-  </section>
-
-  <section class="panel stack-md">
-    <h2 class="section-title">کارهای در انتظار</h2>
-
-    <div class="stack-sm">
-      <div class="kv">
-        <span>استعلام‌های بی‌پاسخ</span>
-        <strong>{{ unanswered_inquiry_count }}</strong>
+  {# --- customer inquiries --- #}
+  {% if unanswered_inquiries %}
+    <section class="stack-md">
+      <div class="toolbar">
+        <h2 class="section-title">استعلام‌های مشتریان</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'inquiries:inbox' %}">همه</a>
       </div>
       <div class="list-stack">
         {% for inquiry in unanswered_inquiries %}
-          <div class="list-item">
+          <a class="list-item" href="{% url 'inquiries:detail' inquiry.id %}">
             <div>
               <div class="list-title">{{ inquiry.name }}</div>
-              <div class="muted">
-                {% if inquiry.lot %}{{ inquiry.lot.product.commercial_name }} · {% endif %}{{ inquiry.get_source_display }}
-              </div>
+              <div class="muted" dir="ltr">{{ inquiry.phone }}</div>
             </div>
-            <span class="badge">{{ inquiry.get_status_display }}</span>
-          </div>
-        {% empty %}
-          <div class="empty-state">استعلام بی‌پاسخی ندارید.</div>
+            <span class="badge">{{ inquiry.created_at|date:"Y/m/d" }}</span>
+          </a>
         {% endfor %}
       </div>
-      {% if unanswered_inquiry_count and 'inquiries.view' in capabilities %}
-        <div class="btn-row">
-          <a class="btn btn-secondary btn-sm" href="{% url 'catalog_manage:inquiries' %}">پاسخ به استعلام‌ها</a>
-        </div>
-      {% endif %}
-    </div>
+    </section>
+  {% endif %}
 
-    <div class="stack-sm">
-      <div class="kv">
-        <span>پیشنهادهای بی‌پاسخ</span>
-        <strong>{{ unanswered_offer_count }}</strong>
+  {# --- money --- #}
+  {% if can_view_ledger %}
+    <section class="stack-md">
+      <div class="toolbar">
+        <h2 class="section-title">خلاصه مالی</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'accounting:index' %}">دفتر حساب</a>
+      </div>
+      <div class="metric-row">
+        <div class="metric">
+          <div class="metric-label">جمع مطالبات</div>
+          <div class="metric-value">{{ finance.receivable_total|rial }}</div>
+          <div class="metric-hint">{{ finance.debtor_count }} همکار بدهکار</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">جمع دیون</div>
+          <div class="metric-value">{{ finance.payable_total|rial }}</div>
+          <div class="metric-hint">{{ finance.creditor_count }} همکار بستانکار</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">مانده کل</div>
+          <div class="metric-value">{{ finance.net.amount|rial }}</div>
+          <div class="metric-hint">{{ finance.net.label }}</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="stack-sm">
+          <h3 class="section-subtitle">بیشترین بدهکاران</h3>
+          <div class="list-stack">
+            {% for row in top_debtors %}
+              <a class="list-item" href="{% url 'accounting:statement' row.colleague.id %}">
+                <div class="list-title">{{ row.colleague.name }}</div>
+                <strong dir="ltr">{{ row.balance.amount|rial }}</strong>
+              </a>
+            {% empty %}
+              <div class="empty-state">بدهکاری ندارید.</div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="stack-sm">
+          <h3 class="section-subtitle">بیشترین بستانکاران</h3>
+          <div class="list-stack">
+            {% for row in top_creditors %}
+              <a class="list-item" href="{% url 'accounting:statement' row.colleague.id %}">
+                <div class="list-title">{{ row.colleague.name }}</div>
+                <strong dir="ltr">{{ row.balance.amount|rial }}</strong>
+              </a>
+            {% empty %}
+              <div class="empty-state">بستانکاری ندارید.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {# --- recent activity --- #}
+  {% if recent_trades or recent_invoices %}
+    <section class="stack-md">
+      <h2 class="section-title">فعالیت اخیر</h2>
+      <div class="two-col">
+        <div class="stack-sm">
+          <h3 class="section-subtitle">آخرین فروش‌ها</h3>
+          <div class="list-stack">
+            {% for trade in recent_trades %}
+              <a class="list-item" href="{% url 'trading:trade_detail' trade.id %}">
+                <div>
+                  <div class="list-title">{{ trade.product_name }}</div>
+                  <div class="muted">{{ trade.counterparty_label }}</div>
+                </div>
+                <strong dir="ltr">{{ trade.total_amount|rial }}</strong>
+              </a>
+            {% empty %}
+              <div class="empty-state">هنوز فروشی ثبت نشده است.</div>
+            {% endfor %}
+          </div>
+        </div>
+        {% if 'invoice.view' in capabilities %}
+          <div class="stack-sm">
+            <h3 class="section-subtitle">آخرین فاکتورها</h3>
+            <div class="list-stack">
+              {% for invoice in recent_invoices %}
+                <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
+                  <div>
+                    <div class="list-title" dir="ltr">{{ invoice.number }}</div>
+                    <div class="muted">{{ invoice.buyer_name }}</div>
+                  </div>
+                  <strong dir="ltr">{{ invoice.total_amount|rial }}</strong>
+                </a>
+              {% empty %}
+                <div class="empty-state">فاکتوری صادر نشده است.</div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
+  {# --- colleague products --- #}
+  {% if colleague_lots %}
+    <section class="stack-md">
+      <div class="toolbar">
+        <h2 class="section-title">تازه‌ترین محصولات همکاران</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'marketplace:home' %}">بازار</a>
       </div>
       <div class="list-stack">
-        {% for offer in unanswered_offers %}
-          <a class="list-item" href="{% url 'purchase_requests:detail' offer.purchase_request.id %}">
+        {% for lot in colleague_lots %}
+          <a class="list-item" href="{% url 'marketplace:lot_detail' lot.id %}">
             <div>
-              <div class="list-title">{{ offer.purchase_request.title }}</div>
-              <div class="muted">{{ offer.seller_business.name }}</div>
+              <div class="list-title">{{ lot.product.commercial_name }}</div>
+              <div class="muted">
+                {{ lot.business.name }}{% if lot.location_city %} · {{ lot.location_city }}{% endif %}
+              </div>
             </div>
-            <span class="badge">{{ offer.get_status_display }}</span>
           </a>
         {% empty %}
-          <div class="empty-state">پیشنهاد بی‌پاسخی روی درخواست‌های خرید شما نیست.</div>
+          <div class="empty-state">هنوز محصولی از همکاران منتشر نشده است.</div>
         {% endfor %}
       </div>
-    </div>
-  </section>
+    </section>
+  {% endif %}
 
-  <section class="panel stack-md">
-    <h2 class="section-title">اقدام بعدی</h2>
-    <div class="btn-row">
-      <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن موجودی</a>
-      <a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">مشاهده موجودی</a>
-      <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
-      {% if current_business %}
-        <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین</a>
-      {% endif %}
+  {% if lot_totals.active == 0 %}
+    <div class="empty-state stack-md">
+      <p>هنوز محصولی ثبت نکرده‌اید. با «افزودن محصول» شروع کنید.</p>
+      <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
     </div>
-  </section>
-
-  {% if user_memberships|length > 1 %}
-  <section class="panel stack-md">
-    <h2 class="section-title">تغییر کسب‌وکار</h2>
-    <form method="post" action="{% url 'businesses:switch_business' %}" class="stack-sm">
-      {% csrf_token %}
-      <select class="field-input" name="business_id">
-        {% for m in user_memberships %}
-          <option value="{{ m.business_id }}" {% if current_business and m.business_id == current_business.id %}selected{% endif %}>
-            {{ m.business.name }}
-          </option>
-        {% endfor %}
-      </select>
-      <button class="btn btn-secondary" type="submit">اعمال</button>
-    </form>
-  </section>
   {% endif %}
 </section>
 {% endblock %}

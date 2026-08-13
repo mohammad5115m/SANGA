@@ -1,0 +1,44 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}اسناد قدیمی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">اسناد قدیمی</h1>
+    <p class="page-lead">اسنادی که به همکار ثبت‌شده‌ای در سنگا وصل نیستند</p>
+  </div>
+
+  {# Shown rather than hidden: this is real money, and a business that cannot
+     see it will assume the migration lost it. #}
+  <div class="panel">
+    <p>
+      این اسناد پیش از به‌روزرسانی سنگا برای مخاطبینی ثبت شده‌اند که به هیچ کسب‌وکار
+      ثبت‌شده‌ای وصل نبودند. مبالغ آن‌ها دست‌نخورده باقی مانده است، اما نمی‌توان سند
+      جدیدی روی آن‌ها ثبت کرد.
+    </p>
+    <p class="muted">
+      اگر این مخاطب همان یکی از همکاران شماست، برای انتقال سوابق با پشتیبانی سنگا
+      تماس بگیرید.
+    </p>
+  </div>
+
+  <div class="list-stack">
+    {% for entry in entries %}
+      <div class="list-item">
+        <div>
+          <div class="list-title">{{ entry.counterparty_label }}</div>
+          <div class="muted">{{ entry.occurred_on }} · {{ entry.get_entry_type_display }}</div>
+          {% if entry.description %}<div class="muted">{{ entry.description }}</div>{% endif %}
+        </div>
+        <strong dir="ltr" class="amount-{% if entry.is_debit %}debtor{% else %}creditor{% endif %}">
+          {{ entry.amount|rial }} ریال
+        </strong>
+      </div>
+    {% empty %}
+      <div class="empty-state">سند قدیمی بدون همکار وجود ندارد.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

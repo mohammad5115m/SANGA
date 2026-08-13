@@ -1,11 +1,11 @@
 {% extends "inventory/wizard/_shell.html" %}
-{% block wizard_title %}جزئیات محموله{% endblock %}
+{% block wizard_title %}مشخصات محصول{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
   <div>
-    <h1 class="page-title">جزئیات محموله</h1>
-    <p class="page-lead">انبار، سورت و فرآوری را مشخص کنید.</p>
+    <h1 class="page-title">مشخصات محصول</h1>
+    <p class="page-lead">سورت، فرآوری، ابعاد و محل بار.</p>
   </div>
   <form method="post" class="panel stack-md" novalidate>
     {% csrf_token %}
@@ -14,6 +14,7 @@
       <label class="field">
         <span class="field-label">{{ field.label }}</span>
         {{ field }}
+        {% if field.help_text %}<span class="field-help">{{ field.help_text }}</span>{% endif %}
         {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
       </label>
     {% endfor %}

@@ -1,0 +1,26 @@
+{% extends "layouts/onboarding_shell.html" %}
+
+{% block title %}کسب‌وکاری برای شما ثبت نشده است | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">هنوز کسب‌وکاری به حساب شما وصل نشده است</h1>
+    <p class="page-lead">
+      در سنگا، کسب‌وکارها توسط پشتیبانی ثبت می‌شوند. اگر تازه ثبت‌نام کرده‌اید،
+      کمی صبر کنید و دوباره وارد شوید.
+    </p>
+  </div>
+
+  <div class="panel stack-md">
+    <p>اگر فکر می‌کنید این یک اشتباه است، یکی از این موارد ممکن است رخ داده باشد:</p>
+    <ul class="stack-sm">
+      <li>ثبت کسب‌وکار شما هنوز تکمیل نشده است.</li>
+      <li>دسترسی شما به کسب‌وکار موقتاً معلق شده است.</li>
+    </ul>
+    <p>برای پیگیری با پشتیبانی سنگا تماس بگیرید.</p>
+  </div>
+
+  <a class="btn btn-ghost btn-block" href="{% url 'accounts:logout' %}">خروج از حساب</a>
+</section>
+{% endblock %}

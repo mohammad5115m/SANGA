@@ -1,0 +1,26 @@
+{% comment %}
+Copy-link, native share and the two messaging apps sellers actually use.
+
+The WhatsApp and Telegram buttons are plain deep links — no API integration,
+nothing to authenticate. They share the SANGA URL and nothing else.
+
+Expects: share_url, product (optional, for the prefilled message)
+{% endcomment %}
+<div class="btn-row share-actions" x-data="{ copied: false }">
+  <button class="btn btn-ghost" type="button"
+          @click="navigator.clipboard.writeText('{{ share_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
+          x-text="copied ? 'لینک کپی شد' : 'کپی لینک'">
+    کپی لینک
+  </button>
+
+  <button class="btn btn-ghost" type="button"
+          x-show="typeof navigator.share === 'function'" x-cloak
+          @click="navigator.share({title: '{{ product.commercial_name|escapejs }}', url: '{{ share_url }}'})">
+    اشتراک‌گذاری
+  </button>
+
+  <a class="btn btn-ghost" rel="noopener noreferrer" target="_blank"
+     href="https://wa.me/?text={{ share_url|urlencode }}">واتس‌اپ</a>
+  <a class="btn btn-ghost" rel="noopener noreferrer" target="_blank"
+     href="https://t.me/share/url?url={{ share_url|urlencode }}">تلگرام</a>
+</div>

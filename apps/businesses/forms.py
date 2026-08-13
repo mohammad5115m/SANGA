@@ -2,19 +2,7 @@ from __future__ import annotations
 
 from django import forms
 
-from .models import Business, Warehouse
-
-
-class BusinessCreateForm(forms.ModelForm):
-    class Meta:
-        model = Business
-        fields = ("name", "city", "province", "phone")
-        widgets = {
-            "name": forms.TextInput(attrs={"class": "field-input", "placeholder": "مثلاً سنگبری نمونه"}),
-            "city": forms.TextInput(attrs={"class": "field-input", "placeholder": "شهر"}),
-            "province": forms.TextInput(attrs={"class": "field-input", "placeholder": "استان"}),
-            "phone": forms.TextInput(attrs={"class": "field-input", "dir": "ltr"}),
-        }
+from .models import Business
 
 
 class BusinessProfileForm(forms.ModelForm):
@@ -33,15 +21,3 @@ class BusinessProfileForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["website"].assume_scheme = "https"
-
-
-class WarehouseForm(forms.ModelForm):
-    class Meta:
-        model = Warehouse
-        fields = ("name", "city", "address", "is_default")
-        widgets = {
-            "name": forms.TextInput(attrs={"class": "field-input", "placeholder": "انبار مرکزی"}),
-            "city": forms.TextInput(attrs={"class": "field-input"}),
-            "address": forms.Textarea(attrs={"class": "field-input", "rows": 3}),
-            "is_default": forms.CheckboxInput(attrs={"class": "field-checkbox"}),
-        }

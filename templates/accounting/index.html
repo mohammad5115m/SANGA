@@ -1,5 +1,5 @@
 {% extends "layouts/app_shell.html" %}
-{% load humanize %}
+{% load money %}
 {% block title %}دفتر حساب | سنگا{% endblock %}
 
 {% block content %}
@@ -7,13 +7,11 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">دفتر حساب</h1>
-      <p class="page-lead">مانده حساب مخاطبین، به تفکیک بدهکار و بستانکار</p>
+      <p class="page-lead">مانده حساب همکاران، به تفکیک بدهکار و بستانکار</p>
     </div>
     <div class="btn-row">
       <a class="btn btn-secondary btn-sm" href="{% url 'accounting:aging' %}">گزارش سنی بدهی</a>
-      {% if 'customers.manage' in capabilities %}
-        <a class="btn btn-ghost btn-sm" href="{% url 'contacts:list' %}">مخاطبین</a>
-      {% endif %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'businesses:colleagues' %}">لیست همکاران</a>
     </div>
   </div>
 
@@ -22,26 +20,32 @@
     <div class="metric-grid">
       <div class="metric">
         <div class="metric-label">جمع مطالبات</div>
-        <div class="metric-value amount-debit">{{ summary.receivable_total|intcomma }}</div>
-        <div class="metric-hint">{{ summary.debtor_count }} مخاطب بدهکار</div>
+        <div class="metric-value amount-debit">{{ summary.receivable_total|rial }}</div>
+        <div class="metric-hint">{{ summary.debtor_count }} همکار بدهکار</div>
       </div>
       <div class="metric">
         <div class="metric-label">جمع دیون</div>
-        <div class="metric-value amount-credit">{{ summary.payable_total|intcomma }}</div>
-        <div class="metric-hint">{{ summary.creditor_count }} مخاطب بستانکار</div>
+        <div class="metric-value amount-credit">{{ summary.payable_total|rial }}</div>
+        <div class="metric-hint">{{ summary.creditor_count }} همکار بستانکار</div>
       </div>
       <div class="metric">
         <div class="metric-label">مانده کل</div>
-        <div class="metric-value">{{ summary.net.amount|intcomma }}</div>
+        <div class="metric-value">{{ summary.net.amount|rial }}</div>
         <div class="metric-hint">{{ summary.net.label }}</div>
       </div>
       <div class="metric">
-        <div class="metric-label">مخاطبین</div>
+        <div class="metric-label">همکاران</div>
         <div class="metric-value">{{ summary.contact_count }}</div>
         <div class="metric-hint">{{ summary.settled_count }} حساب تسویه</div>
       </div>
     </div>
-    <p class="muted">همه مبالغ به ریال است. مخاطب بایگانی‌شده‌ای که حسابش تسویه نشده، همچنان در این گزارش‌ها می‌ماند.</p>
+    <p class="muted">همه مبالغ به ریال است.</p>
+    {% if legacy_count %}
+      <div class="alert alert-warn">
+        {{ legacy_count }} سند قدیمی هست که به هیچ همکار ثبت‌شده‌ای وصل نیست.
+        <a href="{% url 'accounting:legacy' %}">مشاهده</a>
+      </div>
+    {% endif %}
   </section>
 
   <div class="stack-sm">
@@ -62,26 +66,25 @@
 
   <div class="list-stack">
     {% for row in rows %}
-      <a class="list-item" href="{% url 'accounting:statement' row.contact.id %}">
+      <a class="list-item" href="{% url 'accounting:statement' row.colleague.id %}">
         <div>
           <div class="list-title">
-            {{ row.contact.display_name }}
-            {% if not row.contact.is_active %}<span class="badge badge-muted">بایگانی‌شده</span>{% endif %}
+            {{ row.colleague.name }}
           </div>
           <div class="muted">
-            {% if row.contact.entry_count == 0 %}بدون سند{% else %}{{ row.contact.entry_count }} سند{% endif %}
+            {% if row.colleague.entry_count == 0 %}بدون سند{% else %}{{ row.colleague.entry_count }} سند{% endif %}
           </div>
         </div>
         <div class="ledger-amounts">
           <strong class="ledger-delta amount-{{ row.balance.state }}">
-            {{ row.balance.amount|intcomma }} ریال
+            {{ row.balance.amount|rial }} ریال
           </strong>
           <span class="badge state-badge is-{{ row.balance.state }}">{{ row.balance.label }}</span>
         </div>
       </a>
     {% empty %}
       <div class="empty-state">
-        {% if state %}مخاطبی با این وضعیت حساب یافت نشد.{% else %}هنوز مخاطبی ثبت نشده است.{% endif %}
+        {% if state %}همکاری با این وضعیت حساب یافت نشد.{% else %}هنوز حساب مالی‌ای باز نشده است.{% endif %}
       </div>
     {% endfor %}
   </div>

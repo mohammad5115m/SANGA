@@ -15,14 +15,14 @@ from django.db.models import Count, Exists, OuterRef, Q
 
 from apps.accounting.selectors import (
     business_financial_summary,
-    contact_balances,
+    counterparty_balances,
     describe_balance,
 )
 from apps.inquiries.models import Inquiry
 from apps.inventory.models import InventoryLot
 from apps.marketplace.selectors import marketplace_lots_for
 from apps.pricing.models import LotPrice
-from apps.purchase_requests.models import PurchaseOffer
+from apps.trading.models import PurchaseRequest
 
 from .models import Business, BusinessMembership
 from .permissions import LEDGER_VIEW
@@ -34,21 +34,12 @@ ATTENTION_ROWS = 8
 COLLEAGUE_LOT_ROWS = 6
 PENDING_ROWS = 5
 
-# Lot states that are neither sellable nor worth nagging about: sold and expired
-# are done, a draft is unfinished by choice, and a hidden lot was hidden on
-# purpose.
-IDLE_LOT_STATUSES = (
-    InventoryLot.Status.SOLD,
-    InventoryLot.Status.DRAFT,
-    InventoryLot.Status.HIDDEN,
-    InventoryLot.Status.EXPIRED,
-)
-
-# «بی‌پاسخ»: nobody has replied yet. Once the inquiry is marked تماس گرفته‌شده or
-# در حال مذاکره someone is on it, so it is no longer a task waiting on the team.
-UNANSWERED_INQUIRY_STATUSES = (Inquiry.Status.NEW, Inquiry.Status.VIEWED)
+# «بی‌پاسخ»: nobody has replied yet. Once the inquiry is marked تماس گرفته‌شده
+# somebody is on it, so it is no longer a task waiting on the team.
+UNANSWERED_INQUIRY_STATUSES = (Inquiry.Status.NEW,)
 
 ATTENTION_NEEDS_CONFIRMATION = "نیاز به تأیید موجودی"
+ATTENTION_PRICE_EXPIRED = "قیمت نیاز به بررسی دارد"
 ATTENTION_NO_PRICE = "بدون قیمت — قابل فروش نیست"
 
 
@@ -70,23 +61,47 @@ def dashboard_data(*, business: Business, membership: BusinessMembership | None)
         **_lots_needing_attention(business),
         "colleague_lots": _colleague_lots(business),
         **_pending_work(business),
+        **_recent_activity(business),
+    }
+
+
+def _recent_activity(business: Business) -> dict:
+    """The last few sales and invoices, so the home screen shows movement.
+
+    Operational, not analytical: a seller opening SANGA wants to see what needs
+    doing and what just happened, not a chart.
+    """
+    from apps.invoicing.models import SalesInvoice
+    from apps.trading.models import Trade
+
+    return {
+        "recent_trades": list(
+            Trade.objects.filter(seller_business=business)
+            .select_related("buyer_business")
+            .order_by("-finalized_at")[:PENDING_ROWS]
+        ),
+        "recent_invoices": list(
+            SalesInvoice.objects.filter(seller_business=business).order_by("-issue_date", "-created_at")[
+                :PENDING_ROWS
+            ]
+        ),
     }
 
 
 def _top_balances(business: Business, state: str) -> list[dict]:
     """The few largest balances on one side of the books, largest first.
 
-    ``contact_balances`` already sums and sorts in the database and already
-    decides which archived contacts still count, so this only labels the rows.
+    ``counterparty_balances`` already sums and sorts in the database, so this
+    only labels the rows.
     """
-    rows = contact_balances(business, state=state, sort=state)[:TOP_BALANCE_ROWS]
-    return [{"contact": contact, "balance": describe_balance(contact.balance)} for contact in rows]
+    rows = counterparty_balances(business, state=state, sort=state)[:TOP_BALANCE_ROWS]
+    return [{"colleague": row, "balance": describe_balance(row.balance)} for row in rows]
 
 
 def _lots_needing_attention(business: Business) -> dict:
     """Own lots the owner has to act on, as **one** list with a reason per row.
 
-    Two separate lists would split one errand — «کدام محموله‌ها ایراد دارند؟» —
+    Two separate lists would split one errand — «کدام محصولات ایراد دارند؟» —
     across two panels that mostly hold the same lots, and on a phone the second
     one falls below the fold. A single list ordered by recency with a reason
     badge answers it in one scan, and a lot that is both unconfirmed and unpriced
@@ -95,40 +110,48 @@ def _lots_needing_attention(business: Business) -> dict:
     ``has_price`` is an ``EXISTS`` sub-query, so the reasons cost no query per
     lot, and the totals are one aggregate over the same queryset.
     """
+    needs_stock = InventoryLot.needs_stock_confirmation_q()
+    stale_price = Exists(LotPrice.objects.filter(lot=OuterRef("pk")).filter(LotPrice.needs_confirmation_q()))
+
     sellable = (
-        InventoryLot.objects.filter(business=business, archived_at__isnull=True)
-        .exclude(status__in=IDLE_LOT_STATUSES)
-        .annotate(has_price=Exists(LotPrice.objects.filter(lot=OuterRef("pk"))))
+        InventoryLot.objects.filter(
+            business=business,
+            deleted_at__isnull=True,
+            status=InventoryLot.Status.ACTIVE,
+            availability_status=InventoryLot.Availability.AVAILABLE,
+        )
+        .annotate(
+            has_price=Exists(LotPrice.objects.filter(lot=OuterRef("pk"))),
+            has_stale_price=stale_price,
+        )
+        .annotate(stock_stale=Q(needs_stock))
     )
     totals = sellable.aggregate(
         active=Count("pk"),
-        needs_confirmation=Count(
-            "pk", filter=Q(status=InventoryLot.Status.NEEDS_CONFIRMATION)
-        ),
+        needs_confirmation=Count("pk", filter=needs_stock),
+        stale_price=Count("pk", filter=Q(has_stale_price=True)),
         no_price=Count("pk", filter=Q(has_price=False)),
     )
     lots = (
-        sellable.filter(
-            Q(status=InventoryLot.Status.NEEDS_CONFIRMATION) | Q(has_price=False)
-        )
+        sellable.filter(needs_stock | Q(has_price=False) | Q(has_stale_price=True))
         .select_related("product")
         .order_by("-updated_at")[:ATTENTION_ROWS]
     )
     return {
         "lot_totals": totals,
-        "attention_lots": [
-            {"lot": lot, "reasons": _attention_reasons(lot)} for lot in lots
-        ],
+        "attention_lots": [{"lot": lot, "reasons": _attention_reasons(lot)} for lot in lots],
     }
 
 
 def _attention_reasons(lot: InventoryLot) -> list[str]:
-    """Why this lot is on the list. Reads only annotated/loaded fields."""
+    """Why this item is on the list. Reads only annotated/loaded fields."""
     reasons: list[str] = []
-    if lot.status == InventoryLot.Status.NEEDS_CONFIRMATION:
+    if lot.stock_stale:
         reasons.append(ATTENTION_NEEDS_CONFIRMATION)
     if not lot.has_price:
         reasons.append(ATTENTION_NO_PRICE)
+    elif lot.has_stale_price:
+        reasons.append(ATTENTION_PRICE_EXPIRED)
     return reasons
 
 
@@ -150,29 +173,34 @@ def _colleague_lots(business: Business):
 
 
 def _pending_work(business: Business) -> dict:
-    """Requests waiting on **this** business: unanswered inquiries, and offers
-    received on its own purchase requests that it has not yet accepted or
-    rejected.
+    """Work waiting on **this** business.
 
-    Offers this business *sent* are not here: they are waiting on somebody else,
-    so they are not a task on this screen.
+    Two queues, both of which are somebody else waiting for an answer from us:
+    customer inquiries nobody has replied to, and colleague purchase requests
+    nobody has accepted or rejected.
+
+    Requests this business *sent* are not here — they are waiting on somebody
+    else, so they are not a task on this screen. Accepted requests are, though:
+    an agreement that has not been finalized is unfinished work, and forgetting
+    it is exactly the failure the accept/finalize split creates.
     """
     inquiries = (
         Inquiry.objects.filter(business=business, status__in=UNANSWERED_INQUIRY_STATUSES)
         .select_related("lot", "lot__product")
         .order_by("-created_at")
     )
-    offers = (
-        PurchaseOffer.objects.filter(
-            purchase_request__business=business,
-            status=PurchaseOffer.Status.SUBMITTED,
+    requests = (
+        PurchaseRequest.objects.filter(
+            seller_business=business,
+            status__in=[PurchaseRequest.Status.SENT, PurchaseRequest.Status.ACCEPTED],
         )
-        .select_related("purchase_request", "seller_business")
+        .select_related("buyer_business", "item", "item__product")
         .order_by("-created_at")
     )
     return {
         "unanswered_inquiry_count": inquiries.count(),
         "unanswered_inquiries": list(inquiries[:PENDING_ROWS]),
-        "unanswered_offer_count": offers.count(),
-        "unanswered_offers": list(offers[:PENDING_ROWS]),
+        "open_request_count": requests.count(),
+        "open_requests": list(requests[:PENDING_ROWS]),
+        "awaiting_finalize_count": requests.filter(status=PurchaseRequest.Status.ACCEPTED).count(),
     }

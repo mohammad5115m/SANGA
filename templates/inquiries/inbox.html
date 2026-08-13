@@ -1,0 +1,46 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}استعلام‌ها | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">استعلام‌های مشتریان</h1>
+      <p class="page-lead">درخواست‌هایی که از صفحات عمومی رسیده‌اند</p>
+    </div>
+    <a class="btn btn-ghost" href="{% url 'inquiries:leads' %}">مشتریان</a>
+  </div>
+
+  <form method="get" class="panel filter-bar">
+    <label class="field field-grow">
+      <span class="field-label">جستجو</span>
+      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="نام یا شماره مشتری">
+    </label>
+    <button class="btn btn-secondary" type="submit">جستجو</button>
+  </form>
+
+  <div class="chip-row">
+    {% for value, label in status_filters %}
+      <a class="chip {% if status == value %}is-active{% endif %}" href="?status={{ value }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="list-stack">
+    {% for inquiry in inquiries %}
+      <a class="list-item" href="{% url 'inquiries:detail' inquiry.id %}">
+        <div>
+          <div class="list-title">{{ inquiry.name }}</div>
+          <div class="muted" dir="ltr">{{ inquiry.phone }}</div>
+          <div class="muted">
+            {{ inquiry.items.all|length }} محصول · {{ inquiry.created_at|date:"Y/m/d H:i" }}
+          </div>
+        </div>
+        <span class="badge">{{ inquiry.get_status_display }}</span>
+      </a>
+    {% empty %}
+      <div class="empty-state">استعلامی با این فیلتر وجود ندارد.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

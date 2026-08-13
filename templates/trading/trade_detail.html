@@ -1,0 +1,49 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}معامله | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{{ trade.product_name }}</h1>
+    <p class="page-lead">{{ trade.finalized_at|date:"Y/m/d H:i" }}</p>
+  </div>
+
+  {# Every value here is the snapshot taken at finalization, not a live lookup:
+     renaming or deleting the product must not rewrite what was sold. #}
+  <section class="panel stack-sm">
+    <div class="kv"><span>فروشنده</span><strong>{{ trade.seller_business.name }}</strong></div>
+    <div class="kv"><span>خریدار</span><strong>{{ trade.counterparty_label }}</strong></div>
+    {% if trade.customer_phone %}
+      <div class="kv"><span>موبایل مشتری</span><strong dir="ltr">{{ trade.customer_phone }}</strong></div>
+    {% endif %}
+    <div class="kv"><span>نام محصول</span><strong>{{ trade.product_name }}</strong></div>
+    {% if trade.stone_type %}<div class="kv"><span>نوع سنگ</span><strong>{{ trade.stone_type }}</strong></div>{% endif %}
+    {% if trade.grade %}<div class="kv"><span>سورت</span><strong>{{ trade.grade }}</strong></div>{% endif %}
+    <div class="kv"><span>متراژ</span><strong>{{ trade.quantity_sqm }} m²</strong></div>
+    <div class="kv">
+      <span>قیمت واحد</span>
+      <strong dir="ltr">{{ trade.unit_price|rial }} {{ trade.currency }}</strong>
+    </div>
+    <div class="kv">
+      <span>مبلغ کل</span>
+      <strong dir="ltr">{{ trade.total_amount|rial }} {{ trade.currency }}</strong>
+    </div>
+    {% if trade.note %}<div class="kv"><span>توضیح</span><strong>{{ trade.note }}</strong></div>{% endif %}
+  </section>
+
+  {% if is_seller and trade.item %}
+    <section class="panel stack-md">
+      <h2 class="section-title">موجودی محصول</h2>
+      <p class="muted">
+        موجودی این محصول به‌صورت خودکار کم نشده است. اگر مقدار تغییر کرده، آن را
+        به‌روزرسانی کنید.
+      </p>
+      <a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' trade.item.id %}">
+        به‌روزرسانی موجودی
+      </a>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

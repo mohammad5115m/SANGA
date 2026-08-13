@@ -1,0 +1,40 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}مشتریان | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">مشتریان</h1>
+      <p class="page-lead">کسانی که از صفحات عمومی استعلام گرفته‌اند</p>
+    </div>
+    <a class="btn btn-ghost" href="{% url 'inquiries:inbox' %}">استعلام‌ها</a>
+  </div>
+
+  <form method="get" class="panel filter-bar">
+    <label class="field field-grow">
+      <span class="field-label">جستجو</span>
+      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="نام یا شماره موبایل">
+    </label>
+    <button class="btn btn-secondary" type="submit">جستجو</button>
+  </form>
+
+  <div class="list-stack">
+    {% for lead in leads %}
+      <a class="list-item" href="{% url 'inquiries:lead_detail' lead.id %}">
+        <div>
+          <div class="list-title">{{ lead.name }}</div>
+          <div class="muted" dir="ltr">{{ lead.phone }}</div>
+        </div>
+        <div class="badge-row">
+          <span class="badge">{{ lead.inquiry_count }} استعلام</span>
+          {% if lead.is_verified %}<span class="badge badge-accent">تأیید شده</span>{% endif %}
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state">هنوز مشتری‌ای استعلام نگرفته است.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

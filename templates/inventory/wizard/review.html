@@ -1,27 +1,74 @@
 {% extends "inventory/wizard/_shell.html" %}
-{% block wizard_title %}بازبینی{% endblock %}
+{% load money %}
+{% block wizard_title %}عکس و انتشار{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
   <div>
-    <h1 class="page-title">بازبینی و انتشار</h1>
-    <p class="page-lead">قبل از انتشار سریع چک کنید.</p>
+    <h1 class="page-title">عکس و انتشار</h1>
+    <p class="page-lead">چند عکس یا ویدیو اضافه کنید و محصول را منتشر کنید.</p>
   </div>
 
   <section class="panel stack-sm">
     <div class="list-title">{{ lot.product.commercial_name }}</div>
     <div class="muted" dir="ltr">{{ lot.lot_code }}</div>
-    <div class="kv"><span>متراژ</span><strong>{{ lot.available_sqm }} m²</strong></div>
-    <div class="kv"><span>انبار</span><strong>{{ lot.warehouse.name }}</strong></div>
-    <div class="kv"><span>نمایش</span><strong>{{ visibility_label }}</strong></div>
-    {% if prices.b2b %}<div class="kv"><span>قیمت همکار</span><strong dir="ltr">{{ prices.b2b.amount|floatformat:"0g" }} {{ prices.b2b.currency }}</strong></div>{% endif %}
-    {% if prices.b2c %}<div class="kv"><span>قیمت مشتری</span><strong dir="ltr">{{ prices.b2c.amount|floatformat:"0g" }} {{ prices.b2c.currency }}</strong></div>{% endif %}
+    <div class="kv"><span>موجودی</span><strong>{{ stock.label }}</strong></div>
+    <div class="kv">
+      <span>قیمت همکار</span>
+      <strong dir="ltr">
+        {% if prices.b2b.amount %}{{ prices.b2b.amount|rial }} {{ prices.b2b.currency }}
+        {% else %}استعلام قیمت{% endif %}
+      </strong>
+    </div>
+    <div class="kv">
+      <span>قیمت مشتری</span>
+      <strong dir="ltr">
+        {% if prices.b2c.amount %}{{ prices.b2c.amount|rial }} {{ prices.b2c.currency }}
+        {% else %}استعلام قیمت{% endif %}
+      </strong>
+    </div>
   </section>
 
-  <form method="post" class="stack-md">
+  <section class="panel stack-md">
+    <h2 class="section-title">عکس و ویدیو</h2>
+    {% if media_items %}
+      <div class="media-grid">
+        {% for media in media_items %}
+          <div class="media-tile">
+            {% if media.kind == 'image' %}
+              <img src="{{ media.file.url }}" alt="" loading="lazy">
+            {% else %}
+              <div class="media-tile-video">ویدیو</div>
+            {% endif %}
+            {% if media.is_primary %}<span class="badge badge-accent">تصویر اصلی</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data" class="stack-md">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="upload">
+      {% for field in media_form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+        </label>
+      {% endfor %}
+      <button class="btn btn-secondary" type="submit">افزودن فایل</button>
+    </form>
+  </section>
+
+  <form method="post" class="panel stack-md">
     {% csrf_token %}
-    <button class="btn btn-primary btn-block" name="action" value="publish" type="submit">انتشار</button>
-    <button class="btn btn-secondary btn-block" name="action" value="draft" type="submit">ذخیره به‌عنوان پیش‌نویس</button>
+    {% for field in visibility_form %}
+      <label class="field checkbox-field">
+        {{ field }} <span>{{ field.label }}</span>
+        {% if field.help_text %}<span class="field-help">{{ field.help_text }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-block" name="action" value="publish" type="submit">انتشار محصول</button>
+    <button class="btn btn-ghost btn-block" name="action" value="draft" type="submit">ذخیره به‌عنوان پیش‌نویس</button>
   </form>
 </section>
 {% endblock %}

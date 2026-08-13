@@ -1,0 +1,49 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}لیست همکاران | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">لیست همکاران</h1>
+      <p class="page-lead">کسب‌وکارهای فعال در سنگا</p>
+    </div>
+  </div>
+
+  <form method="get" class="panel filter-bar">
+    <label class="field field-grow">
+      <span class="field-label">جستجو</span>
+      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="نام کسب‌وکار، شهر، تلفن...">
+    </label>
+    <button class="btn btn-primary" type="submit">جستجو</button>
+  </form>
+
+  <div class="list-stack">
+    {% for colleague in colleagues %}
+      <a class="lot-card" href="{% url 'businesses:colleague_detail' colleague.id %}">
+        <div class="lot-thumb">
+          {% if colleague.logo %}
+            <img src="{{ colleague.logo.url }}" alt="{{ colleague.name }}" loading="lazy">
+          {% else %}
+            <div class="lot-thumb-fallback" aria-hidden="true"></div>
+          {% endif %}
+        </div>
+        <div class="lot-body">
+          <div class="list-title">{{ colleague.name }}</div>
+          <div class="muted">
+            {% if colleague.city %}{{ colleague.city }}{% endif %}
+            {% if colleague.province %} · {{ colleague.province }}{% endif %}
+          </div>
+          {% if colleague.phone %}<div class="muted" dir="ltr">{{ colleague.phone }}</div>{% endif %}
+          {% if colleague.verification_status == 'verified' %}
+            <span class="badge badge-accent">تأییدشده</span>
+          {% endif %}
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state">همکاری با این جستجو پیدا نشد.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

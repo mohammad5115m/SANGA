@@ -15,9 +15,11 @@ urlpatterns = [
     path("app/catalogs/", include("apps.catalog.urls_manage")),
     path("app/marketplace/", include("apps.marketplace.urls")),
     path("app/notifications/", include("apps.notifications.urls")),
-    path("app/purchase-requests/", include("apps.purchase_requests.urls")),
-    path("app/contacts/", include("apps.contacts.urls")),
+    path("app/trading/", include("apps.trading.urls")),
     path("app/accounting/", include("apps.accounting.urls")),
+    path("app/invoices/", include("apps.invoicing.urls")),
+    path("app/leads/", include("apps.inquiries.urls")),
+    path("app/reports/", include("apps.reporting.urls")),
 ]
 
 if settings.DEBUG:

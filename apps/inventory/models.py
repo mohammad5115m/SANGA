@@ -1,12 +1,64 @@
 from __future__ import annotations
 
+import secrets
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
+
+
+def generate_public_token() -> str:
+    """Opaque, stable, URL-safe identifier for a shareable item page.
+
+    Deliberately not the primary key: share links are pasted into WhatsApp and
+    Telegram, and an opaque token keeps them from doubling as a handle on
+    internal records.
+    """
+    return secrets.token_urlsafe(12)
+
+
+class Application(models.Model):
+    """Where a stone can be used — a controlled vocabulary, not free text.
+
+    Application is one of the main things buyers filter by, and free text cannot
+    be filtered reliably: «نمای بیرونی», «نما بیرونی» and «نمای خارجی» would be
+    three different values for one idea. The list is platform-wide rather than
+    per-business so that a colleague's search matches another seller's items.
+    """
+
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField("کاربرد", max_length=100)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        verbose_name = "کاربرد"
+        verbose_name_plural = "کاربردها"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+#: Seeded by the ``sync_applications`` data migration and kept in code so the
+#: list is reviewable in a diff. Extending it means adding a row here plus a
+#: migration that calls the same sync helper.
+DEFAULT_APPLICATIONS: tuple[tuple[str, str], ...] = (
+    ("exterior-facade", "نمای بیرونی"),
+    ("interior-wall", "دیوار داخلی"),
+    ("floor", "کف"),
+    ("stairs", "راه پله"),
+    ("parking", "پارکینگ"),
+    ("landscape", "محوطه"),
+    ("bathroom", "سرویس بهداشتی"),
+    ("counter", "کانتر"),
+    ("column", "ستون"),
+    ("pool", "استخر"),
+)
 
 
 class Product(models.Model):
@@ -23,7 +75,12 @@ class Product(models.Model):
     primary_color = models.CharField("رنگ غالب", max_length=100, blank=True)
     pattern = models.CharField("طرح/بافت", max_length=150, blank=True)
     vein_notes = models.CharField(max_length=255, blank=True)
-    applications = models.JSONField(default=list, blank=True)
+    applications = models.ManyToManyField(
+        Application,
+        related_name="products",
+        blank=True,
+        verbose_name="کاربردها",
+    )
     interior_suitable = models.BooleanField(default=True)
     exterior_suitable = models.BooleanField(default=False)
     technical_notes = models.TextField(blank=True)
@@ -58,23 +115,34 @@ class Product(models.Model):
 
 
 class InventoryLot(models.Model):
+    """A sellable instance of a Product.
+
+    Four lifecycle questions are kept on four separate fields, and are never
+    merged into one status column:
+
+    * ``is_visible``          — should the seller publish this at all?
+    * ``availability_status`` — is it offered for sale right now?
+    * stock freshness         — do we trust the quantity? (derived, see freshness.py)
+    * ``deleted_at``          — should it still exist as an active business object?
+
+    The distinction that matters most to users is «ناموجود» versus «استعلام
+    موجودی». The first is ``availability_status`` and removes the item from
+    every buyer-facing surface. The second is derived from stock expiry and
+    leaves the item discoverable.
+    """
+
     class Status(models.TextChoices):
         DRAFT = "draft", "پیش‌نویس"
-        AVAILABLE = "available", "موجود"
-        RESERVATION_PENDING = "reservation_pending", "در انتظار رزرو"
-        RESERVED = "reserved", "رزرو شده"
-        PARTIALLY_SOLD = "partially_sold", "فروش جزئی"
-        SOLD = "sold", "فروخته‌شده"
-        EXPIRED = "expired", "منقضی"
-        HIDDEN = "hidden", "مخفی"
-        NEEDS_CONFIRMATION = "needs_confirmation", "نیاز به تأیید"
+        ACTIVE = "active", "فعال"
 
-    class Visibility(models.TextChoices):
-        # COLLEAGUES means every business with an account: there is no
-        # partnership to approve and no per-lot allowlist.
-        PRIVATE = "private", "داخلی"
-        COLLEAGUES = "colleagues", "همکاران"
-        PUBLIC = "public", "عمومی"
+    class Availability(models.TextChoices):
+        AVAILABLE = "available", "موجود"
+        UNAVAILABLE = "unavailable", "ناموجود"
+
+    class StockMode(models.TextChoices):
+        EXACT = "exact", "مقدار مشخص"
+        UNLIMITED = "unlimited", "موجودی نامحدود"
+        INQUIRY = "inquiry", "استعلام موجودی"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     business = models.ForeignKey(
@@ -87,14 +155,45 @@ class InventoryLot(models.Model):
         "businesses.Warehouse",
         on_delete=models.PROTECT,
         related_name="lots",
+        null=True,
+        blank=True,
     )
-    lot_code = models.CharField("کد محموله", max_length=64)
+    lot_code = models.CharField("کد محصول", max_length=64)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT)
-    visibility = models.CharField(
-        max_length=32,
-        choices=Visibility.choices,
-        default=Visibility.PRIVATE,
+
+    is_visible = models.BooleanField("منتشر شده", default=False)
+    availability_status = models.CharField(
+        "وضعیت موجود بودن",
+        max_length=20,
+        choices=Availability.choices,
+        default=Availability.AVAILABLE,
     )
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    public_token = models.CharField(
+        max_length=32,
+        unique=True,
+        default=generate_public_token,
+        editable=False,
+    )
+
+    stock_mode = models.CharField(
+        "نوع موجودی",
+        max_length=20,
+        choices=StockMode.choices,
+        default=StockMode.EXACT,
+    )
+    stock_confirmed_at = models.DateTimeField(null=True, blank=True)
+    stock_valid_for_days = models.PositiveSmallIntegerField("اعتبار موجودی (روز)", default=7)
+    # Derived from the two fields above and refreshed on save. It exists so that
+    # "which items need a stock check?" is an indexed WHERE clause instead of a
+    # Python loop over every row. Note this is derived *on write*, not swept by a
+    # scheduled job — nothing mutates a row just because time passed.
+    stock_expires_at = models.DateTimeField(null=True, blank=True, db_index=True, editable=False)
+
+    location_province = models.CharField("استان", max_length=100, blank=True)
+    location_city = models.CharField("شهر", max_length=100, blank=True)
+    location_address = models.TextField("آدرس دقیق", blank=True)
+
     available_sqm = models.DecimalField(
         max_digits=12,
         decimal_places=3,
@@ -122,19 +221,16 @@ class InventoryLot(models.Model):
     )
     ready_for_loading_at = models.DateField(null=True, blank=True)
     photographed_at = models.DateField(null=True, blank=True)
-    inventory_confirmed_at = models.DateTimeField(null=True, blank=True)
-    offer_expires_at = models.DateTimeField(null=True, blank=True)
     description = models.TextField(blank=True)
     defect_notes = models.TextField(blank=True)
     is_featured = models.BooleanField(default=False)
     is_urgent_sale = models.BooleanField(default=False)
-    archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "محموله موجودی"
-        verbose_name_plural = "محموله‌های موجودی"
+        verbose_name = "محصول قابل فروش"
+        verbose_name_plural = "محصولات قابل فروش"
         ordering = ["-updated_at"]
         constraints = [
             models.UniqueConstraint(fields=["business", "lot_code"], name="uniq_lot_code_per_business"),
@@ -149,18 +245,82 @@ class InventoryLot(models.Model):
         ]
         indexes = [
             models.Index(fields=["business", "status"]),
-            models.Index(fields=["business", "inventory_confirmed_at"]),
-            models.Index(fields=["visibility", "status", "updated_at"]),
+            models.Index(fields=["business", "stock_confirmed_at"], name="inventory_i_busines_stockc_idx"),
+            # Covers the buyer-facing eligibility predicate in inventory.policy.
+            models.Index(
+                fields=["is_visible", "availability_status", "deleted_at"],
+                name="inventory_i_elig_idx",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"{self.lot_code} — {self.product.commercial_name}"
 
-    def mark_confirmed(self) -> None:
-        self.inventory_confirmed_at = timezone.now()
-        if self.status == self.Status.NEEDS_CONFIRMATION:
-            self.status = self.Status.AVAILABLE
-        self.save(update_fields=["inventory_confirmed_at", "status", "updated_at"])
+    def save(self, *args, **kwargs):
+        expires_at = self.compute_stock_expiry()
+        if expires_at != self.stock_expires_at:
+            self.stock_expires_at = expires_at
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "stock_expires_at"}
+        super().save(*args, **kwargs)
+
+    # --- derived lifecycle state ---------------------------------------------
+
+    def compute_stock_expiry(self):
+        """When the confirmed quantity stops being trustworthy.
+
+        ``None`` means the question does not apply: either the seller never
+        confirmed, or the mode carries no number that could go stale.
+        """
+        if self.stock_mode == self.StockMode.INQUIRY:
+            return None
+        if self.stock_confirmed_at is None:
+            return None
+        return self.stock_confirmed_at + timedelta(days=self.stock_valid_for_days)
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
+    @property
+    def is_unavailable(self) -> bool:
+        return self.availability_status == self.Availability.UNAVAILABLE
+
+    @property
+    def is_stock_fresh(self) -> bool:
+        expires_at = self.compute_stock_expiry()
+        return expires_at is not None and expires_at > timezone.now()
+
+    @property
+    def effective_stock_mode(self) -> str:
+        """The stock mode a buyer should be shown.
+
+        An exact or unlimited quantity whose confirmation window has lapsed
+        degrades to «استعلام موجودی». The stored mode is left alone: the seller
+        said 650 m², and we still know that — we just stop presenting it as
+        current.
+        """
+        if self.stock_mode == self.StockMode.INQUIRY:
+            return self.StockMode.INQUIRY
+        return self.stock_mode if self.is_stock_fresh else self.StockMode.INQUIRY
+
+    def mark_stock_confirmed(self) -> None:
+        self.stock_confirmed_at = timezone.now()
+        self.save(update_fields=["stock_confirmed_at", "updated_at"])
+
+    @classmethod
+    def needs_stock_confirmation_q(cls):
+        """Predicate for "the seller is showing a number they no longer vouch for".
+
+        Uses the derived ``stock_expires_at`` column so callers can count,
+        paginate and index this instead of filtering in Python.
+        """
+        from django.db.models import Q
+
+        return ~Q(stock_mode=cls.StockMode.INQUIRY) & (
+            Q(stock_expires_at__isnull=True) | Q(stock_expires_at__lte=timezone.now())
+        )
 
 
 class LotMedia(models.Model):
@@ -180,8 +340,8 @@ class LotMedia(models.Model):
 
     class Meta:
         ordering = ["sort_order", "created_at"]
-        verbose_name = "رسانه محموله"
-        verbose_name_plural = "رسانه‌های محموله"
+        verbose_name = "رسانه محصول"
+        verbose_name_plural = "رسانه‌های محصول"
 
     def __str__(self) -> str:
         return f"{self.lot.lot_code} media"

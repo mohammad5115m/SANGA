@@ -1,0 +1,42 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}{{ title }} | گزارش‌ها{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">گزارش‌ها</h1>
+      <p class="page-lead">{{ title }} · {{ window.label }}</p>
+    </div>
+    <a class="btn btn-ghost" href="?from={{ filters.from }}&amp;to={{ filters.to }}&amp;print=1"
+       target="_blank" rel="noopener">چاپ</a>
+  </div>
+
+  <div class="chip-row">
+    {% for key, label in reports %}
+      <a class="chip {% if active == key %}is-active{% endif %}"
+         href="{% url 'reporting:report' key %}?from={{ filters.from }}&amp;to={{ filters.to }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  {# Date filtering applies to the sales and invoice reports. Debtors, aging and
+     the freshness lists describe the present, so a window would be misleading. #}
+  <form method="get" class="panel filter-bar">
+    <label class="field">
+      <span class="field-label">از تاریخ</span>
+      <input class="field-input" type="date" name="from" value="{{ filters.from }}">
+    </label>
+    <label class="field">
+      <span class="field-label">تا تاریخ</span>
+      <input class="field-input" type="date" name="to" value="{{ filters.to }}">
+    </label>
+    <button class="btn btn-secondary" type="submit">اعمال</button>
+    <a class="btn btn-ghost" href="{% url 'reporting:report' active %}">حذف فیلتر</a>
+  </form>
+
+  <section class="panel">
+    {% include "reporting/_body.html" %}
+  </section>
+</section>
+{% endblock %}

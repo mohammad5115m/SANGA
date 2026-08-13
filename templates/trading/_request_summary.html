@@ -1,0 +1,49 @@
+{% load money %}
+{% comment %}
+The commercial facts of one purchase request.
+
+Both the requested and the agreed numbers are shown when they differ: "you asked
+for 200 at 1.5m, I can do 180 at 1.6m" is the normal conversation, and hiding
+half of it makes the record unreadable later.
+
+Expects: pr
+{% endcomment %}
+<section class="panel stack-sm">
+  <div class="kv"><span>محصول</span><strong>{{ pr.item.product.commercial_name }}</strong></div>
+  <div class="kv"><span>فروشنده</span><strong>{{ pr.seller_business.name }}</strong></div>
+  <div class="kv"><span>خریدار</span><strong>{{ pr.buyer_business.name }}</strong></div>
+  <div class="kv"><span>متراژ درخواستی</span><strong>{{ pr.requested_qty_sqm }} m²</strong></div>
+  {% if pr.proposed_unit_price %}
+    <div class="kv">
+      <span>قیمت پیشنهادی خریدار</span>
+      <strong dir="ltr">{{ pr.proposed_unit_price|rial }} {{ pr.currency }}</strong>
+    </div>
+  {% endif %}
+
+  {% if pr.final_qty_sqm or pr.final_unit_price %}
+    <hr class="divider">
+    {% if pr.final_qty_sqm %}
+      <div class="kv"><span>متراژ نهایی</span><strong>{{ pr.final_qty_sqm }} m²</strong></div>
+    {% endif %}
+    {% if pr.final_unit_price %}
+      <div class="kv">
+        <span>قیمت نهایی</span>
+        <strong dir="ltr">{{ pr.final_unit_price|rial }} {{ pr.currency }}</strong>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {% if pr.agreed_total %}
+    <div class="kv">
+      <span>مبلغ کل</span>
+      <strong dir="ltr">{{ pr.agreed_total|rial }} {{ pr.currency }}</strong>
+    </div>
+  {% endif %}
+
+  {% if pr.buyer_note %}
+    <div class="kv"><span>توضیح خریدار</span><strong>{{ pr.buyer_note }}</strong></div>
+  {% endif %}
+  {% if pr.seller_note %}
+    <div class="kv"><span>توضیح فروشنده</span><strong>{{ pr.seller_note }}</strong></div>
+  {% endif %}
+</section>

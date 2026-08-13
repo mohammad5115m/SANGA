@@ -10,11 +10,9 @@ urlpatterns = [
     path("", views_manage.catalog_list, name="list"),
     path("new/", views_manage.catalog_create, name="create"),
     path("<uuid:catalog_id>/", views_manage.catalog_detail, name="detail"),
+    path("<uuid:catalog_id>/exclude/", views_manage.catalog_exclude, name="exclude"),
+    path("<uuid:catalog_id>/unexclude/", views_manage.catalog_unexclude, name="unexclude"),
+    path("<uuid:catalog_id>/toggle/", views_manage.catalog_toggle_active, name="toggle_active"),
+    path("<uuid:catalog_id>/delete/", views_manage.catalog_delete, name="delete"),
     path("<uuid:catalog_id>/edit/", views_manage.catalog_edit, name="edit"),
-    path("inquiries/", views_manage.inquiry_inbox, name="inquiries"),
-    path(
-        "inquiries/<uuid:inquiry_id>/status/",
-        views_manage.inquiry_update_status,
-        name="inquiry_update_status",
-    ),
 ]

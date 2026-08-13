@@ -1,0 +1,31 @@
+{% load money %}
+{% comment %}
+Shared body of the two purchase-request tabs.
+
+Expects: requests, status, status_filters, detail_url_name, counterparty_attr
+{% endcomment %}
+<div class="chip-row">
+  {% for value, label in status_filters %}
+    <a class="chip {% if status == value %}is-active{% endif %}" href="?status={{ value }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="list-stack">
+  {% for pr in requests %}
+    <a class="lot-card" href="{% url detail_url_name request_id=pr.id %}">
+      <div class="lot-body">
+        <div class="list-title">{{ pr.item.product.commercial_name }}</div>
+        <div class="muted">
+          {% if counterparty_attr == 'buyer' %}{{ pr.buyer_business.name }}{% else %}{{ pr.seller_business.name }}{% endif %}
+          · {{ pr.agreed_qty_sqm }} m²
+        </div>
+        {% if pr.agreed_total %}
+          <div class="muted" dir="ltr">{{ pr.agreed_total|rial }} {{ pr.currency }}</div>
+        {% endif %}
+        <div class="badge-row">{% include "trading/_status_badge.html" %}</div>
+      </div>
+    </a>
+  {% empty %}
+    <div class="empty-state">درخواستی با این فیلتر وجود ندارد.</div>
+  {% endfor %}
+</div>
