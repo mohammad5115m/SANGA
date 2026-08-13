@@ -146,7 +146,9 @@ any caller choose their own rate-limit key, or somebody else's.
 | `DJANGO_DATABASE` | `postgres` |
 | `POSTGRES_*` | Managed database credentials |
 | `REDIS_URL`, `CELERY_BROKER_URL` | Managed Redis |
-| `SMS_PROVIDER` | A gateway that delivers |
+| `SMS_PROVIDER` | `kavenegar` in production. `console` and `null` do not deliver and are refused. |
+| `KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE` | Required with `SMS_PROVIDER=kavenegar`, checked at boot |
+| `SMS_TIMEOUT_SECONDS` | Ten seconds by default |
 | `USE_S3`, `AWS_*` | Object storage for product media. Required unless the local-media mode is declared. |
 | `CSP_IMG_SRC`, `CSP_MEDIA_SRC` | The storage/CDN origin, so images are not blocked. Required with `USE_S3`. |
 | `SANGA_ALLOW_LOCAL_MEDIA`, `SANGA_MEDIA_ROOT` | Only for the volume-backed alternative in §3a |

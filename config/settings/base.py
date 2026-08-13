@@ -175,6 +175,17 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE: dict[str, dict] = {}
 
 SMS_PROVIDER = env("SMS_PROVIDER", default="console")
+#: Seconds to wait on the SMS gateway. Short on purpose: a login page that hangs
+#: for thirty seconds is a login page people give up on, and the OTP is worthless
+#: by the time a slow gateway delivers it anyway.
+SMS_TIMEOUT_SECONDS = env.float("SMS_TIMEOUT_SECONDS", default=10.0)
+#: Kavenegar credentials. Never committed; production refuses to start without
+#: them when SMS_PROVIDER=kavenegar.
+KAVENEGAR_API_KEY = env("KAVENEGAR_API_KEY", default="")
+#: The name of a template already approved in the Kavenegar panel. The lookup
+#: endpoint substitutes one token into it — the code — so the wording lives with
+#: the operator, not in this repository.
+KAVENEGAR_OTP_TEMPLATE = env("KAVENEGAR_OTP_TEMPLATE", default="")
 OTP_EXPIRY_SECONDS = env.int("OTP_EXPIRY_SECONDS", default=300)
 OTP_LENGTH = env.int("OTP_LENGTH", default=6)
 OTP_MAX_ATTEMPTS = env.int("OTP_MAX_ATTEMPTS", default=5)

@@ -79,6 +79,12 @@ def _check_sms_provider() -> None:
             "gateway, or set SMS_ALLOW_UNDELIVERED=true if this environment is deliberately "
             "unable to send."
         )
+    # Credentials are checked here, not at the first login attempt. A gateway
+    # that is configured by name but missing its key is an outage that starts
+    # silently and is discovered by a user who cannot sign in.
+    validate = getattr(provider, "validate_configuration", None)
+    if validate is not None:
+        validate()
 
 
 _check_sms_provider()
