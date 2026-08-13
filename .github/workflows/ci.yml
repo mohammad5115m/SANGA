@@ -1,0 +1,163 @@
+name: CI
+
+# The gate the repository did not have. Every one of these ran locally and by
+# convention before; none of them blocked a merge, so "all five green" was a
+# promise rather than a fact.
+#
+# The PostgreSQL job is not a slower copy of the fast one. Locking, partial
+# unique indexes and two writers racing cannot be demonstrated on SQLite, so the
+# tests that prove the financial and OTP invariants only really run there.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint and system checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Django system check
+        run: python manage.py check
+      - name: No unrecorded model changes
+        run: python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_DATABASE: sqlite
+
+  tests:
+    name: Tests (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - run: pytest
+        env:
+          DJANGO_DATABASE: sqlite
+
+  postgres:
+    name: Tests and concurrency (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sanga
+          POSTGRES_USER: sanga
+          POSTGRES_PASSWORD: sanga
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: Full suite, including the concurrency lane
+        run: ./scripts/run_pg_tests.sh
+        env:
+          POSTGRES_HOST: 127.0.0.1
+      - name: The concurrency tests must actually have run
+        # A skipped test is a green tick that proves nothing, and this job exists
+        # for exactly those tests.
+        run: |
+          set -euo pipefail
+          output="$(./scripts/run_pg_tests.sh -m concurrency -q)"
+          echo "$output"
+          echo "$output" | grep -qE "[1-9][0-9]* passed"
+          echo "$output" | grep -qv "no tests ran"
+        env:
+          POSTGRES_HOST: 127.0.0.1
+
+  migrations:
+    name: Fresh migrate from zero
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sanga
+          POSTGRES_USER: sanga
+          POSTGRES_PASSWORD: sanga
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: SQLite, from an empty file
+        run: ./scripts/check_fresh_migrate.sh
+      - name: PostgreSQL, from an empty database
+        run: python manage.py migrate --no-input
+        env:
+          DJANGO_DATABASE: postgres
+          POSTGRES_HOST: 127.0.0.1
+
+  deploy_check:
+    name: Production settings fail closed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: check --deploy with a production-like environment
+        run: python manage.py check --deploy --fail-level WARNING
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.production
+          DJANGO_SECRET_KEY: ci-only-secret-never-used-to-serve-a-request-0123456789abcdef
+          DJANGO_ALLOWED_HOSTS: sanga.example.com
+          DJANGO_DATABASE: sqlite
+          # No real gateway exists in CI, so the escape hatch is set explicitly.
+          # That it has to be set at all is the property under test: production
+          # refuses to start on a provider that cannot deliver.
+          SMS_PROVIDER: console
+          SMS_ALLOW_UNDELIVERED: "true"
+
+  dependency_audit:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    # Advisory: a new CVE in a pinned dependency should be visible immediately,
+    # but it must not block an unrelated fix from merging at 2am.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install pip-audit
+      - run: pip-audit --requirement requirements/constraints.txt --strict

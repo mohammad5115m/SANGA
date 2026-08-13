@@ -21,6 +21,9 @@
     <p>برای پیگیری با پشتیبانی سنگا تماس بگیرید.</p>
   </div>
 
-  <a class="btn btn-ghost btn-block" href="{% url 'accounts:logout' %}">خروج از حساب</a>
+  <form method="post" action="{% url 'accounts:logout' %}">
+    {% csrf_token %}
+    <button class="btn btn-ghost btn-block" type="submit">خروج از حساب</button>
+  </form>
 </section>
 {% endblock %}

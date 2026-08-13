@@ -26,7 +26,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
-    "rest_framework",
     "django_htmx",
     "django_celery_beat",
     "apps.core",
@@ -70,6 +69,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
+    "apps.core.middleware.SecurityHeadersMiddleware",
     "apps.businesses.middleware.CurrentBusinessMiddleware",
 ]
 
@@ -158,15 +158,6 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "businesses:dashboard"
 LOGOUT_REDIRECT_URL = "accounts:login"
 
-REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
-    ],
-    "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticated",
-    ],
-}
-
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=REDIS_URL)
@@ -187,8 +178,24 @@ OTP_LENGTH = env.int("OTP_LENGTH", default=6)
 OTP_MAX_ATTEMPTS = env.int("OTP_MAX_ATTEMPTS", default=5)
 OTP_REQUEST_COOLDOWN_SECONDS = env.int("OTP_REQUEST_COOLDOWN_SECONDS", default=60)
 OTP_MAX_REQUESTS_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_HOUR", default=10)
+# Every other limit keys on the phone number, so a caller with a list of numbers
+# could request a code for each and never touch one — SANGA paying the gateway
+# for each, and each recipient getting an unexplained message. An address is not
+# a strong identity, but a limit that costs an attacker a proxy per hundred
+# messages is worth far more than no limit at all.
+OTP_MAX_REQUESTS_PER_IP_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_IP_PER_HOUR", default=30)
 
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@sanga.local")
+
+# Content-Security-Policy knobs; see apps.core.middleware.
+# Report-only first is how a policy survives contact with a live site.
+CSP_REPORT_ONLY = env.bool("CSP_REPORT_ONLY", default=False)
+#: Extra origins per directive, for object storage serving product media.
+CSP_EXTRA_SOURCES: dict[str, list[str]] = {
+    "img-src": env.list("CSP_IMG_SRC", default=[]),
+    "media-src": env.list("CSP_MEDIA_SRC", default=[]),
+    "connect-src": env.list("CSP_CONNECT_SRC", default=[]),
+}
 
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False

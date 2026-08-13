@@ -12,8 +12,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
-  <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
-  <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+  {% comment %}
+  Self-hosted and version-pinned, not loaded from a CDN. A CDN script tag is a
+  standing grant of arbitrary code execution on every SANGA page to whoever
+  controls that origin, including any future owner of the package name. Serving
+  the bytes ourselves also means the Content-Security-Policy can be
+  `script-src 'self'` with nothing to carve out. Upgrading is a commit.
+  {% endcomment %}
+  <script defer src="{% static 'vendor/alpine-3.14.1.min.js' %}"></script>
+  <script src="{% static 'vendor/htmx-2.0.2.min.js' %}"></script>
   {% block extra_head %}{% endblock %}
 </head>
 <body class="app-body {% block body_class %}{% endblock %}" hx-boost="true">
@@ -22,7 +29,7 @@
     {% for message in messages %}
       <div class="toast toast-{{ message.tags|default:'info' }}">
         <span class="toast-text">{{ message }}</span>
-        <button type="button" class="toast-close" aria-label="بستن" onclick="this.parentElement.remove()">&times;</button>
+        <button type="button" class="toast-close" aria-label="بستن">&times;</button>
       </div>
     {% endfor %}
   </div>
@@ -31,23 +38,7 @@
   {% block shell %}
   {% endblock %}
 
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
-      });
-    }
-    // Auto-dismiss toasts after 6s; keep them while hovered so users can read/copy.
-    document.querySelectorAll('.toast').forEach((toast) => {
-      let timer = setTimeout(() => dismiss(toast), 6000);
-      toast.addEventListener('mouseenter', () => clearTimeout(timer));
-      toast.addEventListener('mouseleave', () => { timer = setTimeout(() => dismiss(toast), 3000); });
-      function dismiss(el) {
-        el.classList.add('toast-leaving');
-        setTimeout(() => el.remove(), 250);
-      }
-    });
-  </script>
+  <script src="{% static 'js/app.js' %}"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>
