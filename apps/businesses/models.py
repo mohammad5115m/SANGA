@@ -105,7 +105,11 @@ class BusinessMembership(models.Model):
     )
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="memberships")
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STAFF)
-    permissions = models.JSONField(default=list, blank=True)
+    # ``None`` means "not decided yet" and is replaced by the role defaults the
+    # first time the row is saved. It is a distinct state from ``[]``, which
+    # means "this member has no capabilities" and must survive a save — see
+    # :meth:`save`.
+    permissions = models.JSONField(default=None, null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     joined_at = models.DateTimeField(auto_now_add=True)
 
@@ -121,12 +125,21 @@ class BusinessMembership(models.Model):
         return f"{self.user} @ {self.business} ({self.role})"
 
     def save(self, *args, **kwargs):
-        if not self.permissions:
-            self.permissions = defaults_for_role(self.role)
+        # Role defaults are materialized once, when the row is created and the
+        # caller said nothing about permissions.
+        #
+        # The old test was ``if not self.permissions``, which cannot tell "not
+        # initialized" from "deliberately empty": an admin who stripped every
+        # capability from a member and saved got the role defaults handed
+        # straight back, silently re-granting the create, price and sale access
+        # they had just removed. ``None`` is the sentinel for "decide for me";
+        # ``[]`` means what it says.
+        if self.permissions is None:
+            self.permissions = defaults_for_role(self.role) if self._state.adding else []
         super().save(*args, **kwargs)
 
     def clean(self) -> None:
-        if not isinstance(self.permissions, list):
+        if self.permissions is not None and not isinstance(self.permissions, list):
             raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
 
     def has_capability(self, capability: str) -> bool:

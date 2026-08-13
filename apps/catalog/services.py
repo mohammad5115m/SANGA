@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.entitlements import MANAGE_CATALOGS, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import CATALOG_MANAGE
@@ -29,8 +30,9 @@ def _require_catalog_manage(membership: BusinessMembership) -> None:
     if membership is None or not membership.has_capability(CATALOG_MANAGE):
         raise CatalogError("اجازه مدیریت کاتالوگ را ندارید.")
     try:
+        require_operational(membership.business)
         require_entitlement(membership.business, MANAGE_CATALOGS)
-    except EntitlementError as exc:
+    except (NotOperationalError, EntitlementError) as exc:
         raise CatalogError(exc.message) from exc
 
 

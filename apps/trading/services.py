@@ -15,6 +15,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounting.services import post_trade_entries
+from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.entitlements import (
     FINALIZE_SALES,
     RECEIVE_PURCHASE_REQUESTS,
@@ -43,6 +44,13 @@ class TradingError(Exception):
 def _require(membership: BusinessMembership, capability: str) -> None:
     if membership is None or not membership.has_capability(capability):
         raise TradingError("دسترسی لازم برای این عملیات را ندارید.")
+    # A suspended or expired tenant does not buy either. Browse-only accounts can
+    # send purchase requests without any seller entitlement, so without this the
+    # buying side had no operational gate at all.
+    try:
+        require_operational(membership.business)
+    except NotOperationalError as exc:
+        raise TradingError(exc.message) from exc
 
 
 def _require_plan(business: Business, entitlement: str) -> None:

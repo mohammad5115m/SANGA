@@ -60,6 +60,26 @@ They answer different questions and are stored in different places. A seller
 whose subscription lapsed still has `sale.finalize` on their membership; they
 simply cannot use it.
 
+### 3.0 Four questions about a Business, kept apart
+
+`apps/businesses/eligibility.py` names them so they stop being answered ad hoc:
+
+| Predicate | Question |
+|-----------|----------|
+| `business_can_use_app` | May this tenant **write** anything at all? |
+| `business_is_network_eligible` | Should it be **visible** to anybody else? |
+| `business_can_sell` | May it be on the **selling** side of a transaction? |
+| `accounting_counterparty` | Did these two ever **transact**? |
+
+The last one lives in `apps.accounting.selectors` and is deliberately not one of
+the others. Reusing network eligibility for it is what made a suspended debtor's
+statement return 404 while their debt stayed real.
+
+Each predicate has a SQL twin (`network_eligible_q`, `can_sell_q`) in the same
+module, so a queryset and an `if` cannot drift apart.
+
+Collapsing any two of these is how the contradictions came back last time.
+
 ### 3.1 Plan entitlements (what the Business bought)
 
 | Plan | Can |
@@ -124,7 +144,14 @@ but not change them.
 `BusinessMembership.save()` copies the role defaults into the `permissions` JSON
 list the first time it is saved, and **never refreshes it**.
 
-Two consequences that have bitten this codebase:
+`permissions` is nullable, and `None` is the sentinel meaning "not decided yet".
+`[]` means "this member has no capabilities" and survives a save. The two used to
+be indistinguishable — the test was `if not self.permissions` — so an admin who
+stripped every capability from a member and saved got the role defaults handed
+straight back, silently re-granting the create, price and sale access they had
+just removed.
+
+Two further consequences that have bitten this codebase:
 
 - Adding a new code grants it to nobody except owners (who bypass the list).
 - Renaming a code silently revokes access for every existing member.
@@ -169,8 +196,15 @@ axes — see [inventory.md](./inventory.md).
 buyer-visible product:
 
 ```text
-not deleted AND available AND is_visible AND status=active AND seller business active
+not deleted AND available AND is_visible AND status=active
+AND the seller may currently sell
 ```
+
+That last clause is `business_can_sell` — active, subscription current, not
+refused by verification, and on a selling plan. It used to read "seller business
+active", which let a downgraded or lapsed seller's products stay discoverable
+right up until `create_purchase_request` re-checked the plan and refused. The
+platform went on advertising products whose journey ended in an error page.
 
 Every buyer-facing surface goes through it: the colleague marketplace, public
 search, a seller's storefront, per-product share links, and catalogs.
@@ -213,11 +247,24 @@ The marketplace and the colleague directory require:
 
 1. an authenticated user,
 2. an active business membership,
-3. an **active** business on both sides.
+3. a **network-eligible** business on both sides.
 
 That is the whole gate. There is no partnership to request or approve: every
-active business sees every other active business's published products and their
-B2B prices, and never its own in the marketplace.
+eligible business sees every other eligible business's published products and
+their B2B prices, and never its own in the marketplace.
+
+### Verification is a denylist
+
+`verification_status` defaults to `unverified` and nothing in provisioning sets
+it. Requiring `VERIFIED` to join the network would therefore empty every
+directory and marketplace on the day it shipped — a policy change disguised as a
+bug fix. What the field can mean today is a decision the platform has actually
+taken: `REJECTED` and `SUSPENDED` are explicit refusals, and a Business carrying
+one is removed from everyone else's screens.
+
+`SANGA_REQUIRE_VERIFIED_FOR_NETWORK` flips this to an allowlist in one line, for
+the day the platform starts verifying accounts. It is off by default, and turning
+it on requires backfilling `verification_status` first.
 
 What stays private between businesses regardless: unpublished products, the
 ledger and everything derived from it (balances, statements, summaries, aging),
@@ -256,14 +303,28 @@ deliberate action. See [trading.md](./trading.md).
 
 ### Both sides must be active
 
-Same rule as the marketplace: a suspended business neither sends nor receives.
-`eligible_items()` refuses a suspended viewer and hides a suspended seller, and
-the plan is re-read from the locked row at finalization time, so a subscription
-that lapsed while the page was open still blocks the sale.
+Same rule as the marketplace: a business that is not network eligible neither
+sends nor receives. `eligible_items()` refuses such a viewer and hides such a
+seller, and the plan is re-read from the locked row at finalization time, so a
+subscription that lapsed while the page was open still blocks the sale.
 
-A suspended business keeps full access to its own data — its products, its own
-records and its ledger are untouched. The gate is on **participation in the
-shared network**.
+A suspended business keeps full **read** access to its own data — its products,
+its records, its invoices and its ledger are all still there, and its historical
+counterparties stay reachable and settleable. What it may not do is **write**:
+`require_operational()` is called from the capability helper in every write
+service, so editing a product, confirming stock, uploading media, curating a
+catalog or sending a purchase request all stop.
+
+The plan gate already covered creating, publishing and selling, because those
+consult entitlements and a non-operational Business has none. Editing consulted
+only the member's capability, so before this a suspended Business could keep
+working on everything it already had.
+
+Navigation composes both: `business_context` exposes `can_add_products`,
+`can_manage_catalogs`, `can_finalize_sales` and `can_issue_invoices`, each a
+capability *and* an entitlement, plus a `business_block_reason` banner. Owner
+capability bypass meant checking capabilities alone left «افزودن» — the most
+prominent control on the screen — pointing at a wizard that could not finish.
 
 Products attachable to a request, a ledger entry or a catalog are restricted to
 the acting business's own non-deleted products, in the form *and* again in the

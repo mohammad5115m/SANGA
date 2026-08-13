@@ -34,7 +34,7 @@ hourly, so the primary bar stays short enough to read on a phone.
         <a class="topbar-link {% if request.resolver_match.app_name == 'trading' %}is-active{% endif %}"
            href="{% url 'trading:received_list' %}">خرید و فروش</a>
       {% endif %}
-      {% if 'catalog.manage' in capabilities %}
+      {% if can_manage_catalogs %}
         <a class="topbar-link {% if request.resolver_match.app_name == 'catalog_manage' %}is-active{% endif %}"
            href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
       {% endif %}
@@ -49,6 +49,22 @@ hourly, so the primary bar stays short enough to read on a phone.
   </header>
 
   <main class="app-main">
+    {% comment %}
+    The server refuses these writes either way — see businesses.eligibility. This
+    banner exists so the refusal is not the first the user hears of it, and so
+    the actions hidden below have a stated reason rather than silently vanishing.
+    {% endcomment %}
+    {% if business_block_reason == 'suspended' %}
+      <div class="alert alert-warn">
+        کسب‌وکار شما موقتاً معلق است. سوابق، فاکتورها و دفتر حساب شما در دسترس‌اند،
+        اما امکان ثبت یا ویرایش وجود ندارد. برای پیگیری با پشتیبانی تماس بگیرید.
+      </div>
+    {% elif business_block_reason == 'expired' %}
+      <div class="alert alert-warn">
+        اعتبار اشتراک شما تمام شده است. سوابق شما در دسترس است؛ برای ثبت محصول و فروش
+        اشتراک را تمدید کنید.
+      </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 
@@ -63,11 +79,18 @@ hourly, so the primary bar stays short enough to read on a phone.
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
       <span class="nav-label">موجودی من</span>
     </a>
-    <a class="nav-item nav-item-primary {% if 'quick_add' in request.resolver_match.url_name|default:'' %}is-active{% endif %}"
-       href="{% url 'inventory:quick_add_start' %}">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      <span class="nav-label">افزودن</span>
-    </a>
+    {% comment %}
+    Gated on plan as well as capability. A browse-only or expired owner bypasses
+    every capability check by design, so checking capabilities alone left the
+    most prominent control on the screen pointing at a wizard that cannot finish.
+    {% endcomment %}
+    {% if can_add_products %}
+      <a class="nav-item nav-item-primary {% if 'quick_add' in request.resolver_match.url_name|default:'' %}is-active{% endif %}"
+         href="{% url 'inventory:quick_add_start' %}">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="nav-label">افزودن</span>
+      </a>
+    {% endif %}
     <a class="nav-item {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
        href="{% url 'marketplace:home' %}">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 4h16l-1.5 5.5a2.5 2.5 0 0 1-2.4 1.9H7.9a2.5 2.5 0 0 1-2.4-1.9L4 4Z"/><path d="M6 11.5V20h12v-8.5"/><path d="M10 16h4"/></svg>

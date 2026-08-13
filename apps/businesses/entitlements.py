@@ -46,6 +46,14 @@ _PLAN_ENTITLEMENTS: dict[str, frozenset[str]] = {
     Business.Plan.SELLER: SELLER_ENTITLEMENTS,
 }
 
+#: Plans that grant any selling entitlement at all, derived from the map above
+#: rather than restated. ``apps.businesses.eligibility`` needs this as a SQL
+#: condition, and a second hand-written list of "the selling plans" is exactly
+#: the kind of duplicate that drifts.
+SELLING_PLANS: tuple[str, ...] = tuple(
+    plan for plan, granted in _PLAN_ENTITLEMENTS.items() if SELLER_ENTITLEMENTS & granted
+)
+
 #: Persian explanation shown when an entitlement is missing. Generic wording
 #: would leave the user with no idea whether to contact support or change a
 #: setting.

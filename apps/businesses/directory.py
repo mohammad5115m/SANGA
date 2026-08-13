@@ -15,25 +15,28 @@ from django.db.models import Q, QuerySet
 
 from apps.core.persian import normalize_persian_text
 
+from .eligibility import business_is_network_eligible, network_eligible_businesses
 from .models import Business, BusinessMembership
 
 
 def colleague_businesses(viewer: Business) -> QuerySet[Business]:
     """Businesses ``viewer`` may see and trade with.
 
-    A suspended Business neither sees the directory nor appears in it, matching
-    the rule `inventory.policy` applies to the marketplace. Expiry is checked in
-    Python rather than SQL because "no expiry set" is a null, and folding that
-    into a query condition reads worse than it filters.
+    One predicate decides both directions — a Business that is not network
+    eligible neither sees the directory nor appears in it — so the marketplace
+    and the directory can no longer disagree about who is in the network.
+
+    Browse-only accounts stay listed: they are real colleagues who can be
+    invoiced and owed money, they simply have nothing to sell.
+
+    This is deliberately **not** the resolver for a statement or an invoice. Who
+    may be traded with today and who was traded with are different questions; see
+    ``apps.accounting.selectors.accounting_counterparty``.
     """
-    if viewer is None or viewer.status != Business.Status.ACTIVE:
+    if not business_is_network_eligible(viewer):
         return Business.objects.none()
 
-    return (
-        Business.objects.filter(status=Business.Status.ACTIVE)
-        .exclude(pk=viewer.pk)
-        .order_by("name")
-    )
+    return network_eligible_businesses().exclude(pk=viewer.pk).order_by("name")
 
 
 def filter_colleagues(qs: QuerySet[Business], *, q: str = "") -> QuerySet[Business]:

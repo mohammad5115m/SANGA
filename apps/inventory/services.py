@@ -9,6 +9,7 @@ from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils import timezone
 
+from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.entitlements import (
     CREATE_PRODUCTS,
     PUBLISH_PRODUCTS,
@@ -50,6 +51,22 @@ class InventoryError(Exception):
 def _require(membership: BusinessMembership, capability: str) -> None:
     if membership is None or not membership.has_capability(capability):
         raise InventoryError("دسترسی لازم برای این عملیات را ندارید.")
+    _require_operational(membership.business)
+
+
+def _require_operational(business: Business) -> None:
+    """A suspended or expired tenant may read its own records but not change them.
+
+    The plan gate already blocked creating and publishing, because those consult
+    entitlements and a non-operational Business has none. Editing, re-pricing,
+    confirming stock, uploading media and deleting consulted only the member's
+    capability, so a suspended Business could keep working on everything it
+    already had.
+    """
+    try:
+        require_operational(business)
+    except NotOperationalError as exc:
+        raise InventoryError(exc.message) from exc
 
 
 def _require_plan(business: Business, entitlement: str) -> None:
