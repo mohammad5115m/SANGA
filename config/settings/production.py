@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
+from .checks import check_media_storage
 
 DEBUG = False
 
@@ -81,6 +82,23 @@ def _check_sms_provider() -> None:
 
 
 _check_sms_provider()
+
+# --- uploaded media must survive a deploy -------------------------------------
+#
+# See config/settings/checks.py for why this is fail-closed rather than a warning.
+check_media_storage(
+    use_s3=USE_S3,  # noqa: F405
+    allow_local_media=env.bool("SANGA_ALLOW_LOCAL_MEDIA", default=False),  # noqa: F405
+    media_root=env("SANGA_MEDIA_ROOT", default=""),  # noqa: F405
+    bucket=AWS_STORAGE_BUCKET_NAME,  # noqa: F405
+    access_key=AWS_ACCESS_KEY_ID,  # noqa: F405
+    secret_key=AWS_SECRET_ACCESS_KEY,  # noqa: F405
+    use_iam_role=AWS_S3_USE_IAM_ROLE,  # noqa: F405
+    region=AWS_S3_REGION_NAME,  # noqa: F405
+    endpoint=AWS_S3_ENDPOINT_URL,  # noqa: F405
+    csp_img_src=CSP_EXTRA_SOURCES.get("img-src"),  # noqa: F405
+    csp_media_src=CSP_EXTRA_SOURCES.get("media-src"),  # noqa: F405
+)
 
 # --- logging ------------------------------------------------------------------
 #

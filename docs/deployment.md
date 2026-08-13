@@ -59,6 +59,10 @@ anything serves a request — for each of these:
 | `DJANGO_ALLOWED_HOSTS` is `*` | Host header poisoning into share and reset links |
 | `SMS_PROVIDER` is not a known provider | A typo used to fall back to the console provider |
 | `SMS_PROVIDER` cannot deliver | Nobody can log in, and every OTP is in the log |
+| `USE_S3=false` without `SANGA_ALLOW_LOCAL_MEDIA` | Uploads are written into the container and discarded on the next deploy |
+| `SANGA_ALLOW_LOCAL_MEDIA` without `SANGA_MEDIA_ROOT` | The volume mount and the setting can drift apart unnoticed |
+| `USE_S3=true` without a bucket, credentials or region/endpoint | Every upload fails at the moment a user makes one |
+| `USE_S3=true` without `CSP_IMG_SRC` / `CSP_MEDIA_SRC` | The policy blocks every product image, and it looks like missing data |
 
 The last one is the one worth dwelling on. The console provider writes the login
 code into the application log. In development that is the point. In production it
@@ -78,6 +82,37 @@ Verify before deploying:
 python manage.py check --deploy --fail-level WARNING
 ```
 
+## 3a. Uploaded media
+
+**Object storage is the supported production strategy.** Set `USE_S3=true` with a
+bucket, credentials (or `AWS_S3_USE_IAM_ROLE=true`), a region or endpoint, and the
+storage origin in `CSP_IMG_SRC` and `CSP_MEDIA_SRC`.
+
+The reason this is enforced rather than recommended: with `USE_S3=false` the
+default storage writes into the container's filesystem, Django only routes
+`MEDIA_URL` while `DEBUG` is on, and nothing mounted a volume at that path. Every
+product photo was written somewhere unreachable and thrown away on the next
+deploy, with nothing in any log to say so. That is the worst class of
+misconfiguration — one whose only symptom arrives weeks later, from a customer.
+
+The alternative is supported but has to be asked for by name:
+
+```bash
+SANGA_ALLOW_LOCAL_MEDIA=true
+SANGA_MEDIA_ROOT=/app/media
+```
+
+Choosing it means taking on two things Django will not do for you:
+
+1. **Mount a persistent volume** at `SANGA_MEDIA_ROOT`. `docker-compose.prod.yml`
+   declares `media_data:/app/media` for exactly this.
+2. **Serve `/media/` from the reverse proxy**, reading that same volume. Django
+   does not serve media with `DEBUG=False`, so without this every image 404s.
+
+Serve media with `X-Content-Type-Options: nosniff`. An uploaded file offered to a
+browser as `text/html` executes in the origin it is served from; SANGA validates
+what it stores, but the header is the part that survives a validation bug.
+
 ## 4. Required environment
 
 | Variable | Notes |
@@ -90,8 +125,9 @@ python manage.py check --deploy --fail-level WARNING
 | `POSTGRES_*` | Managed database credentials |
 | `REDIS_URL`, `CELERY_BROKER_URL` | Managed Redis |
 | `SMS_PROVIDER` | A gateway that delivers |
-| `USE_S3`, `AWS_*` | Object storage for product media |
-| `CSP_IMG_SRC`, `CSP_MEDIA_SRC` | The storage/CDN origin, so images are not blocked |
+| `USE_S3`, `AWS_*` | Object storage for product media. Required unless the local-media mode is declared. |
+| `CSP_IMG_SRC`, `CSP_MEDIA_SRC` | The storage/CDN origin, so images are not blocked. Required with `USE_S3`. |
+| `SANGA_ALLOW_LOCAL_MEDIA`, `SANGA_MEDIA_ROOT` | Only for the volume-backed alternative in §3a |
 | `SECURE_HSTS_SECONDS` | One year by default |
 
 Secrets come from the environment, never from a file in the image.
@@ -110,9 +146,20 @@ pip install -r requirements/production.txt --upgrade
 pip freeze > requirements/constraints.txt   # then prune dev-only entries
 ```
 
-CI runs `pip-audit` against the constraints file on every change, advisory rather
-than blocking — a new CVE should be visible immediately, but it should not stop
-an unrelated fix from merging.
+CI runs `pip-audit` against the constraints file on every change, and it is
+**blocking**. It was advisory while the pins carried known vulnerabilities, which
+meant the job was permanently red and therefore told nobody anything — an
+advisory check that never passes is indistinguishable from one that never runs.
+
+When a new advisory lands, the fix is to upgrade. Where there is genuinely no
+upstream fix, add an explicit `--ignore-vuln` to the CI step together with a note
+in `FINAL_HARDENING_IMPLEMENTATION_REPORT.md` recording who accepted the risk and
+why. Both are visible in review; `continue-on-error` was not.
+
+Watch the support window as well as the CVE list. Django 5.1 was pinned here
+until it had been end-of-life for months, which is a standing vulnerability that
+no audit reports because no advisory is ever filed against an unsupported branch.
+SANGA tracks the LTS line: 5.2 is supported to April 2028.
 
 ## 6. Frontend assets
 

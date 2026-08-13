@@ -52,6 +52,12 @@ services:
     env_file: [.env]
     ports:
       - "127.0.0.1:8000:8000"
+    # Only used by the deliberate SANGA_ALLOW_LOCAL_MEDIA=true deployment mode,
+    # which also requires the reverse proxy to serve /media/ from this volume —
+    # Django does not serve it with DEBUG=False. The supported default is object
+    # storage, and production refuses to start on neither. See docs/deployment.md.
+    volumes:
+      - media_data:/app/media
     restart: unless-stopped
     depends_on:
       migrate:
@@ -83,3 +89,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:

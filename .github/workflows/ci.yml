@@ -166,6 +166,12 @@ jobs:
           # refuses to start on a provider that cannot deliver.
           SMS_PROVIDER: console
           SMS_ALLOW_UNDELIVERED: "true"
+          # Likewise for media: production refuses to start with neither object
+          # storage nor a named persistent volume, because the old default wrote
+          # uploads into the container and discarded them on the next deploy.
+          # CI has no bucket, so it declares the local-media mode by name.
+          SANGA_ALLOW_LOCAL_MEDIA: "true"
+          SANGA_MEDIA_ROOT: /tmp/sanga-media
 
   dependency_audit:
     name: Dependency vulnerabilities

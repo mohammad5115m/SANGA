@@ -230,12 +230,27 @@ LOGGING = {
 }
 
 USE_S3 = env.bool("USE_S3", default=False)
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
+AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
+#: Let the host supply credentials (instance profile, workload identity) instead
+#: of putting long-lived keys in the environment.
+AWS_S3_USE_IAM_ROLE = env.bool("AWS_S3_USE_IAM_ROLE", default=False)
+
 if USE_S3:
-    AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default="")
-    AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default="")
-    AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
-    AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
-    AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
     AWS_DEFAULT_ACL = None
     AWS_QUERYSTRING_AUTH = True
+    # Stored objects are served straight to browsers, so the type they are served
+    # with is a security setting, not a convenience: an uploaded file offered as
+    # text/html executes in the origin it is served from. nosniff stops a browser
+    # second-guessing the declared type.
+    AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400", "ContentDisposition": "inline"}
     STORAGES["default"] = {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"}
+
+#: Where local media lives when object storage is deliberately not used. Named
+#: explicitly rather than defaulted, so the setting and the mounted volume cannot
+#: drift apart without somebody noticing. See config/settings/checks.py.
+if env("SANGA_MEDIA_ROOT", default=""):
+    MEDIA_ROOT = env("SANGA_MEDIA_ROOT")
