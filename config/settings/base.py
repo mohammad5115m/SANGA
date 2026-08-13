@@ -152,7 +152,9 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-FORMS_URLFIELD_ASSUME_HTTPS = True
+# FORMS_URLFIELD_ASSUME_HTTPS was a transitional setting for the Django 5.0
+# change to URLField's default scheme. That behaviour is now the default, and
+# the setting is deprecated in 5.2 and removed in 6.0.
 
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "businesses:dashboard"

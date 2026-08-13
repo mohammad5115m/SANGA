@@ -32,7 +32,14 @@ def filter_inquiries(qs: QuerySet[Inquiry], *, status: str = "", q: str = "") ->
 
 
 def leads_for(business: Business) -> QuerySet[CustomerLead]:
-    return CustomerLead.objects.filter(business=business).annotate(inquiry_count=Count("inquiries"))
+    # Ordered because this queryset is paginated. An unordered one lets the
+    # database return rows in any order it likes per query, so a customer can
+    # appear on page one and page two while another appears on neither.
+    return (
+        CustomerLead.objects.filter(business=business)
+        .annotate(inquiry_count=Count("inquiries"))
+        .order_by("-created_at", "pk")
+    )
 
 
 def get_lead(business: Business, lead_id) -> CustomerLead | None:

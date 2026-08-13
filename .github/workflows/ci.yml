@@ -178,13 +178,15 @@ jobs:
           cache: pip
       - run: pip install pip-audit
       - name: Audit the pinned dependencies
-        # Advisory: a new CVE in a pinned dependency should be visible
-        # immediately, but it must not block an unrelated fix from merging at 2am.
+        # Blocking. It was advisory while the pins carried known vulnerabilities,
+        # which meant the job was permanently red and therefore told nobody
+        # anything: an advisory check that never passes is indistinguishable from
+        # one that never runs.
         #
-        # continue-on-error belongs on the step, not the job. At job level it
-        # stops the *workflow run* from failing but the job still reports a
-        # failed check on the pull request — the same red tick as a real failure,
-        # which is how people learn to ignore red ticks. On the step, the report
-        # is still printed in full and the job concludes honestly green.
-        continue-on-error: true
+        # The pins are now clean, so the check can mean what it says. If a new
+        # advisory lands against a pinned version, this fails and the fix is to
+        # upgrade the dependency — or, where there is genuinely no upstream fix,
+        # to add an explicit `--ignore-vuln` here alongside a note in
+        # FINAL_HARDENING_IMPLEMENTATION_REPORT.md saying who accepted it and
+        # why. Both are visible in review; `continue-on-error` was not.
         run: pip-audit --requirement requirements/constraints.txt --strict
