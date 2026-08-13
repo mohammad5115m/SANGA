@@ -30,7 +30,7 @@ from apps.invoicing.services import safe_create_invoice_for_trade
 from apps.notifications.models import Notification
 from apps.notifications.services import notify_user
 
-from .models import PurchaseRequest, Trade
+from .models import PurchaseRequest, Trade, TradeItem
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,81 @@ def _quantize(value, places: str = "0.001") -> Decimal:
         return Decimal(str(value)).quantize(Decimal(places))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise TradingError("مقدار واردشده معتبر نیست.") from exc
+
+
+def _clean_line(line: dict, *, seller_business: Business) -> dict:
+    """Validate one sale line and freeze what it describes.
+
+    The snapshot is taken here rather than read back through ``item`` later,
+    because a product may be renamed, repriced or deleted between this sale and
+    the next time anyone opens it.
+    """
+    item = line.get("item")
+    if item is not None and item.business_id != seller_business.id:
+        raise TradingError("این محصول متعلق به کسب‌وکار شما نیست.")
+
+    name = (line.get("product_name") or "").strip() or (item.product.commercial_name if item else "")
+    if not name:
+        raise TradingError("نام محصول هر ردیف را وارد کنید.")
+
+    quantity = _quantize(line.get("quantity"))
+    if quantity <= 0:
+        raise TradingError("متراژ هر ردیف باید بزرگ‌تر از صفر باشد.")
+    unit_price = _quantize(line.get("unit_price"), "0.01")
+    if unit_price < 0:
+        raise TradingError("قیمت نمی‌تواند منفی باشد.")
+
+    return {
+        "item": item,
+        "product_name": name,
+        "stone_type": (line.get("stone_type") or (item.product.stone_type if item else "")),
+        "grade": (line.get("grade") or (item.grade if item else "")),
+        "quantity": quantity,
+        "unit_price": unit_price,
+        # Rounded per line, then summed. Summing first and rounding once would
+        # make the invoice's own rows fail to add up to its total.
+        "line_total": (quantity * unit_price).quantize(Decimal("0.01")),
+    }
+
+
+def _write_lines(trade: Trade, lines: list[dict]) -> None:
+    TradeItem.objects.bulk_create(
+        [
+            TradeItem(
+                trade=trade,
+                item=line["item"],
+                product_name=line["product_name"],
+                stone_type=line["stone_type"],
+                grade=line["grade"],
+                quantity=line["quantity"],
+                unit_price=line["unit_price"],
+                line_total=line["line_total"],
+                sort_order=index,
+            )
+            for index, line in enumerate(lines)
+        ]
+    )
+
+
+def _header_snapshot(lines: list[dict]) -> dict:
+    """The legacy single-line columns on ``Trade``.
+
+    Populated only when there is exactly one line, which covers every historical
+    row and every request-driven sale, so existing readers keep working. Left
+    blank for a multi-line sale rather than filled with the first line's values,
+    which would describe the sale wrongly.
+    """
+    if len(lines) != 1:
+        return {}
+    line = lines[0]
+    return {
+        "item": line["item"],
+        "product_name": line["product_name"],
+        "stone_type": line["stone_type"],
+        "grade": line["grade"],
+        "quantity_sqm": line["quantity"],
+        "unit_price": line["unit_price"],
+    }
 
 
 def _notify_business(business: Business, *, title: str, body: str, link: str) -> None:
@@ -342,28 +417,34 @@ def finalize_sale(
     unit_price = locked.agreed_unit_price
     if unit_price is None:
         raise TradingError("قیمت نهایی مشخص نیست.")
-    quantity = locked.agreed_qty_sqm
-    total = (unit_price * quantity).quantize(Decimal("0.01"))
 
-    item = locked.item
+    # A purchase request references exactly one product, so its trade has
+    # exactly one line. Multi-line sales come in through record_direct_sale.
+    lines = [
+        _clean_line(
+            {
+                "item": locked.item,
+                "quantity": locked.agreed_qty_sqm,
+                "unit_price": unit_price,
+            },
+            seller_business=locked.seller_business,
+        )
+    ]
+    total = sum((line["line_total"] for line in lines), Decimal("0")).quantize(Decimal("0.01"))
+
     trade = Trade.objects.create(
         seller_business=locked.seller_business,
         counterparty_type=Trade.Counterparty.BUSINESS,
         buyer_business=locked.buyer_business,
-        item=item,
         purchase_request=locked,
-        # Snapshot: this is what was sold, whatever the product becomes later.
-        product_name=item.product.commercial_name,
-        stone_type=item.product.stone_type,
-        grade=item.grade,
-        quantity_sqm=quantity,
-        unit_price=unit_price,
         total_amount=total,
         currency=locked.currency,
         note=(note or "").strip(),
         finalized_at=timezone.now(),
         created_by=membership.user,
+        **_header_snapshot(lines),
     )
+    _write_lines(trade, lines)
 
     locked.status = PurchaseRequest.Status.COMPLETED
     locked.save(update_fields=["status", "updated_at"])
@@ -377,7 +458,7 @@ def finalize_sale(
     _notify_business(
         locked.buyer_business,
         title="فروش نهایی شد",
-        body=f"{locked.seller_business.name} فروش «{trade.product_name}» را نهایی کرد.",
+        body=f"{locked.seller_business.name} فروش «{trade.summary_label}» را نهایی کرد.",
         link=f"/app/trading/sent/{locked.id}/",
     )
     logger.info("Trade finalized id=%s request=%s total=%s", trade.id, locked.id, total)
@@ -389,20 +470,27 @@ def record_direct_sale(
     *,
     seller_business: Business,
     membership: BusinessMembership,
-    item: InventoryLot | None,
-    quantity_sqm,
-    unit_price,
+    lines: list[dict] | None = None,
     buyer_business: Business | None = None,
     customer_name: str = "",
     customer_phone: str = "",
-    product_name: str = "",
     note: str = "",
     submission_id=None,
+    # Single-line shorthand, kept because most sales are one product and making
+    # every caller build a list to say so would be noise.
+    item: InventoryLot | None = None,
+    quantity_sqm=None,
+    unit_price=None,
+    product_name: str = "",
 ) -> Trade:
     """Record a sale that did not come through a purchase request.
 
     Most sales still happen over the phone. Forcing the seller to invent a
-    request first would make them stop recording sales at all.
+    request first would make them stop recording sales at all — and forcing them
+    to record a three-stone order as three sales would do the same.
+
+    One call is one commercial event however many lines it carries: one Trade,
+    one total, one entry in each party's book, one invoice.
 
     Idempotent on ``submission_id`` three ways, because none of them is
     sufficient alone: the seller's row is locked *before* the lookup so
@@ -417,15 +505,19 @@ def record_direct_sale(
         raise TradingError("دسترسی نامعتبر است.")
     _require_plan(seller_business, FINALIZE_SALES)
 
-    if item is not None and item.business_id != seller_business.id:
-        raise TradingError("این محصول متعلق به کسب‌وکار شما نیست.")
-
-    quantity = _quantize(quantity_sqm)
-    if quantity <= 0:
-        raise TradingError("متراژ باید بزرگ‌تر از صفر باشد.")
-    price = _quantize(unit_price, "0.01")
-    if price < 0:
-        raise TradingError("قیمت نمی‌تواند منفی باشد.")
+    if lines is None:
+        lines = [
+            {
+                "item": item,
+                "product_name": product_name,
+                "quantity": quantity_sqm,
+                "unit_price": unit_price,
+            }
+        ]
+    cleaned = [_clean_line(line, seller_business=seller_business) for line in lines if line]
+    if not cleaned:
+        raise TradingError("حداقل یک ردیف به این فروش اضافه کنید.")
+    total = sum((line["line_total"] for line in cleaned), Decimal("0")).quantize(Decimal("0.01"))
 
     if buyer_business is not None:
         if buyer_business.id == seller_business.id:
@@ -438,10 +530,6 @@ def record_direct_sale(
         customer_name = (customer_name or "").strip()
         if not customer_name:
             raise TradingError("نام مشتری را وارد کنید.")
-
-    snapshot_name = (product_name or "").strip() or (item.product.commercial_name if item else "")
-    if not snapshot_name:
-        raise TradingError("نام محصول را وارد کنید.")
 
     if submission_id is not None:
         # Lock first, then look. Checking before the lock is what lets two
@@ -465,17 +553,13 @@ def record_direct_sale(
                 buyer_business=buyer_business,
                 customer_name=customer_name,
                 customer_phone=(customer_phone or "").strip(),
-                item=item,
-                product_name=snapshot_name,
-                stone_type=item.product.stone_type if item else "",
-                grade=item.grade if item else "",
-                quantity_sqm=quantity,
-                unit_price=price,
-                total_amount=(price * quantity).quantize(Decimal("0.01")),
+                total_amount=total,
                 note=(note or "").strip(),
                 finalized_at=timezone.now(),
                 created_by=membership.user,
+                **_header_snapshot(cleaned),
             )
+            _write_lines(trade, cleaned)
     except IntegrityError:
         winner = (
             Trade.objects.filter(seller_business=seller_business, submission_id=submission_id).first()

@@ -78,6 +78,7 @@ def _recent_activity(business: Business) -> dict:
         "recent_trades": list(
             Trade.objects.filter(seller_business=business)
             .select_related("buyer_business")
+            .prefetch_related("items")
             .order_by("-finalized_at")[:PENDING_ROWS]
         ),
         "recent_invoices": list(

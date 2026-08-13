@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from apps.core.admin import HistoricalRecordAdmin
 
-from .models import PurchaseRequest, Trade
+from .models import PurchaseRequest, Trade, TradeItem
 
 
 @admin.register(PurchaseRequest)
@@ -25,6 +25,24 @@ class PurchaseRequestAdmin(admin.ModelAdmin):
         return False
 
 
+class TradeItemInline(admin.TabularInline):
+    """The sold lines, shown but never editable.
+
+    A line is history in exactly the way its trade is: the ledger and the invoice
+    were both derived from these numbers, so editing one here would leave three
+    records of one sale disagreeing with nothing to reconcile them.
+    """
+
+    model = TradeItem
+    extra = 0
+    can_delete = False
+    fields = ("product_name", "stone_type", "grade", "quantity", "unit", "unit_price", "line_total")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return False
+
+
 @admin.register(Trade)
 class TradeAdmin(HistoricalRecordAdmin):
     """A Trade is finalized the moment it exists, so it is read-only from the start.
@@ -39,12 +57,15 @@ class TradeAdmin(HistoricalRecordAdmin):
         "finalized_at",
         "seller_business",
         "counterparty_label",
-        "product_name",
-        "quantity_sqm",
+        "summary_label",
         "total_amount",
     )
     list_filter = ("counterparty_type", "currency")
     search_fields = ("product_name", "seller_business__name", "buyer_business__name", "customer_name")
+    inlines = [TradeItemInline]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("items")
 
     def has_add_permission(self, request) -> bool:
         # A trade is a consequence of finalizing a sale, never something typed in.

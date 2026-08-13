@@ -186,7 +186,7 @@
             {% for trade in recent_trades %}
               <a class="list-item" href="{% url 'trading:trade_detail' trade.id %}">
                 <div>
-                  <div class="list-title">{{ trade.product_name }}</div>
+                  <div class="list-title">{{ trade.summary_label }}</div>
                   <div class="muted">{{ trade.counterparty_label }}</div>
                 </div>
                 <strong dir="ltr">{{ trade.total_amount|rial }}</strong>

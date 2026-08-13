@@ -24,7 +24,7 @@ from apps.businesses.models import Business
 from apps.inventory.models import InventoryLot
 from apps.invoicing.models import SalesInvoice
 from apps.pricing.models import LotPrice
-from apps.trading.models import Trade
+from apps.trading.models import Trade, TradeItem
 
 ZERO = Decimal("0.00")
 MONEY = DecimalField(max_digits=18, decimal_places=2)
@@ -78,20 +78,52 @@ def _trades(business: Business, window: DateRange) -> QuerySet[Trade]:
     return window.apply_dt(Trade.objects.filter(seller_business=business), "finalized_at")
 
 
+def _lines(business: Business, window: DateRange) -> QuerySet[TradeItem]:
+    """The sold lines, for reports that break a sale down by what was in it.
+
+    Money is never summed across this queryset joined to ``Trade``: a two-line
+    sale would contribute its total twice. Reports that need both take the money
+    from the header and the breakdown from here.
+    """
+    return window.apply_dt(
+        TradeItem.objects.filter(trade__seller_business=business), "trade__finalized_at"
+    )
+
+
 def _money(value) -> Decimal:
     return Decimal(value or 0).quantize(Decimal("0.01"))
 
 
 # --- 1. sales by colleague ------------------------------------------------------
 
+#: What identifies one counterparty in a sales report: a colleague by id, or a
+#: walk-in customer by the name they were recorded under.
+_COUNTERPARTY_KEYS = ("buyer_business__id", "counterparty_type", "customer_name")
+
+
+def _key(row: dict, *, prefix: str = "") -> tuple:
+    return tuple(row[f"{prefix}{key}"] for key in _COUNTERPARTY_KEYS)
+
 
 def sales_by_colleague(business: Business, window: DateRange) -> list[dict]:
+    """Money and trade counts from the sale headers; metres from its lines.
+
+    Two aggregates rather than one join, because summing ``total_amount`` over a
+    join to the lines multiplies every multi-line sale by the number of stones in
+    it. Both are grouped on the same key and merged here, so neither number is
+    inflated.
+    """
+    quantities = {
+        _key(row, prefix="trade__"): row["quantity"]
+        for row in _lines(business, window)
+        .values(*[f"trade__{key}" for key in _COUNTERPARTY_KEYS])
+        .annotate(quantity=Coalesce(Sum("quantity"), Value(Decimal("0")), output_field=QUANTITY))
+    }
     rows = (
         _trades(business, window)
         .values("buyer_business__id", "buyer_business__name", "counterparty_type", "customer_name")
         .annotate(
             total=Coalesce(Sum("total_amount"), Value(ZERO), output_field=MONEY),
-            quantity=Coalesce(Sum("quantity_sqm"), Value(Decimal("0")), output_field=QUANTITY),
             trade_count=Count("id"),
         )
         .order_by("-total")
@@ -102,7 +134,7 @@ def sales_by_colleague(business: Business, window: DateRange) -> list[dict]:
             "business_id": row["buyer_business__id"],
             "is_colleague": row["counterparty_type"] == Trade.Counterparty.BUSINESS,
             "total": _money(row["total"]),
-            "quantity": row["quantity"],
+            "quantity": quantities.get(_key(row), Decimal("0")),
             "trade_count": row["trade_count"],
         }
         for row in rows
@@ -113,18 +145,20 @@ def sales_by_colleague(business: Business, window: DateRange) -> list[dict]:
 
 
 def sales_by_stone_type(business: Business, window: DateRange) -> list[dict]:
-    """Grouped on the trade's own snapshot, not the live product.
+    """Grouped on each sold line's own snapshot, not the live product.
 
     A product renamed or reclassified after the sale must not silently move
-    historical revenue into a different category.
+    historical revenue into a different category. Grouping happens on the lines
+    because one sale can legitimately span three stone types, and attributing all
+    of its revenue to whichever happened to be first would be wrong.
     """
     rows = (
-        _trades(business, window)
+        _lines(business, window)
         .values("stone_type")
         .annotate(
-            total=Coalesce(Sum("total_amount"), Value(ZERO), output_field=MONEY),
-            quantity=Coalesce(Sum("quantity_sqm"), Value(Decimal("0")), output_field=QUANTITY),
-            trade_count=Count("id"),
+            total=Coalesce(Sum("line_total"), Value(ZERO), output_field=MONEY),
+            quantity=Coalesce(Sum("quantity"), Value(Decimal("0")), output_field=QUANTITY),
+            trade_count=Count("trade", distinct=True),
         )
         .order_by("-total")
     )
@@ -144,12 +178,12 @@ def sales_by_stone_type(business: Business, window: DateRange) -> list[dict]:
 
 def sales_by_product(business: Business, window: DateRange) -> list[dict]:
     rows = (
-        _trades(business, window)
+        _lines(business, window)
         .values("product_name")
         .annotate(
-            total=Coalesce(Sum("total_amount"), Value(ZERO), output_field=MONEY),
-            quantity=Coalesce(Sum("quantity_sqm"), Value(Decimal("0")), output_field=QUANTITY),
-            trade_count=Count("id"),
+            total=Coalesce(Sum("line_total"), Value(ZERO), output_field=MONEY),
+            quantity=Coalesce(Sum("quantity"), Value(Decimal("0")), output_field=QUANTITY),
+            trade_count=Count("trade", distinct=True),
         )
         .order_by("-total")
     )
@@ -168,15 +202,22 @@ def sales_by_product(business: Business, window: DateRange) -> list[dict]:
 
 
 def sales_summary(business: Business, window: DateRange) -> dict:
-    """Headline numbers: total sold, total square metres, trade count."""
+    """Headline numbers: total sold, total square metres, trade count.
+
+    The money and the count come from the sale headers so a multi-line sale is
+    one sale for one amount; the metres come from its lines, which is the only
+    place they exist once a sale covers several stones.
+    """
     agg = _trades(business, window).aggregate(
         total=Coalesce(Sum("total_amount"), Value(ZERO), output_field=MONEY),
-        quantity=Coalesce(Sum("quantity_sqm"), Value(Decimal("0")), output_field=QUANTITY),
         trade_count=Count("id"),
+    )
+    metres = _lines(business, window).aggregate(
+        quantity=Coalesce(Sum("quantity"), Value(Decimal("0")), output_field=QUANTITY),
     )
     return {
         "total": _money(agg["total"]),
-        "quantity_sqm": agg["quantity"] or Decimal("0"),
+        "quantity_sqm": metres["quantity"] or Decimal("0"),
         "trade_count": agg["trade_count"],
     }
 

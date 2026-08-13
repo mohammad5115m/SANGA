@@ -173,12 +173,26 @@ class PurchaseRequest(models.Model):
 
 
 class Trade(models.Model):
-    """A finalized commercial transaction.
+    """A finalized commercial transaction: the header of one commercial event.
 
-    Carries its own copy of the commercial facts. A trade recorded today must
-    still read correctly after the product is renamed, repriced, marked
-    unavailable or deleted, so nothing here is looked up through ``item`` at
-    display time — the FK exists for navigation, not for rendering history.
+    The lines live on :class:`TradeItem`. A stone seller sells a colleague
+    travertine, marble and crystal in one conversation, and modelling that as
+    three trades meant three invoices, three ledger entries and three balances to
+    reconcile — so the workaround for a modelling gap produced worse bookkeeping
+    than the thing it worked around. One sale is one Trade, one total, one entry
+    per party and one invoice, however many stones it covers.
+
+    Carries its own copy of the commercial facts, as do its lines. A trade
+    recorded today must still read correctly after the product is renamed,
+    repriced, marked unavailable or deleted, so nothing here is looked up through
+    ``item`` at display time — the FK exists for navigation, not for rendering
+    history.
+
+    **The single-line columns below are legacy.** They predate ``TradeItem`` and
+    stay populated for one-line sales, which is every historical row and every
+    request-driven sale, so nothing that already reads them breaks. They are
+    blank on a multi-line trade, where ``items`` is the only truth. New readers
+    must go through ``items``.
     """
 
     class Counterparty(models.TextChoices):
@@ -237,8 +251,8 @@ class Trade(models.Model):
         related_name="trade",
     )
 
-    # --- historical snapshot ---
-    product_name = models.CharField("نام محصول", max_length=200)
+    # --- legacy single-line snapshot; see the class docstring ---
+    product_name = models.CharField("نام محصول", max_length=200, blank=True)
     stone_type = models.CharField("نوع سنگ", max_length=100, blank=True)
     grade = models.CharField("سورت", max_length=50, blank=True)
 
@@ -246,12 +260,16 @@ class Trade(models.Model):
         "متراژ",
         max_digits=12,
         decimal_places=3,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(Decimal("0.001"))],
     )
     unit_price = models.DecimalField(
         "قیمت واحد",
         max_digits=14,
         decimal_places=2,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(Decimal("0"))],
     )
     total_amount = models.DecimalField(
@@ -305,10 +323,80 @@ class Trade(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.product_name} × {self.quantity_sqm} = {self.total_amount}"
+        return f"{self.summary_label} = {self.total_amount}"
 
     @property
     def counterparty_label(self) -> str:
         if self.counterparty_type == self.Counterparty.BUSINESS and self.buyer_business_id:
             return self.buyer_business.name
         return self.customer_name or "مشتری"
+
+    @property
+    def summary_label(self) -> str:
+        """What to call this sale in a list, a heading or a notification.
+
+        A one-line sale is named after what was sold, because that is how the
+        seller remembers it. A multi-line sale is named by its size: inventing a
+        headline product for a basket of three stones would be a snapshot of
+        something that never happened.
+        """
+        lines = list(self.items.all())
+        if len(lines) == 1:
+            return lines[0].product_name
+        if lines:
+            return f"{len(lines)} قلم کالا"
+        return self.product_name or "معامله"
+
+
+class TradeItem(models.Model):
+    """One line of a finalized sale, carrying its own copy of what it describes.
+
+    Immutable history, exactly like a ``SalesInvoiceItem``: ``item`` is a
+    nullable FK kept purely for navigation, and nothing displayed reads through
+    it. Renaming, repricing or deleting the product must not rewrite a sale that
+    already happened.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    trade = models.ForeignKey(Trade, on_delete=models.CASCADE, related_name="items")
+    item = models.ForeignKey(
+        "inventory.InventoryLot",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trade_items",
+    )
+
+    # --- snapshot ---
+    product_name = models.CharField("نام محصول", max_length=200)
+    stone_type = models.CharField("نوع سنگ", max_length=100, blank=True)
+    grade = models.CharField("سورت", max_length=50, blank=True)
+
+    quantity = models.DecimalField(
+        "متراژ",
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
+    unit = models.CharField("واحد", max_length=20, default="متر مربع")
+    unit_price = models.DecimalField(
+        "قیمت واحد",
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    line_total = models.DecimalField(
+        "جمع",
+        max_digits=16,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "ردیف معامله"
+        verbose_name_plural = "ردیف‌های معامله"
+        ordering = ["sort_order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.product_name} × {self.quantity}"

@@ -297,12 +297,30 @@ def _format_quantity(quantity) -> str:
         return str(quantity)
 
 
+def _describe_trade(trade, verb: str) -> str:
+    """One line of statement text for a whole sale.
+
+    A one-line sale reads as what was sold, which is how both parties remember
+    it. A multi-line sale reads as its shape — naming it after the first stone
+    would describe the entry wrongly, and listing all of them would not fit the
+    column. The invoice carries the detail.
+    """
+    lines = list(trade.items.all())
+    if len(lines) == 1:
+        line = lines[0]
+        return f"{verb} {line.product_name} · {_format_quantity(line.quantity)} مترمربع"
+    if lines:
+        return f"{verb} {len(lines)} قلم کالا"
+    # Pre-TradeItem rows, and any trade whose lines could not be loaded.
+    return f"{verb} {trade.product_name} · {_format_quantity(trade.quantity_sqm)} مترمربع"
+
+
 def _trade_description(trade) -> str:
-    return f"فروش {trade.product_name} · {_format_quantity(trade.quantity_sqm)} مترمربع"
+    return _describe_trade(trade, "فروش")
 
 
 def _purchase_description(trade) -> str:
-    return f"خرید {trade.product_name} · {_format_quantity(trade.quantity_sqm)} مترمربع"
+    return _describe_trade(trade, "خرید")
 
 
 @dataclass(frozen=True)

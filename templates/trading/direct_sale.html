@@ -35,6 +35,29 @@
       </label>
     {% endfor %}
 
+    <section class="stack-md">
+      <h2 class="section-title">اقلام فروش</h2>
+      <p class="muted">می‌توانید چند محصول را در یک فروش ثبت کنید. یک فاکتور و یک سند مالی صادر می‌شود.</p>
+
+      {{ lines.management_form }}
+      {% if lines.non_form_errors %}
+        <div class="alert alert-error">{{ lines.non_form_errors|striptags }}</div>
+      {% endif %}
+
+      {% for line in lines %}
+        <fieldset class="panel stack-sm">
+          <legend class="section-subtitle">ردیف {{ forloop.counter }}</legend>
+          {% for field in line %}
+            <label class="field">
+              <span class="field-label">{{ field.label }}</span>
+              {{ field }}
+              {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+            </label>
+          {% endfor %}
+        </fieldset>
+      {% endfor %}
+    </section>
+
     <p class="muted">مشتری عادی حساب کاربری سنگا ندارد و برای او حسابی ساخته نمی‌شود.</p>
 
     <div class="btn-row">

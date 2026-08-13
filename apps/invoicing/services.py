@@ -147,15 +147,25 @@ def create_invoice_for_trade(
                 notes=(notes or "").strip(),
                 created_by=membership.user,
             )
-            SalesInvoiceItem.objects.create(
-                invoice=invoice,
-                item=trade.item,
-                product_name=trade.product_name,
-                stone_type=trade.stone_type,
-                grade=trade.grade,
-                quantity=trade.quantity_sqm,
-                unit_price=trade.unit_price,
-                line_total=trade.total_amount,
+            # One row per line of the sale. Copied from the trade's own lines
+            # rather than re-read from the products, so the document is fixed at
+            # the moment it is issued.
+            SalesInvoiceItem.objects.bulk_create(
+                [
+                    SalesInvoiceItem(
+                        invoice=invoice,
+                        item=line.item,
+                        product_name=line.product_name,
+                        stone_type=line.stone_type,
+                        grade=line.grade,
+                        quantity=line.quantity,
+                        unit=line.unit,
+                        unit_price=line.unit_price,
+                        line_total=line.line_total,
+                        sort_order=line.sort_order,
+                    )
+                    for line in trade.items.all()
+                ]
             )
     except IntegrityError:
         winner = SalesInvoice.objects.filter(trade=trade).first()

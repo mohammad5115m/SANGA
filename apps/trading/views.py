@@ -13,7 +13,13 @@ from apps.core.pagination import ROW_PAGE_SIZE, paginate
 from apps.inventory.policy import get_eligible_item
 from apps.invoicing.services import InvoiceError, create_invoice_for_trade
 
-from .forms import DirectSaleForm, FinalizeSaleForm, PurchaseRequestForm, PurchaseRequestResponseForm
+from .forms import (
+    DirectSaleForm,
+    DirectSaleLineFormSet,
+    FinalizeSaleForm,
+    PurchaseRequestForm,
+    PurchaseRequestResponseForm,
+)
 from .models import PurchaseRequest
 from .selectors import (
     filter_requests,
@@ -217,20 +223,22 @@ def direct_sale(request: HttpRequest) -> HttpResponse:
     request. It creates the Trade, posts both parties' books and issues the
     invoice in one transaction, so a colleague sale can never exist as a document
     with no matching balance.
+
+    One submission is one sale however many product rows it carries: one Trade,
+    one total, one entry in each book, one invoice.
     """
     form = DirectSaleForm(request.POST or None, business=request.business)
-    if request.method == "POST" and form.is_valid():
+    lines = DirectSaleLineFormSet(request.POST or None, business=request.business)
+
+    if request.method == "POST" and form.is_valid() and lines.is_valid():
         try:
             trade = record_direct_sale(
                 seller_business=request.business,
                 membership=request.membership,
-                item=form.cleaned_data.get("item"),
-                quantity_sqm=form.cleaned_data["quantity_sqm"],
-                unit_price=form.cleaned_data["unit_price"],
+                lines=lines.lines,
                 buyer_business=form.cleaned_data.get("buyer_business"),
                 customer_name=form.cleaned_data.get("customer_name", ""),
                 customer_phone=form.cleaned_data.get("customer_phone", ""),
-                product_name=form.cleaned_data.get("product_name", ""),
                 note=form.cleaned_data.get("note", ""),
                 submission_id=form.cleaned_data["submission_id"],
             )
@@ -240,7 +248,7 @@ def direct_sale(request: HttpRequest) -> HttpResponse:
             messages.success(request, "فروش ثبت شد.")
             return redirect("trading:trade_detail", trade_id=trade.id)
 
-    return render(request, "trading/direct_sale.html", {"form": form})
+    return render(request, "trading/direct_sale.html", {"form": form, "lines": lines})
 
 
 # --- trades -------------------------------------------------------------------

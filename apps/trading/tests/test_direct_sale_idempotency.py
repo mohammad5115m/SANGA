@@ -148,10 +148,12 @@ def test_the_form_carries_a_token_and_a_double_post_records_one_sale(client, mar
     payload = {
         "submission_id": str(token),
         "buyer_business": str(market["buyer"].id),
-        "item": str(market["item"].id),
-        "quantity_sqm": "10",
-        "unit_price": "1000000",
         "confirm": "on",
+        "form-TOTAL_FORMS": "1",
+        "form-INITIAL_FORMS": "0",
+        "form-0-item": str(market["item"].id),
+        "form-0-quantity": "10",
+        "form-0-unit_price": "1000000",
     }
     client.post(url, payload)
     client.post(url, payload)

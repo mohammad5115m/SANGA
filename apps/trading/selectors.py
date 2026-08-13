@@ -42,7 +42,13 @@ def filter_requests(qs: QuerySet[PurchaseRequest], *, status: str = "") -> Query
 
 
 def trades_for_seller(business: Business) -> QuerySet[Trade]:
-    return Trade.objects.filter(seller_business=business).select_related("buyer_business", "item")
+    # ``items`` is prefetched because every row renders ``summary_label``, which
+    # reads the lines. Without it a page of trades is a page of queries.
+    return (
+        Trade.objects.filter(seller_business=business)
+        .select_related("buyer_business", "item")
+        .prefetch_related("items")
+    )
 
 
 def get_trade(business: Business, trade_id) -> Trade | None:
@@ -51,6 +57,7 @@ def get_trade(business: Business, trade_id) -> Trade | None:
         Trade.objects.filter(pk=trade_id)
         .filter(models_q(business))
         .select_related("seller_business", "buyer_business", "item", "purchase_request")
+        .prefetch_related("items", "invoices")
         .first()
     )
 
