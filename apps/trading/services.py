@@ -89,6 +89,56 @@ def _notify_business(business: Business, *, title: str, body: str, link: str) ->
         )
 
 
+#: What to tell someone acting on a request that has already finished. Keyed by
+#: the status found under the lock, because that is the one that is true.
+_TERMINAL_REFUSALS: dict[str, str] = {
+    PurchaseRequest.Status.COMPLETED: "این فروش قبلاً نهایی شده است.",
+    PurchaseRequest.Status.REJECTED: "این درخواست رد شده است.",
+    PurchaseRequest.Status.CANCELLED: "این درخواست لغو شده است.",
+}
+
+#: Ending here would contradict a sale that has already been recorded.
+_ENDINGS_THAT_UNDO_A_SALE = frozenset(
+    {PurchaseRequest.Status.CANCELLED, PurchaseRequest.Status.REJECTED}
+)
+
+
+def _lock_for_transition(request: PurchaseRequest, *, to: str, refusal: str) -> PurchaseRequest:
+    """Re-read the request under a row lock, then decide whether ``to`` is legal.
+
+    Both halves matter. Validating the caller's in-memory instance decides
+    against a status that may have changed since the page rendered; validating
+    without the lock lets two connections each read ``ACCEPTED`` and each write a
+    different terminal status. The pairing that used to be missing produced the
+    worst outcome available: a CANCELLED request owning a Trade, a ledger pair
+    and an invoice — one commercial event described two contradictory ways.
+
+    The transition itself is checked against
+    :attr:`PurchaseRequest.ALLOWED_TRANSITIONS` rather than against whatever
+    condition each caller happened to write, so a status can only ever move the
+    way the product says it may.
+
+    There is no database constraint behind this. "A request with a Trade is not
+    cancelled" spans two tables, which PostgreSQL cannot express as a CHECK, and
+    a trigger would hide a commercial rule where nobody reading this module would
+    find it. The row lock is the enforcement; the concurrency tests are the
+    proof.
+    """
+    locked = (
+        PurchaseRequest.objects.select_for_update()
+        .select_related("seller_business", "buyer_business", "item", "item__product")
+        .get(pk=request.pk)
+    )
+
+    if to not in PurchaseRequest.ALLOWED_TRANSITIONS.get(locked.status, frozenset()):
+        raise TradingError(_TERMINAL_REFUSALS.get(locked.status, refusal))
+
+    if to in _ENDINGS_THAT_UNDO_A_SALE and Trade.objects.filter(purchase_request=locked).exists():
+        raise TradingError("این درخواست به فروش نهایی رسیده و دیگر قابل لغو یا رد نیست.")
+
+    return locked
+
+
 # --- buyer side ---------------------------------------------------------------
 
 
@@ -159,13 +209,19 @@ def cancel_purchase_request(*, request: PurchaseRequest, membership: BusinessMem
     _require(membership, PURCHASE_REQUEST)
     if request.buyer_business_id != membership.business_id:
         raise TradingError("این درخواست متعلق به کسب‌وکار شما نیست.")
-    if not request.is_open:
-        raise TradingError("این درخواست دیگر قابل لغو نیست.")
 
-    request.status = PurchaseRequest.Status.CANCELLED
-    request.decided_at = timezone.now()
-    request.save(update_fields=["status", "decided_at", "updated_at"])
-    return request
+    locked = _lock_for_transition(
+        request,
+        to=PurchaseRequest.Status.CANCELLED,
+        refusal="این درخواست دیگر قابل لغو نیست.",
+    )
+    if locked.buyer_business_id != membership.business_id:
+        raise TradingError("این درخواست متعلق به کسب‌وکار شما نیست.")
+
+    locked.status = PurchaseRequest.Status.CANCELLED
+    locked.decided_at = timezone.now()
+    locked.save(update_fields=["status", "decided_at", "updated_at"])
+    return locked
 
 
 # --- seller side --------------------------------------------------------------
@@ -189,39 +245,46 @@ def respond_to_purchase_request(
     _require(membership, PURCHASE_REQUEST)
     if request.seller_business_id != membership.business_id:
         raise TradingError("این درخواست متعلق به کسب‌وکار شما نیست.")
-    if request.status != PurchaseRequest.Status.SENT:
-        raise TradingError("به این درخواست قبلاً پاسخ داده شده است.")
 
-    request.seller_note = (seller_note or "").strip()
-    request.decided_at = timezone.now()
+    decision = PurchaseRequest.Status.ACCEPTED if accept else PurchaseRequest.Status.REJECTED
+    locked = _lock_for_transition(
+        request,
+        to=decision,
+        refusal="به این درخواست قبلاً پاسخ داده شده است.",
+    )
+    if locked.seller_business_id != membership.business_id:
+        raise TradingError("این درخواست متعلق به کسب‌وکار شما نیست.")
+
+    locked.seller_note = (seller_note or "").strip()
+    locked.decided_at = timezone.now()
 
     if not accept:
-        request.status = PurchaseRequest.Status.REJECTED
-        request.save(update_fields=["status", "seller_note", "decided_at", "updated_at"])
+        locked.status = PurchaseRequest.Status.REJECTED
+        locked.save(update_fields=["status", "seller_note", "decided_at", "updated_at"])
         _notify_business(
-            request.buyer_business,
+            locked.buyer_business,
             title="درخواست خرید رد شد",
-            body=f"{request.seller_business.name} درخواست شما را نپذیرفت.",
-            link=f"/app/trading/sent/{request.id}/",
+            body=f"{locked.seller_business.name} درخواست شما را نپذیرفت.",
+            link=f"/app/trading/sent/{locked.id}/",
         )
-        return request
+        return locked
 
     if final_qty_sqm not in (None, ""):
         qty = _quantize(final_qty_sqm)
         if qty <= 0:
             raise TradingError("متراژ نهایی باید بزرگ‌تر از صفر باشد.")
-        request.final_qty_sqm = qty
+        locked.final_qty_sqm = qty
     if final_unit_price not in (None, ""):
         price = _quantize(final_unit_price, "0.01")
         if price < 0:
             raise TradingError("قیمت نهایی نمی‌تواند منفی باشد.")
-        request.final_unit_price = price
+        locked.final_unit_price = price
 
-    if request.agreed_unit_price is None:
+    if locked.agreed_unit_price is None:
         raise TradingError("برای پذیرش درخواست، قیمت نهایی را وارد کنید.")
 
-    request.status = PurchaseRequest.Status.ACCEPTED
-    request.save(
+    locked.status = PurchaseRequest.Status.ACCEPTED
+    locked.save(
         update_fields=[
             "status",
             "final_qty_sqm",
@@ -232,12 +295,12 @@ def respond_to_purchase_request(
         ]
     )
     _notify_business(
-        request.buyer_business,
+        locked.buyer_business,
         title="درخواست خرید پذیرفته شد",
-        body=f"{request.seller_business.name} با درخواست شما موافقت کرد.",
-        link=f"/app/trading/sent/{request.id}/",
+        body=f"{locked.seller_business.name} با درخواست شما موافقت کرد.",
+        link=f"/app/trading/sent/{locked.id}/",
     )
-    return request
+    return locked
 
 
 @transaction.atomic
@@ -264,19 +327,17 @@ def finalize_sale(
 
     # Lock the row so two concurrent finalizations serialize; the second sees
     # COMPLETED and stops.
-    locked = (
-        PurchaseRequest.objects.select_for_update()
-        .select_related("seller_business", "buyer_business", "item", "item__product")
-        .get(pk=request.pk)
+    locked = _lock_for_transition(
+        request,
+        to=PurchaseRequest.Status.COMPLETED,
+        refusal="فقط درخواست‌های پذیرفته‌شده قابل نهایی شدن هستند.",
     )
+    if locked.seller_business_id != membership.business_id:
+        raise TradingError("این درخواست متعلق به کسب‌وکار شما نیست.")
     # Read the plan from the freshly-loaded row rather than from whatever the
     # caller had in memory: a subscription that lapsed since the page rendered
     # must block the sale.
     _require_plan(locked.seller_business, FINALIZE_SALES)
-    if locked.status == PurchaseRequest.Status.COMPLETED:
-        raise TradingError("این فروش قبلاً نهایی شده است.")
-    if locked.status != PurchaseRequest.Status.ACCEPTED:
-        raise TradingError("فقط درخواست‌های پذیرفته‌شده قابل نهایی شدن هستند.")
 
     unit_price = locked.agreed_unit_price
     if unit_price is None:

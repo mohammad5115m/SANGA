@@ -37,6 +37,25 @@ class PurchaseRequest(models.Model):
     #: Statuses in which the request is still waiting on somebody.
     OPEN_STATUSES = (Status.SENT, Status.ACCEPTED)
 
+    #: Every status change SANGA is willing to perform, keyed by the status the
+    #: request is *actually* in when the lock is taken.
+    #:
+    #: Written down rather than implied by four separate ``if`` statements
+    #: because the dangerous transitions are the ones nobody thought to forbid.
+    #: The three terminal states map to nothing at all: a request that has been
+    #: completed, rejected or cancelled is history, and a stale browser tab
+    #: POSTing against it must be refused rather than allowed to reopen it.
+    ALLOWED_TRANSITIONS = {
+        Status.SENT: frozenset({Status.ACCEPTED, Status.REJECTED, Status.CANCELLED}),
+        # Cancelling after agreement is legitimate — the deal falls through
+        # before anything is shipped. Cancelling after *finalization* is not,
+        # and is blocked separately because a Trade exists by then.
+        Status.ACCEPTED: frozenset({Status.COMPLETED, Status.CANCELLED}),
+        Status.COMPLETED: frozenset(),
+        Status.REJECTED: frozenset(),
+        Status.CANCELLED: frozenset(),
+    }
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     item = models.ForeignKey(
