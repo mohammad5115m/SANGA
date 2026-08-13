@@ -26,14 +26,22 @@ def _token() -> str:
 # New `is_visible=True` means discoverable by colleagues *and* the public, with
 # audience rules deciding what each one is shown.
 #
-# Mapping `colleagues -> True` therefore publishes items a seller had kept off
-# the public web: their existence, images, specifications and B2C price become
-# visible. B2B prices are unaffected, because the public payload is restricted
-# to the b2c tier independently in pricing.services and in the query layer.
+# Mapping `colleagues -> True` therefore *publishes* items a seller had
+# deliberately kept off the public web: their existence, images, specifications
+# and B2C price all become discoverable by anyone. B2B prices are unaffected —
+# the public payload is restricted to the b2c tier independently in
+# pricing.services and in the query layer — but the rest is a real widening of
+# audience, performed on the seller's behalf and without their consent.
 #
-# Flip this to False to take the conservative route (nothing new is exposed, but
-# those sellers silently drop out of the B2B marketplace until they re-publish).
-COLLEAGUES_BECOME_VISIBLE = True
+# A migration may not make that decision. Consent to publish is the seller's to
+# give, and an opt-out they were never shown is not consent. The conservative
+# mapping costs those sellers a re-publish; the permissive one costs them a
+# disclosure they cannot take back.
+#
+# So: old `public` publishes, everything else does not. Sellers whose items were
+# `colleagues` keep them, unpublished, and republish under the new rule when they
+# choose to. See docs/v2-migration-strategy.md §5.
+COLLEAGUES_BECOME_VISIBLE = False
 
 # Statuses that described "the seller is not offering this right now" rather
 # than a step in a workflow. They become availability, not status.

@@ -125,18 +125,48 @@ The chosen mapping is:
 | Old visibility | New `is_visible` |
 | --- | --- |
 | `private` | `False` |
-| `colleagues` | `True` |
+| `colleagues` | `False` |
 | `public` | `True` |
 
-**What this exposes:** items a seller had kept off the public web become publicly
-discoverable — their existence, images, specifications and B2C price.
+**Why `colleagues → False`.** Old `colleagues` meant "the B2B marketplace, never
+the public storefront". Mapping it to `True` would have made those items — their
+existence, images, specifications and B2C price — discoverable by anyone, on the
+seller's behalf and without their consent. B2B prices would have stayed protected
+(the public payload is restricted to the `b2c` tier at two independent layers: the
+audience gate in `pricing.services` and the tier-scoped prefetch in the query
+layer), but the rest is a real widening of audience.
 
-**What it does not expose:** B2B prices remain protected, because the public payload
-is restricted to the `b2c` tier at two independent layers (the audience gate in
-`pricing.services` and the tier-scoped prefetch in the query layer).
+A migration may not make that decision. Consent to publish is the seller's to
+give, and an opt-out they were never shown is not consent. The conservative
+mapping costs those sellers a re-publish; the permissive one costs them a
+disclosure they cannot take back.
 
-The migration keeps the mapping in a single module-level constant so the decision can
-be revisited without rewriting the migration.
+The mapping is a single module-level constant in `inventory.0005`, and
+`apps/inventory/tests/test_migrations.py` drives the real migration graph
+backwards to the pre-V2 schema and forwards again for every legacy
+visibility/status combination.
+
+### Correcting a database that ran the earlier mapping
+
+`inventory.0006` drops the `visibility` column, so by the time a corrective
+migration could run there is no record of which items were `colleagues` and which
+were `public`. Nothing distinguishes them, and guessing would either leave the
+disclosure in place or withdraw products the seller had always sold publicly.
+
+The correction is therefore operator-driven, not automatic:
+
+```bash
+python manage.py unpublish_v1_colleague_items --business <slug> --dry-run
+python manage.py unpublish_v1_colleague_items --business <slug>
+```
+
+The affected sellers are established from a pre-migration backup. The command
+refuses to run without a `--business` or `--item-codes-from` argument, because
+"unpublish everything" is not a correction. Items are unpublished, never deleted:
+the seller keeps them and republishes under the V2 rule when they choose to.
+
+No production database is affected. `master` — the deployed V1 — stops at
+`inventory.0003`; `0005` has only ever existed on the V2 branch.
 
 ## 6. Architectural keystone: one eligibility policy, one filter schema
 
