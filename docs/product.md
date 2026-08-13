@@ -89,6 +89,14 @@ Business or a User. Public customers are never platform Users.
 | Public customer | Browse and inquire | Never has an account; never sees a B2B price |
 | Platform Admin | Provision businesses and users | Django admin plus two management commands |
 
+Provisioning is also the **approval**. There is no self-service signup, so a
+Business exists because an admin checked who it was, and `create_business_for_owner`
+records that as `verification_status=VERIFIED`. Only verified businesses appear in
+the colleague directory, the marketplace, public search or shared catalogs. A
+business that loses that status keeps its own records and its accounting history
+— it stops being shown to other people, which is a different thing from being
+shut out.
+
 ## 6. Success metrics
 
 Product metrics, not necessarily instrumented yet:
@@ -100,6 +108,7 @@ Product metrics, not necessarily instrumented yet:
 - accepted requests → finalized sales
 - public product views → customer inquiries
 - inquiries containing more than one product
+- sales containing more than one product line
 - invoices issued
 - returning marketplace users
 - time to create or update a product

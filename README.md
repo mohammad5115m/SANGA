@@ -44,7 +44,9 @@ docker compose up --build
 - جستجوی عمومی: http://localhost:8000/search/
 - Health: http://localhost:8000/health/
 
-ورود توسعه: OTP در لاگ کانتینر `web` چاپ می‌شود (Console SMS provider).
+ورود توسعه: OTP در لاگ کانتینر `web` چاپ می‌شود (Console SMS provider). در
+پروداکشن `SMS_PROVIDER=kavenegar` است و اپلیکیشن بدون کلید و قالب تأییدشده بالا
+نمی‌آید؛ ارائه‌دهنده‌ای که پیامک نمی‌فرستد در پروداکشن پذیرفته نمی‌شود.
 
 ```bash
 docker compose exec web python manage.py seed_demo
@@ -77,6 +79,10 @@ python manage.py provision_user \
 
 مشتریان عمومی هرگز حساب کاربری ندارند.
 
+ساخت کسب‌وکار توسط ادمین، خودِ **تأیید** آن است؛ بنابراین
+`verification_status=verified` ثبت می‌شود و فقط کسب‌وکارهای تأییدشده در فهرست
+همکاران، بازار همکاران، جستجوی عمومی و کاتالوگ‌های اشتراکی دیده می‌شوند.
+
 ## ساختار
 
 ```text
@@ -88,7 +94,7 @@ apps/
   marketplace/  بازار همکاران
   catalog/      ویترین، جستجوی عمومی، کاتالوگ‌ها، لینک اشتراک
   inquiries/    مشتریان و استعلام‌های چندمحصولی
-  trading/      درخواست خرید و معامله نهایی
+  trading/      درخواست خرید و معامله نهایی (چندردیفی)
   invoicing/    فاکتور فروش
   accounting/   دفتر حساب تغییرناپذیر
   reporting/    گزارش‌های عملیاتی

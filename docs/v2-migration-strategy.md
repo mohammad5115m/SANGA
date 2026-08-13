@@ -207,3 +207,42 @@ This makes «ناموجود» and «استعلام موجودی» structurally i
 `استعلام موجودی` is derived from stock expiry, which does not.
 
 Freshness is computed at read time. No scheduled job mutates rows to express it.
+
+## 8. Final hardening migrations
+
+Four data migrations were added in the final hardening pass. Each follows §4, and
+each is worth knowing about before upgrading a populated database.
+
+| Migration | What it does | Reversible |
+| --- | --- | --- |
+| `trading.0002_trade_submission_idempotency` | Adds `submission_id` and its partial unique constraint | Yes, additive |
+| `trading.0004_backfill_trade_items` | Gives every existing Trade the single line it always implicitly had | Yes — the header columns were kept |
+| `businesses.0006_verify_provisioned_businesses` | Marks every ACTIVE, non-refused Business `VERIFIED` | Restores the previous value only |
+| `inventory.0011_normalize_catalog_text` | Seeds the discovery vocabulary and normalizes stored catalog text | Vocabulary only |
+
+**`trading.0004` never recomputes money.** `line_total` is taken from the trade's
+recorded `total_amount`, not from `quantity × unit_price`. Where the two disagree
+— a rounding difference, a hand-edited row — the recorded total wins and the
+discrepancy is reported, because a historical total is a commercial fact and a
+document that has already been handed to a customer does not get quietly
+corrected. The migration then refuses to complete unless every trade's lines sum
+back to its recorded total.
+
+**`businesses.0006` exposes nothing.** Every Business it touches is already
+visible on every discovery surface today; it records an approval a platform admin
+already made, so that the tightened policy binds new tenants. It deliberately
+leaves `PENDING` alone (something set it, so somebody is meant to look) and
+`REJECTED`/`SUSPENDED` alone (overturning a refusal in a migration would
+re-publish a Business the platform removed on purpose).
+
+**`inventory.0011` does not touch history.** `Trade`, `TradeItem`,
+`SalesInvoiceItem` and inquiry line snapshots keep the spelling they were
+recorded under. They are never searched, so normalizing them buys nothing, and
+rewriting the text on a past invoice is exactly the silent change to history §4
+forbids. Its normalization is also **not reversed** on rollback: there is no
+record of the previous spelling, and inventing one would corrupt data rather than
+restore it.
+
+Before upgrading a populated database, take a backup. `trading.0004` is the one
+to verify afterwards — compare `SELECT SUM(total_amount) FROM trading_trade`
+against `SELECT SUM(line_total) FROM trading_tradeitem`.

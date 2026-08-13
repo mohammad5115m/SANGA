@@ -93,9 +93,31 @@ Requested and agreed values are separate columns (`requested_qty_sqm` versus
 `final_qty_sqm`, and the same for price), because "you asked for 200 at 1.5m, I
 can do 180 at 1.6m" is the normal conversation and both halves matter afterwards.
 
-`Trade` carries `product_name`, `stone_type` and `grade` **snapshots**. Nothing
-on a trade page reads through `item`, which is `SET_NULL` and exists for
-navigation only.
+`Trade` is a commercial **header**; `TradeItem` carries the lines. One sale is
+one Trade, one total, one entry in each party's book and one invoice, however
+many stones it covered — a seller who sells travertine, marble and crystal in one
+phone call is doing one deal, and recording it as three produced three invoices
+and three balances to reconcile.
+
+Each `TradeItem` carries its own `product_name`, `stone_type`, `grade`,
+`quantity`, `unit_price` and `line_total` **snapshots**. Nothing on a trade page
+reads through `item`, which is `SET_NULL` on both the header and the line and
+exists for navigation only.
+
+`Trade.product_name`, `stone_type`, `grade`, `quantity_sqm`, `unit_price` and
+`item` are **legacy single-line columns**. They predate `TradeItem`, are still
+written for a one-line sale — every historical row and every request-driven sale
+— and are blank on a multi-line trade. New readers go through `items`; removing
+them is a later change.
+
+`Trade.submission_id` plus `uniq_trade_per_submission` (partial, scoped by
+seller) make one direct-sale submission at most one sale. Finalizing a request is
+idempotent through the `OneToOneField` to it; a direct sale has no request, so it
+needed its own key.
+
+`PurchaseRequest.ALLOWED_TRANSITIONS` enumerates every status change the product
+performs, and each one is applied to a row re-read under `select_for_update()`.
+See [trading.md](./trading.md) §7.
 
 ## 6. Accounting
 

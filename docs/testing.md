@@ -9,6 +9,27 @@ python manage.py makemigrations --check
 ruff check .
 ```
 
+## The PostgreSQL lane is not a slower copy of the fast one
+
+```bash
+./scripts/run_pg_tests.sh                  # the whole suite, on PostgreSQL
+./scripts/run_pg_tests.sh -m concurrency   # only the tests SQLite cannot run
+```
+
+Tests marked `@pytest.mark.concurrency` **skip themselves on SQLite**, because
+SQLite serializes writers behind one database lock and ignores
+`select_for_update` entirely. A concurrency test that passes there proves
+nothing: the second caller always arrives after the first has finished, so the
+test is green whether the locking is right or absent.
+
+These are the only tests that exercise the row locks and partial unique indexes
+the financial and OTP invariants depend on, so CI fails the job if any of them
+were **collected but skipped** — a silently-skipped concurrency suite is worse
+than none, because the green tick claims something nobody checked.
+
+They earn it. One of them caught the `cancel` versus `accept` ordering rule
+during the final hardening pass, on PostgreSQL, after passing on SQLite.
+
 ## Definition of done for every phase
 
 A change is not finished until all five of these are green:
@@ -47,6 +68,39 @@ deleted migration-only app. See [v2-migration-strategy.md](./v2-migration-strate
     the test
 13. **Query budgets** — flat in row count, so an N+1 fails immediately
     (`apps/core/tests/test_query_budgets.py`)
+14. **Idempotency** — one submission token is one sale, one ledger pair and one
+    invoice, sequentially and under contention
+15. **State transitions** — a request with a Trade can never settle as cancelled
+    or rejected, under any interleaving
+16. **Media limits** — a decompression bomb is refused before it is decoded
+17. **Normalization** — a product stored with Arabic letterforms is found by a
+    query typed with Persian ones, and the reverse
+
+## Branch protection
+
+CI is only a gate if it blocks. `master` requires:
+
+- a pull request before merge, with no direct pushes;
+- the branch up to date with `master` before merging;
+- all of these checks passing:
+
+| Check | Job |
+|-------|-----|
+| Lint and system checks | `lint` |
+| Tests (SQLite) | `tests` |
+| Tests and concurrency (PostgreSQL) | `postgres` |
+| Fresh migrate from zero | `migrations` |
+| Production settings fail closed | `deploy_check` |
+| Dependency vulnerabilities | `dependency_audit` |
+
+The dependency audit became blocking once the pins were clean. It was advisory
+while they carried known vulnerabilities, which meant the job was permanently red
+and therefore told nobody anything.
+
+To apply, in **Settings → Branches → Add branch ruleset** for `master`: require a
+pull request, require status checks to pass, select the six jobs above, and
+require branches to be up to date. This is documented rather than applied because
+it needs repository-admin rights that the tooling here does not have.
 
 ## Conventions
 
