@@ -29,7 +29,8 @@ from apps.pricing.models import LotPrice
 from apps.pricing.services import set_lot_price
 
 from .media_validation import MediaValidationError, verify_image, verify_video
-from .models import Application, InventoryLot, LotMedia, Product
+from .models import Application, InventoryLot, LotMedia, Product, VocabularyTerm
+from .taxonomy import canonical, normalize_searchable
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +115,19 @@ def create_or_get_product(
             product.applications.set(applications)
         return product
 
-    name = (commercial_name or "").strip()
+    # Normalized on the way in, not on the way out. Storing whatever the
+    # seller's keyboard produced and normalizing only the search query protected
+    # nothing: a product entered with an Arabic ي was invisible to a search typed
+    # with a Persian ی. See apps/inventory/taxonomy.py.
+    name = normalize_searchable(commercial_name)
     if len(name) < 2:
         raise InventoryError("نام محصول خیلی کوتاه است.")
     product = Product.objects.create(
         business=business,
         commercial_name=name,
-        stone_type=(stone_type or "").strip(),
-        primary_color=(primary_color or "").strip(),
-        quarry_region=(quarry_region or "").strip(),
+        stone_type=canonical(VocabularyTerm.Kind.STONE_TYPE, stone_type),
+        primary_color=canonical(VocabularyTerm.Kind.COLOR, primary_color),
+        quarry_region=normalize_searchable(quarry_region),
     )
     if applications:
         product.applications.set(applications)
@@ -193,8 +198,8 @@ def create_draft_item(
         location_province=(location_province or business.province or "").strip(),
         location_city=(location_city or business.city or "").strip(),
         location_address=(location_address or "").strip(),
-        grade=(grade or "").strip(),
-        processing_type=(processing_type or "").strip(),
+        grade=normalize_searchable(grade),
+        processing_type=canonical(VocabularyTerm.Kind.FINISH, processing_type),
         description=(description or "").strip(),
         length_cm=length_cm,
         width_cm=width_cm,
@@ -268,13 +273,24 @@ def update_item(
         "is_visible",
         "availability_status",
     }
+    #: Searchable text goes through the same normalization on edit as on create.
+    #: Applying it only at creation would let an edit reintroduce exactly the
+    #: unsearchable spelling the create path exists to prevent.
+    normalizers = {
+        "processing_type": lambda value: canonical(VocabularyTerm.Kind.FINISH, value),
+        "grade": normalize_searchable,
+        "location_province": normalize_searchable,
+        "location_city": normalize_searchable,
+    }
+
     stock_changed = False
     for key, value in fields.items():
         if key not in allowed:
             continue
         if key in {"available_sqm", "stock_mode"} and getattr(lot, key) != value:
             stock_changed = True
-        setattr(lot, key, value)
+        normalize = normalizers.get(key)
+        setattr(lot, key, normalize(value) if normalize and isinstance(value, str) else value)
 
     # Changing the number restarts the window: the seller has just told us what
     # it is now.

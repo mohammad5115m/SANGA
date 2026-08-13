@@ -51,6 +51,7 @@ from .services import (
     set_primary_media,
     update_item,
 )
+from .taxonomy import vocabulary_context
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,7 @@ def lot_edit(request: HttpRequest, lot_id) -> HttpResponse:
             "b2b_form": b2b_form,
             "b2c_form": b2c_form,
             "can_edit_prices": can_edit_prices,
+            "vocabulary": vocabulary_context(),
         },
     )
 
@@ -408,6 +410,7 @@ def quick_add_product(request: HttpRequest) -> HttpResponse:
             "step": 1,
             "total_steps": WIZARD_STEPS,
             "products": products_for_business(request.business)[:30],
+            "vocabulary": vocabulary_context(),
         },
     )
 
@@ -448,7 +451,7 @@ def quick_add_details(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "inventory/wizard/details.html",
-        {"form": form, "step": 2, "total_steps": WIZARD_STEPS},
+        {"form": form, "step": 2, "total_steps": WIZARD_STEPS, "vocabulary": vocabulary_context()},
     )
 
 

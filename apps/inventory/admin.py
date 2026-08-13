@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from .models import Application, InventoryLot, LotMedia, Product
+from .models import Application, InventoryLot, LotMedia, Product, VocabularyTerm
+from .taxonomy import clear_cache
 
 
 class LotMediaInline(admin.TabularInline):
@@ -14,6 +15,29 @@ class ApplicationAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     search_fields = ("name", "code")
     prepopulated_fields = {"code": ("name",)}
+
+
+@admin.register(VocabularyTerm)
+class VocabularyTermAdmin(admin.ModelAdmin):
+    """The platform's controlled discovery vocabulary.
+
+    Editing a term changes how the next product saved is spelled, not how the
+    existing ones are: a rename here is a decision about future data, and
+    rewriting what sellers already entered is a migration somebody should look
+    at, not a side effect of an admin save.
+    """
+
+    list_display = ("name", "kind", "sort_order", "is_active")
+    list_filter = ("kind", "is_active")
+    search_fields = ("name",)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        clear_cache()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        clear_cache()
 
 
 @admin.register(Product)

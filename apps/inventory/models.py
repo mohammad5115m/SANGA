@@ -47,6 +47,93 @@ class Application(models.Model):
 #: Seeded by the ``sync_applications`` data migration and kept in code so the
 #: list is reviewable in a diff. Extending it means adding a row here plus a
 #: migration that calls the same sync helper.
+class VocabularyTerm(models.Model):
+    """A controlled term for one product-discovery dimension.
+
+    ``Application`` proved the shape: buyers filter on it, free text cannot be
+    filtered reliably, and a platform-wide list means one seller's search matches
+    another seller's products. Stone type, colour and surface finish are the same
+    kind of field and were left as free text, so «مرمریت», «مرمريت» and «مرمریت
+    لاشتر» were three unrelated values for filtering purposes.
+
+    One table with a ``kind`` discriminator rather than three near-identical
+    models: they differ only in what they list, and one seeding migration and one
+    admin screen is less to keep in step.
+
+    **The columns on Product and InventoryLot stay.** A term is the canonical
+    spelling, not a foreign key: sellers still type, the form offers the list,
+    and the service maps what was typed onto a term when it recognises it. That
+    keeps the long tail of real Iranian stone names recordable — refusing a name
+    because it is not on a list would make the product unusable for the sellers
+    it exists for — while stopping the common values fragmenting.
+    """
+
+    class Kind(models.TextChoices):
+        STONE_TYPE = "stone_type", "نوع سنگ"
+        COLOR = "color", "رنگ غالب"
+        FINISH = "processing_type", "نوع فرآوری"
+
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    #: The spelling SANGA stores when it recognises a value.
+    name = models.CharField("عنوان", max_length=100)
+    #: Other spellings that mean this term, matched after normalization. Where
+    #: the fragmentation actually comes from: «کریستال» and «چینی» are the same
+    #: stone, and no amount of orthographic normalization would ever join them.
+    aliases = models.JSONField(default=list, blank=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "واژه‌نامه"
+        verbose_name_plural = "واژه‌نامه‌ها"
+        ordering = ["kind", "sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=["kind", "name"], name="uniq_vocabulary_term"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()}: {self.name}"
+
+
+#: Seeded on migration. Aliases carry the spellings that normalization cannot
+#: reach on its own — different words for one stone, not different letters.
+DEFAULT_VOCABULARY: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    VocabularyTerm.Kind.STONE_TYPE: (
+        ("تراورتن", ("تراورتون", "travertine")),
+        ("مرمریت", ("مرمر", "marble")),
+        ("گرانیت", ("granite",)),
+        ("کریستال", ("چینی", "سنگ چینی", "crystal")),
+        ("مرمر انیکس", ("انیکس", "اونیکس", "onyx")),
+        ("لایم استون", ("لایم‌استون", "limestone")),
+        ("تراونیکس", ("تراونیکس", "traonyx")),
+        ("چینی ازنا", ()),
+        ("دهبید", ()),
+    ),
+    VocabularyTerm.Kind.COLOR: (
+        ("کرم", ("کرمی",)),
+        ("سفید", ()),
+        ("بژ", ()),
+        ("طوسی", ("خاکستری", "گری")),
+        ("مشکی", ("سیاه",)),
+        ("قهوه‌ای", ("قهوه ای",)),
+        ("قرمز", ("سرخ",)),
+        ("زرد", ()),
+        ("سبز", ()),
+        ("صورتی", ()),
+        ("چندرنگ", ("چند رنگ", "ملتی")),
+    ),
+    VocabularyTerm.Kind.FINISH: (
+        ("صیقلی", ("پولیش", "براق")),
+        ("ساب خورده", ("ساب‌خورده", "هوند")),
+        ("چرمی", ("لدر",)),
+        ("چکشی", ("بوش همر",)),
+        ("سندبلاست", ("سند بلاست", "تیشه‌ای")),
+        ("برش خورده", ("برش‌خورده", "کات")),
+        ("آنتیک", ()),
+    ),
+}
+
+
 DEFAULT_APPLICATIONS: tuple[tuple[str, str], ...] = (
     ("exterior-facade", "نمای بیرونی"),
     ("interior-wall", "دیوار داخلی"),

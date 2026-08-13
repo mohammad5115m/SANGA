@@ -131,6 +131,43 @@ answer a question about quantity or price. Items with no current price sort last
 in both directions, because «ارزان‌ترین» must not be led by things that have no
 price at all.
 
+## 5a. Searchable text is normalized on the way in
+
+`normalize_persian_text` existed and was applied to the incoming search query. It
+was never applied to what was stored, which protected one side of a comparison
+and neither side of the problem: a product entered on an Arabic keyboard —
+«مرمريت» with ي — was invisible to a search typed on a Persian one, and the
+reverse. Both keyboards are ordinary.
+
+Normalization now happens on **write**, in `apps/inventory/services.py`, so the
+stored value is the one that will be searched. Doing it on read would mean every
+query paying for a scan, and would still count two spellings of one stone as two
+things in every report.
+
+Orthography is only half of it. «کریستال» and «چینی» are the same stone and no
+letter-level normalization will ever join them, so `VocabularyTerm` holds a
+platform-wide controlled list per dimension with the synonyms that mean each
+term:
+
+| Dimension | Controlled | Why |
+|-----------|-----------|-----|
+| Stone type | yes | The main facet buyers filter on |
+| Primary colour | yes | Small, closed, and heavily filtered |
+| Processing/finish | yes | Same |
+| Quarry/region | no | Hundreds of Iranian quarries; a closed list is wrong within a month |
+| Grade/sort | no | The industry genuinely does not share one vocabulary |
+
+The controlled dimensions are offered as a `<datalist>`, not a `<select>`. A
+value that matches no term is still stored — normalized — because Iranian stone
+naming has a long tail, and a seller who cannot record the stone they actually
+have stops recording stone.
+
+`Trade`, `TradeItem`, `SalesInvoiceItem` and inquiry line snapshots are
+deliberately **not** normalized. Those are historical commercial facts on
+documents that may already have been handed to a customer; they are never
+searched, so normalizing them buys nothing and rewriting them would be a silent
+change to history.
+
 ## 6. Applications are a controlled vocabulary
 
 `Application` is a platform-wide taxonomy (`inventory.0007`), not free text.

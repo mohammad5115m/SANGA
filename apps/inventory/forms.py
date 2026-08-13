@@ -31,17 +31,23 @@ class ProductPickForm(forms.Form):
         max_length=200,
         widget=forms.TextInput(attrs={**_TEXT, "placeholder": "مثلاً تراورتن عباس‌آباد"}),
     )
+    # A datalist rather than a select: it steers towards the platform vocabulary
+    # while still accepting the long tail of real Iranian stone names. A closed
+    # list here would make sellers unable to record products they actually have,
+    # and a seller who cannot record their stock stops using the product.
     stone_type = forms.CharField(
         label="نوع سنگ",
         required=False,
         max_length=100,
-        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "تراورتن"}),
+        widget=forms.TextInput(
+            attrs={**_TEXT, "placeholder": "تراورتن", "list": "vocab-stone_type"}
+        ),
     )
     primary_color = forms.CharField(
         label="رنگ غالب",
         required=False,
         max_length=100,
-        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "کرم"}),
+        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "کرم", "list": "vocab-color"}),
     )
     quarry_region = forms.CharField(
         label="معدن/منطقه",
@@ -88,7 +94,9 @@ class ItemDetailsForm(forms.Form):
         label="نوع فرآوری",
         required=False,
         max_length=100,
-        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "صیقلی / هوند"}),
+        widget=forms.TextInput(
+            attrs={**_TEXT, "placeholder": "صیقلی / ساب خورده", "list": "vocab-processing_type"}
+        ),
     )
     length_cm = forms.DecimalField(
         label="طول (cm)", required=False, min_value=0, decimal_places=2, max_digits=8,
