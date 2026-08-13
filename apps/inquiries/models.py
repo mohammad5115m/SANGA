@@ -89,6 +89,17 @@ class Inquiry(models.Model):
         OTHER = "other", "سایر"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: Groups the inquiries produced by one public submission.
+    #:
+    #: A customer's selection can span several sellers, and each seller gets
+    #: their own inquiry. Without a token identifying the submission, a failure
+    #: partway through left the earlier sellers' inquiries committed while the
+    #: page reported an error — and the retry the customer then made duplicated
+    #: them. Minted before the OTP is sent, so a refresh, a double-click or a
+    #: resubmitted form all carry the same one.
+    #:
+    #: Null for inquiries that did not come from the public submission flow.
+    submission_id = models.UUIDField(null=True, blank=True, editable=False, db_index=True)
     business = models.ForeignKey(
         "businesses.Business",
         on_delete=models.CASCADE,
@@ -143,6 +154,16 @@ class Inquiry(models.Model):
         ordering = ["-created_at"]
         verbose_name = "استعلام"
         verbose_name_plural = "استعلام‌ها"
+        constraints = [
+            # One submission yields at most one inquiry per seller. This is the
+            # invariant a retry relies on: the second attempt loses the race and
+            # is handed the first attempt's row instead of creating a twin.
+            models.UniqueConstraint(
+                fields=["submission_id", "business"],
+                condition=models.Q(submission_id__isnull=False),
+                name="uniq_inquiry_per_submission_and_seller",
+            ),
+        ]
         indexes = [
             models.Index(fields=["business", "status", "created_at"]),
         ]

@@ -27,21 +27,19 @@
     {% endfor %}
   </div>
 
-  <section class="panel stack-md">
-    <h2 class="section-title">درخواست مشاوره برای این کاتالوگ</h2>
-    <form method="post" class="stack-md" novalidate>
-      {% csrf_token %}
-      {% if inquiry_form.non_field_errors %}
-        <div class="alert alert-error">{{ inquiry_form.non_field_errors|striptags }}</div>
-      {% endif %}
-      {% for field in inquiry_form %}
-        <label class="field">
-          <span class="field-label">{{ field.label }}</span>
-          {{ field }}
-        </label>
-      {% endfor %}
-      <button class="btn btn-primary" type="submit">ارسال</button>
-    </form>
+  {# A catalog inquiry with no products and no quantities told the seller almost
+     nothing. Selecting first is what makes the request answerable. #}
+  <section class="panel stack-sm">
+    <h2 class="section-title">استعلام از این کاتالوگ</h2>
+    {% if selection_count %}
+      <p class="muted">{{ selection_count }} محصول انتخاب کرده‌اید.</p>
+      <a class="btn btn-primary" href="{% url 'catalog:inquiry_review' %}">ادامه استعلام</a>
+    {% else %}
+      <p class="muted">
+        محصولی را که می‌خواهید درباره‌اش بپرسید انتخاب کنید، سپس متراژ مورد نیاز و
+        شماره موبایلتان را وارد کنید.
+      </p>
+    {% endif %}
   </section>
 
   {% include "catalog/_share_actions.html" %}

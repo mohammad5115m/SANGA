@@ -191,6 +191,123 @@ def test_a_selection_spanning_two_sellers_becomes_two_inquiries(client, market, 
     assert [line.product_name for line in other_inquiry.items.all()] == ["گرانیت نطنز"]
 
 
+# --- one submission, one set of inquiries ---------------------------------------
+
+
+def _run_flow(client, phone: str) -> None:
+    client.post(reverse("catalog:inquiry_review"), {}, follow=True)
+    client.post(
+        reverse("catalog:inquiry_identify"),
+        {"name": "مشتری", "phone": phone},
+        follow=True,
+    )
+    client.post(reverse("catalog:inquiry_verify"), {"code": _dev_code(phone)}, follow=True)
+
+
+@pytest.mark.django_db
+def test_every_inquiry_from_one_submission_shares_a_token(client, market, settings):
+    settings.DEBUG = True
+    settings.SMS_PROVIDER = "console"
+
+    _select(client, market["first"])
+    _select(client, market["third"])
+    _run_flow(client, "09121113300")
+
+    tokens = set(Inquiry.objects.values_list("submission_id", flat=True))
+    assert len(tokens) == 1
+    assert None not in tokens
+
+
+@pytest.mark.django_db
+def test_resubmitting_the_same_token_creates_nothing_new(market):
+    """AUD-010. A browser retry, a double-click or a refresh after a partial
+    failure used to duplicate every seller inquiry that had already committed."""
+    from apps.inquiries.services import submit_public_inquiry
+
+    token = "3f1a5b0c-0000-4000-8000-000000000001"
+    groups = [
+        {"business": market["seller"], "rows": [{"item": market["first"], "quantity": Decimal("10")}]},
+        {"business": market["other"], "rows": [{"item": market["third"], "quantity": Decimal("20")}]},
+    ]
+
+    first = submit_public_inquiry(
+        submission_id=token, groups=groups, name="مشتری", phone="09121113311", verified=True
+    )
+    second = submit_public_inquiry(
+        submission_id=token, groups=groups, name="مشتری", phone="09121113311", verified=True
+    )
+
+    assert Inquiry.objects.count() == 2
+    assert {row.pk for row in first} == {row.pk for row in second}
+
+
+@pytest.mark.django_db
+def test_a_failure_on_the_second_seller_leaves_nothing_behind(market):
+    """All or nothing. The loop used to run outside any transaction, so the first
+    seller's inquiry stayed committed while the page reported failure."""
+    from apps.inquiries.services import InquiryError, submit_public_inquiry
+
+    token = "3f1a5b0c-0000-4000-8000-000000000002"
+    groups = [
+        {"business": market["seller"], "rows": [{"item": market["first"], "quantity": Decimal("10")}]},
+        # A product belonging to a different seller than the group claims: the
+        # service refuses it rather than silently dropping it.
+        {"business": market["other"], "rows": [{"item": market["second"], "quantity": Decimal("20")}]},
+    ]
+
+    with pytest.raises(InquiryError):
+        submit_public_inquiry(
+            submission_id=token, groups=groups, name="مشتری", phone="09121113322", verified=True
+        )
+
+    assert not Inquiry.objects.exists()
+
+
+@pytest.mark.django_db
+def test_the_retry_after_a_failure_records_the_whole_submission_once(market):
+    from apps.inquiries.services import InquiryError, submit_public_inquiry
+
+    token = "3f1a5b0c-0000-4000-8000-000000000003"
+    broken = [
+        {"business": market["seller"], "rows": [{"item": market["first"], "quantity": Decimal("10")}]},
+        {"business": market["other"], "rows": [{"item": market["second"], "quantity": Decimal("20")}]},
+    ]
+    fixed = [
+        {"business": market["seller"], "rows": [{"item": market["first"], "quantity": Decimal("10")}]},
+        {"business": market["other"], "rows": [{"item": market["third"], "quantity": Decimal("20")}]},
+    ]
+
+    with pytest.raises(InquiryError):
+        submit_public_inquiry(
+            submission_id=token, groups=broken, name="مشتری", phone="09121113333", verified=True
+        )
+    submit_public_inquiry(
+        submission_id=token, groups=fixed, name="مشتری", phone="09121113333", verified=True
+    )
+
+    assert Inquiry.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_two_separate_submissions_are_two_sets_of_inquiries(client, market, settings):
+    """Idempotency must not turn a genuine second question into a no-op.
+
+    Two phones rather than one, because the OTP cooldown — correctly — refuses a
+    second code for the same number within the minute, and that is a different
+    rule from the one under test here.
+    """
+    settings.DEBUG = True
+    settings.SMS_PROVIDER = "console"
+
+    _select(client, market["first"])
+    _run_flow(client, "09121113344")
+    _select(client, market["first"])
+    _run_flow(client, "09121113355")
+
+    assert Inquiry.objects.count() == 2
+    assert len(set(Inquiry.objects.values_list("submission_id", flat=True))) == 2
+
+
 # --- customers are not platform users ------------------------------------------
 
 

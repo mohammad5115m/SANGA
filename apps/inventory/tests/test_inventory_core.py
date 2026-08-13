@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from django.urls import reverse
 
 from apps.core.testing import (
     expire_stock,
@@ -252,10 +253,21 @@ def test_unknown_user_cannot_be_used_as_a_membership(seller):
 
 
 @pytest.mark.django_db
-def test_a_buyer_can_ask_about_stale_stock_and_the_seller_can_answer(client, seller):
-    """The «استعلام موجودی» loop: ask, notify, confirm, and the number returns."""
+def test_a_buyer_can_ask_about_stale_stock_and_the_seller_can_answer(
+    client, seller, settings, django_capture_on_commit_callbacks
+):
+    """The «استعلام موجودی» loop: ask, verify, notify, confirm, number returns.
+
+    It runs through the same pipeline as every other public inquiry, so the phone
+    behind it is verified like every other. Before, it was a name-and-phone form
+    that saved straight away.
+    """
     from apps.inquiries.models import Inquiry
+    from apps.inquiries.tests.test_public_inquiry import _dev_code
     from apps.notifications.models import Notification
+
+    settings.DEBUG = True
+    settings.SMS_PROVIDER = "console"
 
     item = make_item(seller, lot_code="ASK-1", available_sqm="650", stock_valid_for_days=3, b2c="100")
     expire_stock(item)
@@ -263,16 +275,31 @@ def test_a_buyer_can_ask_about_stale_stock_and_the_seller_can_answer(client, sel
     page = client.get(f"/p/{item.public_token}/").content.decode()
     assert "استعلام موجودی" in page
 
-    response = client.post(
-        f"/stock-inquiry/{item.id}/",
+    started = client.post(f"/stock-inquiry/{item.id}/")
+    assert started.status_code == 302
+    assert not Inquiry.objects.exists(), "nothing is recorded before the phone is verified"
+
+    client.post(
+        reverse("catalog:inquiry_identify"),
         {"name": "آقای رضایی", "phone": "09123334455"},
         follow=True,
     )
+    # The seller notification is scheduled with transaction.on_commit, so a
+    # notification is never sent for an inquiry that rolled back. Nothing commits
+    # inside a django_db test, so the callbacks are run explicitly.
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.post(
+            reverse("catalog:inquiry_verify"),
+            {"code": _dev_code("09123334455")},
+            follow=True,
+        )
     assert response.status_code == 200
 
     inquiry = Inquiry.objects.get()
     assert inquiry.business_id == seller.id
     assert inquiry.items.get().item_id == item.id
+    assert inquiry.message == "درخواست استعلام موجودی"
+    assert inquiry.lead.is_verified
     assert Notification.objects.filter(business=seller).exists()
 
     confirm_item_stock(lot=item, membership=owner_membership(seller), available_sqm=Decimal("300"))

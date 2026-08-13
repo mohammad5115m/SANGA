@@ -14,9 +14,10 @@ Expects: lot, product, stock
     <strong{% if stock.is_inquiry %} class="stock-line-inquiry"{% endif %}>{{ stock.label }}</strong>
   </div>
   {% if stock.is_inquiry %}
-    <a class="btn btn-secondary btn-sm" href="{% url 'catalog:stock_inquiry' lot.id %}">
-      استعلام موجودی از فروشنده
-    </a>
+    <form method="post" action="{% url 'catalog:stock_inquiry' lot.id %}">
+      {% csrf_token %}
+      <button class="btn btn-secondary btn-sm" type="submit">استعلام موجودی از فروشنده</button>
+    </form>
   {% endif %}
   <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone_type|default:"—" }}</strong></div>
   <div class="kv"><span>رنگ</span><strong>{{ product.primary_color|default:"—" }}</strong></div>
