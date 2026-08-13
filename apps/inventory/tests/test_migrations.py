@@ -25,18 +25,40 @@ HEAD = ("inventory", "0008_lotmedia_terminology")
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def _targets(inventory_migration: str) -> list[tuple[str, str]]:
-    """Rewind ``inventory`` only, pinning ``businesses`` at its own head.
+#: Apps whose schema this rewind moves. A ``businesses`` migration that depends
+#: on any of them cannot stay applied while inventory goes backwards.
+_REWOUND = ("inventory", "trading", "invoicing")
+
+
+def _businesses_target(loader) -> str:
+    """The newest ``businesses`` migration that survives rewinding inventory.
 
     Rewinding inventory alone leaves the businesses *table* at head while the
-    project state describes an older version of the model, so writing a Business
-    fails on columns the historical model does not know about. Naming both apps
-    keeps schema and state describing the same database.
+    project state describes businesses at 0001, so writing a Business fails on
+    columns the historical model does not know about — ``plan`` and
+    ``seat_limit`` among them. Naming a businesses target too keeps schema and
+    state describing the same database.
+
+    It cannot simply be the head: later businesses migrations depend on invoicing,
+    which depends on inventory, and holding those forward while inventory goes
+    backwards is a plan Django refuses to run. So: the newest one that does not
+    reach into anything being rewound.
     """
+    candidates = sorted(name for app, name in loader.graph.nodes if app == "businesses")
+    for name in reversed(candidates):
+        ancestors = loader.graph.forwards_plan(("businesses", name))
+        if not any(app in _REWOUND for app, _ in ancestors):
+            return name
+    raise AssertionError("no businesses migration is independent of the inventory graph")
+
+
+def _targets(inventory_migration: str) -> list[tuple[str, str]]:
     executor = MigrationExecutor(connection)
     executor.loader.build_graph()
-    businesses_head = max(name for app, name in executor.loader.graph.leaf_nodes() if app == "businesses")
-    return [("inventory", inventory_migration), ("businesses", businesses_head)]
+    return [
+        ("inventory", inventory_migration),
+        ("businesses", _businesses_target(executor.loader)),
+    ]
 
 
 def _migrate(inventory_migration: str) -> object:

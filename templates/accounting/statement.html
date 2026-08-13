@@ -100,10 +100,23 @@
           </tr>
         {% endfor %}
       </tbody>
+      {% comment %}
+      Opening, movements, closing — three figures answering three questions.
+      «مانده پایان دوره» is the last visible row's running balance, which is a
+      global total: with a type filter it includes entries this table is not
+      showing. Stating the opening balance is what makes that legible instead of
+      leaving the reader to wonder why the columns do not reconcile.
+      {% endcomment %}
       {% if totals.row_count %}
         <tfoot>
           <tr>
-            <th colspan="3">جمع دوره</th>
+            <th colspan="3">مانده ابتدای دوره</th>
+            <td class="num" colspan="{% if can_manage %}4{% else %}3{% endif %}">
+              {{ totals.opening_balance.amount|rial }} ریال · {{ totals.opening_balance.label }}
+            </td>
+          </tr>
+          <tr>
+            <th colspan="3">جمع گردش نمایش‌داده‌شده</th>
             <td class="num">{{ totals.debit|rial }}</td>
             <td class="num">{{ totals.credit|rial }}</td>
             <td class="num">—</td>

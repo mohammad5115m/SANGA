@@ -54,6 +54,12 @@ class Business(models.Model):
     # Null means "no expiry set" rather than "expired": a Business provisioned by
     # an admin who did not fill this in must not lock itself out overnight.
     active_until = models.DateField("اعتبار تا", null=True, blank=True)
+    #: Highest invoice number allocated so far. Bumped under the same row lock
+    #: that already serialized invoice creation, so allocation is one UPDATE
+    #: rather than a scan of every invoice this Business has ever issued —
+    #: which grew with history while holding that lock. The formatted document
+    #: number is derived from it; see apps.invoicing.services.allocate_number.
+    invoice_sequence = models.PositiveIntegerField(default=0, editable=False)
 
     onboarding_step = models.PositiveSmallIntegerField(default=1)
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)

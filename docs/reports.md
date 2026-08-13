@@ -54,8 +54,15 @@ looking like the first would be worse than not offering one.
 Reversed entries and reversals are excluded from money movement, so a corrected
 receipt does not appear as money that arrived.
 
-Cancelled invoices are counted but excluded from the invoice total: a voided
-document should be visible, not missing.
+## 4.1 The invoice total sums issued documents only
+
+Drafts and cancelled invoices are counted, and drafts have their own subtotal, so
+neither is missing — but neither is in «مبلغ فاکتورها».
+
+The total used to include everything that was not cancelled, which quietly meant
+drafts: documents nobody has been sent, that may still change and may never be
+issued. A total that moves while somebody is typing is not a total of anything a
+business can act on.
 
 ## 5. Printing
 

@@ -655,6 +655,14 @@ def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> Inve
         is_featured=False,
         is_urgent_sale=False,
     )
+    # Standard prices are copied; the special sale deliberately is not.
+    #
+    # A promotion is a decision about one batch at one moment — «تا آخر هفته» on
+    # the stone in the yard now — and the copy is a different batch the seller is
+    # about to change. Carrying it over silently would have the new item quoting a
+    # discount nobody chose, sometimes with an end date already in the past. The
+    # duplicate screen says so, so the reset is visible rather than a field that
+    # went quiet.
     for price in lot.prices.select_related("tier"):
         set_lot_price(
             lot=clone,

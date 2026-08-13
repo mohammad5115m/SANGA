@@ -241,14 +241,29 @@ def counterparty_statement(
 
 
 def statement_totals(entries: QuerySet[LedgerEntry]) -> dict:
-    """Column totals and closing balance for an already-filtered statement.
+    """Column totals plus an opening and closing balance for a filtered statement.
 
     ``entries`` must come from :func:`counterparty_statement`, so the footer
-    always describes exactly the rows on screen. «مانده پایان دوره» is the
-    running balance of the last row shown — the same number as its مانده cell,
-    so the footer can never contradict the table. It is ``None`` when the
-    filters match nothing, because a closing balance for an empty period would
-    be an invention.
+    describes exactly the rows on screen.
+
+    The three balance figures answer three different questions, and conflating
+    them is what made the old footer misleading. «مانده پایان دوره» was the last
+    visible row's stored ``balance_after`` — a *global* running total that
+    includes every entry ever posted, including the ones the filter had hidden.
+    Filter a statement to «دریافت» only, and the closing figure reflected sales
+    that were nowhere on screen, so closing minus the visible columns did not
+    reconcile and there was nothing to say why.
+
+    Now:
+
+    - ``opening`` — the balance immediately before the first visible row;
+    - ``debit`` / ``credit`` — the movements actually listed;
+    - ``closing`` — the last visible row's running balance;
+    - ``account_balance`` — the account's current position, whatever is filtered.
+
+    When the filter is a date range, ``opening + debit − credit == closing``.
+    When it is an entry type, it deliberately does not, and ``opening`` is what
+    makes the discrepancy legible instead of invisible.
     """
     agg = entries.aggregate(
         debit=Coalesce(
@@ -263,12 +278,19 @@ def statement_totals(entries: QuerySet[LedgerEntry]) -> dict:
         ),
         row_count=Count("pk"),
     )
+    first = entries.first()
     last = entries.last()
     closing = last.balance_after if last is not None else None
+    # The running balance already includes the first row's own movement, so the
+    # opening figure is that balance with the movement taken back out.
+    opening = (first.balance_after - first.balance_delta) if first is not None else None
+
     return {
         "debit": _money(agg["debit"]),
         "credit": _money(agg["credit"]),
         "row_count": agg["row_count"],
+        "opening": opening,
+        "opening_balance": describe_balance(opening) if opening is not None else None,
         "closing": closing,
         "closing_balance": describe_balance(closing) if closing is not None else None,
     }

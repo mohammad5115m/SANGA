@@ -177,6 +177,23 @@ equals «جمع مطالبات» and the summed `unapplied_credit` equals «جم
 Aging is always computed over the whole account. Statement date and type filters
 are a viewing device and must not change how old a debt is.
 
+## 7.1 Statement footer: three balances, three questions
+
+| Figure | Question |
+|--------|----------|
+| مانده ابتدای دوره | where the account stood before the first visible row |
+| جمع گردش نمایش‌داده‌شده | what the listed entries moved |
+| مانده پایان دوره | the last visible row's running balance |
+
+`balance_after` is a **global** running total: it includes every entry ever
+posted, including the ones a filter has hidden. Filter a statement to «دریافت»
+only and the closing figure reflects sales that are nowhere on screen — so
+closing minus the visible columns did not reconcile, and the footer said nothing
+about why. Stating the opening balance is what makes that legible.
+
+With a date filter, opening + debit − credit = closing. With a type filter it
+deliberately does not, and now the reader can see it.
+
 ## 8. Invoices
 
 Invoices are **historical documents**. `SalesInvoice` and `SalesInvoiceItem`
@@ -204,13 +221,32 @@ document, so a double-click still hands both callers the same invoice.
 A colleague invoice therefore has exactly one origin: a finalized Trade. Typing
 one by hand is refused — see §5.
 
+### Who may read one
+
+The seller sees every document of their own, including drafts. The buyer sees
+**issued and cancelled** ones.
+
+A draft is the seller still deciding — the number, the lines, whether to issue it
+at all. Showing it to the buyer meant they could read a bill that had not been
+sent and watch it change. A cancelled document stays visible because a buyer who
+was sent one needs to see that it was voided rather than find it missing.
+
 ### Numbering
 
-Sequential per seller, allocated under a `select_for_update()` on the seller's
-Business row, and derived from the highest existing number rather than a count —
-so cancelling an invoice never causes a number to be reused. `count() + 1` looks
-obviously correct and produces duplicates the first time two salespeople issue
-at the same moment.
+Sequential per seller, from `Business.invoice_sequence`, incremented under the
+`select_for_update()` the allocation already held. The counter only moves
+forward, so cancelling an invoice never frees its number for reuse — a gap in the
+sequence means something.
+
+It replaced a scan of every invoice the Business had ever issued, performed in
+Python to find the maximum, while holding the lock every other salesperson was
+queued behind: both the transaction time and the contention grew with the length
+of the seller's history. `businesses.0005` seeds each counter from that same
+highest-number-so-far, because starting at zero would reissue numbers that
+already exist.
+
+`count() + 1` looks obviously correct and produces duplicates the first time two
+salespeople issue at the same moment.
 
 ### Cancelling
 

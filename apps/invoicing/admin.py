@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from apps.core.admin import HistoricalRecordAdmin
+
 from .models import SalesInvoice, SalesInvoiceItem
 
 
@@ -9,11 +11,26 @@ class SalesInvoiceItemInline(admin.TabularInline):
     # Line snapshots are the document. Editing them here would rewrite history.
     readonly_fields = ("product_name", "stone_type", "grade", "quantity", "unit_price", "line_total")
 
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
 
 @admin.register(SalesInvoice)
-class SalesInvoiceAdmin(admin.ModelAdmin):
+class SalesInvoiceAdmin(HistoricalRecordAdmin):
+    """Drafts stay editable; issued and cancelled documents do not.
+
+    An issued invoice has been sent to somebody, and a cancelled one is the
+    record that it was voided. Editing either in admin would change what a
+    counterparty was told without leaving a trace, and deleting one would take
+    its number with it — the sequence never reuses a number precisely so that a
+    gap means something.
+    """
+
     list_display = ("number", "issue_date", "seller_business", "buyer_name", "total_amount", "status")
     list_filter = ("status", "counterparty_type", "currency")
     search_fields = ("number", "buyer_name", "seller_business__name", "customer_phone")
     readonly_fields = ("number", "total_amount", "buyer_name", "created_at")
     inlines = [SalesInvoiceItemInline]
+
+    def is_final(self, obj) -> bool:
+        return obj is not None and obj.status != SalesInvoice.Status.DRAFT

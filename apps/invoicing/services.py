@@ -18,7 +18,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
-from django.db.models import Max
+from django.db.models import F
 from django.utils import timezone
 
 from apps.businesses.entitlements import ISSUE_INVOICES, EntitlementError, require_entitlement
@@ -74,23 +74,19 @@ def _quantize(value, places: str = "0.01") -> Decimal:
 def allocate_number(business: Business) -> str:
     """Next invoice number for this seller.
 
-    Called inside the caller's transaction with the seller's Business row
-    already locked, so the read-then-write below cannot interleave with another
-    allocation. Derived from MAX rather than COUNT so cancelling an invoice
-    never causes a number to be reused.
+    Called inside the caller's transaction with the seller's Business row already
+    locked, so the increment cannot interleave with another allocation.
+
+    A stored counter rather than a scan. The old implementation pulled every
+    invoice number this Business had ever issued into Python to find the maximum,
+    while holding the lock that every other salesperson was waiting on — so both
+    the transaction time and the contention grew with the length of the seller's
+    history. The counter only moves forward, so cancelling an invoice still never
+    frees its number for reuse.
     """
-    highest = (
-        SalesInvoice.objects.filter(seller_business=business)
-        .annotate(numeric=Max("number"))
-        .values_list("number", flat=True)
-    )
-    largest = 0
-    for number in highest:
-        try:
-            largest = max(largest, int(str(number).split("-")[-1]))
-        except (TypeError, ValueError):
-            continue
-    return f"{largest + 1:05d}"
+    Business.objects.filter(pk=business.pk).update(invoice_sequence=F("invoice_sequence") + 1)
+    business.refresh_from_db(fields=["invoice_sequence"])
+    return f"{business.invoice_sequence:05d}"
 
 
 @transaction.atomic

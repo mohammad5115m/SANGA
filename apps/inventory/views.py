@@ -307,7 +307,13 @@ def lot_duplicate(request: HttpRequest, lot_id) -> HttpResponse:
     except InventoryError as exc:
         messages.error(request, exc.message)
         return redirect("inventory:lot_detail", lot_id=lot.id)
-    messages.success(request, f"کپی ایجاد شد: {clone.lot_code}")
+    # Said out loud, because a promotion that quietly disappeared looked like a
+    # bug and one that quietly carried over would be worse.
+    messages.success(
+        request,
+        f"کپی ایجاد شد: {clone.lot_code}. قیمت‌ها کپی شدند اما «فروش ویژه» کپی نمی‌شود؛ "
+        "اگر لازم است دوباره آن را تنظیم کنید.",
+    )
     return redirect("inventory:lot_edit", lot_id=clone.id)
 
 
