@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
 
+from apps.businesses.eligibility import business_can_sell
 from apps.businesses.models import Business
 from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
@@ -63,8 +64,19 @@ def related_public_lots(lot: InventoryLot, *, limit: int = 4) -> list[InventoryL
 
 
 def get_shareable_catalog(token: str) -> CustomCatalog | None:
+    """A shared catalog link, or nothing.
+
+    Gated on the seller as well as the catalog. The catalog's own switches —
+    active, not expired — used to be the whole test, so a seller who was
+    suspended or whose subscription lapsed kept a live public link carrying their
+    name and an empty product list, because ``resolve_catalog`` filtered the
+    products out one layer down. A shared link is a public page like any other
+    and answers to the same rule.
+    """
     catalog = CustomCatalog.objects.select_related("business").filter(share_token=token).first()
     if catalog is None or not catalog.is_publicly_accessible:
+        return None
+    if not business_can_sell(catalog.business):
         return None
     catalog.resolved_items = resolve_catalog(catalog)
     return catalog

@@ -18,7 +18,6 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from django.urls import reverse
 
 from apps.accounting.selectors import accounting_counterparty, current_balance
 from apps.businesses.directory import colleague_businesses, get_colleague

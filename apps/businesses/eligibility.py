@@ -157,6 +157,27 @@ def can_sell_q(prefix: str = "") -> Q:
     return network_eligible_q(prefix) & Q(**{f"{field}plan__in": SELLING_PLANS})
 
 
+def public_business_or_none(slug: str) -> Business | None:
+    """Resolve a Business for a public, login-free page — or refuse it entirely.
+
+    Every public surface has to make this decision, and they were each making a
+    different one. The storefront and product pages resolved on
+    ``status=ACTIVE`` alone while the products on them went through the full
+    seller gate, so an unverified, expired or browse-only seller got a real page
+    with their name, their city and no products at all. That is worse than a 404
+    in both directions: the visitor is told a shop exists and appears to be
+    empty, and the seller is publicly listed as having nothing to sell.
+
+    Returns ``None`` rather than raising so the caller can render the same
+    generic response it would for a slug that never existed. Distinguishing
+    "no such seller" from "a seller who is currently not participating" tells a
+    stranger something about a business that has not agreed to be discussed.
+    """
+    if not slug:
+        return None
+    return Business.objects.filter(slug=slug).filter(can_sell_q()).first()
+
+
 def network_eligible_businesses() -> QuerySet[Business]:
     """Every Business that may appear to others, whatever their plan.
 

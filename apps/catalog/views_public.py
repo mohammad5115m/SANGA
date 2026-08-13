@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import Http404, HttpRequest, HttpResponse
+from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
-from apps.businesses.models import Business
+from apps.businesses.eligibility import public_business_or_none
 from apps.core.pagination import paginate
 from apps.inventory.forms import ItemFilterForm
 
@@ -29,8 +29,16 @@ logger = logging.getLogger(__name__)
 COMPARE_SESSION_KEY = "b2c_compare_lot_ids"
 
 
-def _business_or_404(slug: str) -> Business:
-    return get_object_or_404(Business, slug=slug, status=Business.Status.ACTIVE)
+def _business_or_404(slug: str):
+    """The one gate every public seller page goes through.
+
+    See :func:`apps.businesses.eligibility.public_business_or_none` for why a
+    seller who cannot sell gets a 404 rather than an empty shop.
+    """
+    business = public_business_or_none(slug)
+    if business is None:
+        raise Http404("این فروشگاه در دسترس نیست.")
+    return business
 
 
 def _compare_ids(request: HttpRequest) -> list[str]:
