@@ -113,6 +113,28 @@ Serve media with `X-Content-Type-Options: nosniff`. An uploaded file offered to 
 browser as `text/html` executes in the origin it is served from; SANGA validates
 what it stores, but the header is the part that survives a validation bug.
 
+## 3b. The reverse proxy and client addresses
+
+SANGA rate-limits OTP requests per source address. `X-Forwarded-For` is a header,
+and a header is written by whoever sent the request, so it is only worth anything
+if the edge is known to control it.
+
+Two things are required, and neither is optional:
+
+1. **The edge proxy must overwrite `X-Forwarded-For`, not append to it.** In
+   nginx that is `proxy_set_header X-Forwarded-For $remote_addr;` — *not* the
+   `$proxy_add_x_forwarded_for` that most snippets use, which preserves whatever
+   the client sent.
+2. **Set `SANGA_TRUSTED_PROXY_COUNT` to the number of proxies you actually run.**
+   SANGA then counts that many hops from the right, where trusted infrastructure
+   appended them.
+
+The default is `0`, which ignores the header entirely and uses `REMOTE_ADDR`.
+That is correct for a directly-reached deployment and the safe answer for a
+misconfigured one: a wrong count under-trusts and rate-limits everyone behind the
+proxy together, where the previous behaviour — trusting the leftmost value — let
+any caller choose their own rate-limit key, or somebody else's.
+
 ## 4. Required environment
 
 | Variable | Notes |
@@ -128,6 +150,8 @@ what it stores, but the header is the part that survives a validation bug.
 | `USE_S3`, `AWS_*` | Object storage for product media. Required unless the local-media mode is declared. |
 | `CSP_IMG_SRC`, `CSP_MEDIA_SRC` | The storage/CDN origin, so images are not blocked. Required with `USE_S3`. |
 | `SANGA_ALLOW_LOCAL_MEDIA`, `SANGA_MEDIA_ROOT` | Only for the volume-backed alternative in §3a |
+| `SANGA_TRUSTED_PROXY_COUNT` | Number of reverse proxies in front. See §3b. |
+| `SANGA_REQUIRE_VERIFIED_FOR_NETWORK` | Defaults to on. Only approved businesses appear to others. |
 | `SECURE_HSTS_SECONDS` | One year by default |
 
 Secrets come from the environment, never from a file in the image.

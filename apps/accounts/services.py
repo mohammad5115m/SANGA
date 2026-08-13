@@ -8,7 +8,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import login
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.http import HttpRequest
 from django.utils import timezone
@@ -56,50 +56,154 @@ def _hash_code(code: str) -> str:
     return hashlib.sha256(f"{secret}:{code}".encode()).hexdigest()
 
 
+TOO_MANY_REQUESTS = "تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید."
+COOLDOWN_MESSAGE = "لطفاً کمی صبر کنید و دوباره تلاش کنید."
+
+
 def _client_ip(request: HttpRequest | None) -> str | None:
+    """The address to rate-limit on, which is not simply whatever the client says.
+
+    ``X-Forwarded-For`` is a header, and a header is written by whoever sent the
+    request. Reading the leftmost entry — the previous behaviour — meant any
+    caller could defeat the per-address cap by inventing a new value per request,
+    and could equally attribute their traffic to somebody else's address and get
+    that person throttled.
+
+    So SANGA counts hops from the *right*, where the trusted infrastructure
+    appended them, and only as many as ``SANGA_TRUSTED_PROXY_COUNT`` says it
+    actually has. With the default of 0 the header is ignored entirely, which is
+    the correct behaviour for a deployment reached directly and the safe default
+    for one that is misconfigured.
+
+    The reverse proxy must **overwrite** the header rather than append to it; see
+    docs/deployment.md. This function is the second line of defence, not the
+    first.
+    """
     if request is None:
         return None
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+
+    remote = request.META.get("REMOTE_ADDR")
+    trusted = int(getattr(settings, "SANGA_TRUSTED_PROXY_COUNT", 0) or 0)
+    if trusted <= 0:
+        return remote
+
+    forwarded = [part.strip() for part in (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")]
+    forwarded = [part for part in forwarded if part]
+    if not forwarded:
+        return remote
+    # The rightmost entry was added by the proxy nearest to us. Stepping left
+    # once per trusted hop lands on the first value we did not add ourselves; a
+    # client that supplied extras only pads the part we never look at.
+    index = len(forwarded) - trusted
+    return forwarded[index] if 0 <= index < len(forwarded) else forwarded[0]
+
+
+def _hit_throttle(*, scope: str, key: str, limit: int, cooldown_seconds: int, now) -> None:
+    """Claim one request against a limit, under a row lock.
+
+    Must be called inside the same transaction that writes the challenge, so the
+    check and the thing it is limiting cannot be separated by another request.
+
+    ``get_or_create`` then ``select_for_update`` rather than the other way round:
+    there is nothing to lock until the row exists, and the unique constraint is
+    what makes two concurrent first-requests resolve to one row instead of two
+    counters that never see each other.
+    """
+    from .models import OTPRequestThrottle
+
+    window_start = now - timedelta(hours=1)
+
+    try:
+        OTPRequestThrottle.objects.get_or_create(
+            scope=scope,
+            key=key,
+            defaults={"window_started_at": now, "count": 0, "last_request_at": window_start},
+        )
+    except IntegrityError:
+        # Lost the race to create it. The winner's row is the one we want.
+        pass
+
+    row = OTPRequestThrottle.objects.select_for_update().get(scope=scope, key=key)
+
+    if row.window_started_at < window_start:
+        # Window elapsed: start a fresh one rather than accumulating forever.
+        row.window_started_at = now
+        row.count = 0
+
+    if cooldown_seconds and (now - row.last_request_at).total_seconds() < cooldown_seconds:
+        raise OTPRateLimitError(COOLDOWN_MESSAGE)
+
+    if row.count >= limit:
+        raise OTPRateLimitError(TOO_MANY_REQUESTS)
+
+    row.count += 1
+    row.last_request_at = now
+    row.save(update_fields=["window_started_at", "count", "last_request_at"])
 
 
 def _enforce_request_limits(*, phone: str, purpose: str, request: HttpRequest | None) -> None:
-    """Cooldown, per-phone hourly cap, and a per-IP cap across both purposes.
+    """Cooldown, per-phone hourly cap, and a per-address cap across both purposes.
 
-    The per-IP cap is the one that was missing. Everything else keys on the phone
-    number, so a caller with a list of numbers could request a code for each in
-    turn and never touch a limit — SANGA pays the gateway for every one of them,
-    and every recipient gets an unexplained message. The IP is not a strong
-    identity, but a limit that costs an attacker a proxy per hundred messages is
-    worth far more than no limit at all.
+    Every limit is claimed under a lock on its own row, inside the caller's
+    transaction. Previously this counted rows and returned, and the challenge was
+    inserted afterwards in a separate transaction — so two requests arriving
+    together both counted the same rows, both concluded they were under the
+    limit, and both inserted. Every one of these limits could be walked past by
+    sending requests in parallel rather than in sequence.
 
-    Challenge rows are written for unprovisioned phones too, so these counters
-    behave identically whether or not the number belongs to an account. Skipping
-    them would turn the rate limiter itself into a phone-enumeration oracle.
+    The phone row is always locked before the address row. Two requests for one
+    phone from behind one proxy take the two locks in the same order and one
+    simply waits; taking them in different orders is how a deadlock happens.
+
+    Limits are claimed for unprovisioned phones too, so they behave identically
+    whether or not the number belongs to an account. Skipping them would turn the
+    rate limiter itself into a phone-enumeration oracle.
     """
+    from .models import OTPRequestThrottle
+
     now = timezone.now()
-    hour_ago = now - timedelta(hours=1)
 
-    recent = (
-        OTPChallenge.objects.filter(phone=phone, purpose=purpose).order_by("-created_at").first()
+    _hit_throttle(
+        scope=OTPRequestThrottle.Scope.PHONE,
+        key=f"{purpose}:{phone}",
+        limit=settings.OTP_MAX_REQUESTS_PER_HOUR,
+        cooldown_seconds=settings.OTP_REQUEST_COOLDOWN_SECONDS,
+        now=now,
     )
-    if recent and (now - recent.created_at).total_seconds() < settings.OTP_REQUEST_COOLDOWN_SECONDS:
-        raise OTPRateLimitError("لطفاً کمی صبر کنید و دوباره تلاش کنید.")
-
-    per_phone = OTPChallenge.objects.filter(
-        phone=phone, purpose=purpose, created_at__gte=hour_ago
-    ).count()
-    if per_phone >= settings.OTP_MAX_REQUESTS_PER_HOUR:
-        raise OTPRateLimitError("تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید.")
 
     ip = _client_ip(request)
     if ip:
-        per_ip = OTPChallenge.objects.filter(request_ip=ip, created_at__gte=hour_ago).count()
-        if per_ip >= settings.OTP_MAX_REQUESTS_PER_IP_PER_HOUR:
+        try:
+            _hit_throttle(
+                scope=OTPRequestThrottle.Scope.ADDRESS,
+                key=ip,
+                limit=settings.OTP_MAX_REQUESTS_PER_IP_PER_HOUR,
+                # No cooldown per address: several people behind one office
+                # connection are not abuse, and the hourly cap already bounds it.
+                cooldown_seconds=0,
+                now=now,
+            )
+        except OTPRateLimitError:
             logger.warning("OTP request rate limit hit for one source address")
-            raise OTPRateLimitError("تعداد درخواست‌های شما بیش از حد مجاز است. بعداً تلاش کنید.")
+            raise
+
+
+def _send_code(*, phone: str, body: str) -> None:
+    """Hand the message to the gateway, converting vendor failures into one error.
+
+    Called after the challenge transaction has committed, never inside it. A
+    gateway call is slow and can fail, and holding the throttle row locks across
+    it would serialize every OTP request in the system behind the slowest SMS.
+    Sending from inside would also be wrong in the other direction: a rollback
+    after the send would deliver a code no row exists for.
+    """
+    try:
+        get_sms_provider().send(SmsMessage(phone=phone, body=body))
+    except Exception:
+        # No body, no code, no credentials — the message is the one thing here
+        # that must never reach a log.
+        logger.exception("Failed to send an OTP message")
+        raise OTPError("ارسال پیامک با مشکل روبه‌رو شد. دوباره تلاش کنید.") from None
 
 
 def _claim_challenge(*, phone: str, purpose: str, code: str) -> OTPChallenge:
@@ -156,8 +260,6 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
 
-    _enforce_request_limits(phone=phone, purpose=OTPChallenge.Purpose.LOGIN, request=request)
-
     now = timezone.now()
     cooldown = settings.OTP_REQUEST_COOLDOWN_SECONDS
     code = "".join(secrets.choice("0123456789") for _ in range(settings.OTP_LENGTH))
@@ -166,11 +268,15 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     if request is not None:
         user_agent = (request.META.get("HTTP_USER_AGENT") or "")[:255]
 
+    # One transaction covers claiming the rate limits and writing the challenge.
+    # Splitting them is what let two simultaneous requests both pass the limits
+    # before either had written anything for the other to count.
+    #
     # The challenge row is written even when no User owns this phone, so the
-    # cooldown and hourly counters above behave identically for provisioned and
-    # unprovisioned numbers. Skipping it here would turn the rate limiter itself
-    # into a phone-enumeration oracle.
+    # counters behave identically for provisioned and unprovisioned numbers.
+    # Skipping it would turn the rate limiter itself into an enumeration oracle.
     with transaction.atomic():
+        _enforce_request_limits(phone=phone, purpose=OTPChallenge.Purpose.LOGIN, request=request)
         OTPChallenge.objects.create(
             phone=phone,
             code_hash=_hash_code(code),
@@ -186,12 +292,7 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     # normal-looking result; the refusal surfaces at verify time.
     is_provisioned = User.objects.filter(phone=phone).exists()
     if is_provisioned:
-        body = f"کد ورود سنگا: {code}"
-        try:
-            get_sms_provider().send(SmsMessage(phone=phone, body=body))
-        except Exception:
-            logger.exception("Failed to send OTP SMS to %s", phone)
-            raise OTPError("ارسال پیامک با مشکل روبه‌رو شد. دوباره تلاش کنید.") from None
+        _send_code(phone=phone, body=f"کد ورود سنگا: {code}")
     else:
         logger.info("OTP requested for unprovisioned phone; no SMS sent")
 
@@ -223,14 +324,13 @@ def request_customer_otp(phone: str, *, request: HttpRequest | None = None) -> O
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
 
-    _enforce_request_limits(phone=phone, purpose=OTPChallenge.Purpose.CUSTOMER, request=request)
-
     now = timezone.now()
     cooldown = settings.OTP_REQUEST_COOLDOWN_SECONDS
     code = "".join(secrets.choice("0123456789") for _ in range(settings.OTP_LENGTH))
     expires_at = now + timedelta(seconds=settings.OTP_EXPIRY_SECONDS)
 
     with transaction.atomic():
+        _enforce_request_limits(phone=phone, purpose=OTPChallenge.Purpose.CUSTOMER, request=request)
         OTPChallenge.objects.create(
             phone=phone,
             code_hash=_hash_code(code),
@@ -241,11 +341,7 @@ def request_customer_otp(phone: str, *, request: HttpRequest | None = None) -> O
             user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:255] if request else "",
         )
 
-    try:
-        get_sms_provider().send(SmsMessage(phone=phone, body=f"کد تأیید سنگا: {code}"))
-    except Exception:
-        logger.exception("Failed to send customer OTP")
-        raise OTPError("ارسال پیامک با مشکل روبه‌رو شد. دوباره تلاش کنید.") from None
+    _send_code(phone=phone, body=f"کد تأیید سنگا: {code}")
 
     return OTPRequestResult(
         phone=phone,

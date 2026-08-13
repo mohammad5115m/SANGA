@@ -187,6 +187,17 @@ OTP_MAX_REQUESTS_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_HOUR", default=10)
 # messages is worth far more than no limit at all.
 OTP_MAX_REQUESTS_PER_IP_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_IP_PER_HOUR", default=30)
 
+#: How many reverse proxies sit in front of SANGA and append to
+#: ``X-Forwarded-For``.
+#:
+#: Zero means the header is ignored entirely and ``REMOTE_ADDR`` is used, which
+#: is correct for a directly-reached deployment and the safe answer for a
+#: misconfigured one. A header is written by whoever sent the request, so
+#: trusting its leftmost value — the old behaviour — let any caller pick their
+#: own rate-limit key, or somebody else's. Set this to the real number of hops
+#: and make the edge proxy overwrite rather than append. See docs/deployment.md.
+SANGA_TRUSTED_PROXY_COUNT = env.int("SANGA_TRUSTED_PROXY_COUNT", default=0)
+
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@sanga.local")
 
 #: Only platform-verified Businesses appear in the colleague directory, the

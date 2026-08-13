@@ -73,3 +73,55 @@ class OTPChallenge(models.Model):
     @property
     def is_expired(self) -> bool:
         return timezone.now() >= self.expires_at
+
+
+class OTPRequestThrottle(models.Model):
+    """One row per thing being rate-limited, locked while it is checked.
+
+    The request limits used to be three ``COUNT`` queries over ``OTPChallenge``
+    followed — outside any transaction — by an ``INSERT``. Two requests arriving
+    together both counted the same rows, both concluded they were under the
+    limit, and both inserted. The cooldown, the per-phone cap and the per-IP cap
+    could all be walked past simply by sending requests in parallel instead of in
+    sequence, which is the easier thing to do.
+
+    Counting rows was also the wrong shape for the job: it made the limit depend
+    on a table that exists for a different reason and grows without bound. A
+    counter that can be locked is both cheaper and correct.
+
+    Not a distributed rate limiter. One row, one lock, one window — enough to
+    hold under the concurrency a real deployment sees, and small enough to
+    reason about.
+    """
+
+    class Scope(models.TextChoices):
+        #: Keyed by phone *and* purpose: a customer verifying an inquiry must not
+        #: spend the budget for a staff login to the same number.
+        PHONE = "phone", "شماره"
+        #: Keyed by source address across every purpose. Every other limit keys
+        #: on the phone, so a caller working through a list of numbers would
+        #: never touch one.
+        ADDRESS = "address", "نشانی"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scope = models.CharField(max_length=20, choices=Scope.choices)
+    key = models.CharField(max_length=120)
+
+    #: Start of the current hour-long window. Rolled forward in place rather than
+    #: by inserting a new row, so the table stays one row per active key.
+    window_started_at = models.DateTimeField()
+    count = models.PositiveIntegerField(default=0)
+    last_request_at = models.DateTimeField()
+
+    class Meta:
+        verbose_name = "محدودیت درخواست کد"
+        verbose_name_plural = "محدودیت‌های درخواست کد"
+        constraints = [
+            # The row *is* the lock, so there must be exactly one per key. Without
+            # this two concurrent first-requests would each create their own and
+            # neither would see the other's count.
+            models.UniqueConstraint(fields=["scope", "key"], name="uniq_otp_throttle_key"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scope}:{self.key} ({self.count})"
