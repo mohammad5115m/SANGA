@@ -68,12 +68,14 @@ def busy(db):
             unit_price=Decimal("1000000"),
             buyer_business=buyer,
         )
+        # A walk-in document alongside the colleague sale above, so the invoice
+        # list has both counterparty kinds to render.
         create_manual_invoice(
             business=seller,
             membership=seller_m,
             lines=[{"product_name": item.product.commercial_name, "quantity": Decimal("5"),
                     "unit_price": Decimal("1000000"), "item": item}],
-            buyer_business=buyer,
+            customer_name=f"مشتری {index}",
         )
 
     return {"seller": seller, "buyer": buyer, "items": items}

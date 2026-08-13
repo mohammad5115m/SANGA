@@ -98,6 +98,16 @@ class SalesInvoice(models.Model):
         ordering = ["-issue_date", "-created_at"]
         constraints = [
             models.UniqueConstraint(fields=["seller_business", "number"], name="uniq_invoice_number_per_seller"),
+            # One Trade, one document. The service is idempotent by lookup, but a
+            # lookup cannot be idempotent under concurrency: two requests can both
+            # see no invoice and both create one. This is the invariant that holds
+            # when they do, and the service turns the violation back into the
+            # winning invoice.
+            models.UniqueConstraint(
+                fields=["trade"],
+                condition=models.Q(trade__isnull=False),
+                name="uniq_invoice_per_trade",
+            ),
             models.CheckConstraint(
                 condition=(
                     models.Q(counterparty_type="business", buyer_business__isnull=False)

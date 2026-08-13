@@ -35,6 +35,44 @@ BALANCE_SORTS: dict[str, tuple[str, ...]] = {
 }
 
 
+def historical_counterparties(business: Business) -> QuerySet[Business]:
+    """Businesses this one has commercial records with, whatever their state now.
+
+    Deliberately **not** the colleague directory. The directory answers "who may
+    I trade with today", which changes when a Business is suspended or leaves the
+    network. A statement, an invoice and an outstanding debt answer "who did I
+    trade with", which never changes. Resolving the second question through the
+    first meant a debtor's statement started returning 404 the moment the
+    platform suspended them, and the money owed became unsettleable.
+    """
+    return Business.objects.exclude(pk=business.pk).filter(
+        Q(counterparty_ledger_entries__business=business)
+        | Q(received_invoices__seller_business=business)
+        | Q(sales_invoices__buyer_business=business)
+        | Q(purchases__seller_business=business)
+        | Q(trades__buyer_business=business)
+    )
+
+
+def accounting_counterparty(business: Business, counterparty_id) -> Business | None:
+    """Resolve a counterparty for ledger reading and posting.
+
+    Two ways in, and both are legitimate: a currently eligible colleague (so a
+    first entry can be posted against somebody with no history yet), or a
+    Business this one already has records with (so history stays reachable and
+    settleable after the network relationship ends).
+
+    An unrelated Business that is neither remains invisible, which is the tenant
+    boundary this resolver exists to keep.
+    """
+    from apps.businesses.directory import get_colleague
+
+    colleague = get_colleague(business, counterparty_id)
+    if colleague is not None:
+        return colleague
+    return historical_counterparties(business).filter(pk=counterparty_id).distinct().first()
+
+
 def current_balance(business: Business, counterparty: Business) -> Decimal:
     """Current balance = the running balance of the most recent entry.
 

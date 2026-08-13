@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -84,10 +85,23 @@ def _lock_counterparty(counterparty: Business) -> Business:
     Locking the counterparty's Business row is coarse — it also serializes a
     different business posting to the same colleague — but it is the only row
     that uniquely identifies the account, and holding it for the length of one
-    ledger post costs nothing in practice. Only one row is ever locked per
-    transaction, so there is no lock-ordering deadlock to reason about.
+    ledger post costs nothing in practice.
     """
     return Business.objects.select_for_update().get(pk=counterparty.pk)
+
+
+def _lock_both(first: Business, second: Business) -> dict[str, Business]:
+    """Lock two Business rows in a deterministic order, keyed by primary key.
+
+    A trade locks both parties, and two trades running in opposite directions
+    between the same pair would deadlock if each locked "its own counterparty"
+    first. Ordering by the stringified UUID makes every transaction in the system
+    take the two rows in the same sequence, so one simply waits.
+    """
+    rows: dict[str, Business] = {}
+    for pk in sorted({first.pk, second.pk}, key=str):
+        rows[str(pk)] = Business.objects.select_for_update().get(pk=pk)
+    return rows
 
 
 def _last_balance(business: Business, counterparty: Business) -> Decimal:
@@ -150,7 +164,7 @@ def _post(
     related_lot=None,
     related_trade=None,
 ) -> LedgerEntry:
-    """Write one entry. Callers own the authorization decision.
+    """Write one entry into ``business``'s own books, acting as ``membership``.
 
     Split from :func:`post_entry` because the two ways money reaches the books
     are authorized differently. A manual entry is bookkeeping and needs
@@ -160,6 +174,39 @@ def _post(
     """
     if membership.business_id != business.id:
         raise LedgerError("دسترسی نامعتبر است.")
+    return _write_entry(
+        business=business,
+        counterparty=_lock_counterparty(counterparty),
+        entry_type=entry_type,
+        amount=amount,
+        description=description,
+        reference=reference,
+        occurred_on=occurred_on,
+        related_lot=related_lot,
+        related_trade=related_trade,
+        actor=membership.user,
+    )
+
+
+def _write_entry(
+    *,
+    business: Business,
+    counterparty: Business,
+    entry_type: str,
+    amount,
+    description: str = "",
+    reference: str = "",
+    occurred_on: date | None = None,
+    related_lot=None,
+    related_trade=None,
+    actor=None,
+) -> LedgerEntry:
+    """The raw write. Validates the entry itself, never the caller's rights.
+
+    ``counterparty`` must already be locked. Authorization lives one layer up,
+    because a buyer's ``PURCHASE`` is written by the *seller's* transaction and
+    there is no buyer-side membership to check.
+    """
     _validate_counterparty(business, counterparty)
 
     if entry_type not in DIRECTION:
@@ -181,15 +228,14 @@ def _post(
     }:
         raise LedgerError("این معامله به کسب‌وکار شما مرتبط نیست.")
 
-    locked = _lock_counterparty(counterparty)
-    previous = _last_balance(business, locked)
+    previous = _last_balance(business, counterparty)
     delta = amount * DIRECTION[entry_type]
     balance_after = (previous + delta).quantize(Decimal("0.01"))
 
     entry = LedgerEntry.objects.create(
         business=business,
-        counterparty_business=locked,
-        legacy_counterparty_name=locked.name,
+        counterparty_business=counterparty,
+        legacy_counterparty_name=counterparty.name,
         entry_type=entry_type,
         amount=amount,
         balance_delta=delta,
@@ -199,13 +245,13 @@ def _post(
         occurred_on=occurred_on or timezone.localdate(),
         related_lot=related_lot,
         related_trade=related_trade,
-        created_by=membership.user,
+        created_by=actor,
     )
     logger.info(
         "Ledger entry posted id=%s business=%s counterparty=%s type=%s amount=%s balance_after=%s",
         entry.id,
         business.id,
-        locked.id,
+        counterparty.id,
         entry_type,
         amount,
         balance_after,
@@ -227,7 +273,7 @@ def post_manual_entry(
     """The user-facing entry point: دریافت، پرداخت، اصلاح بدهکار، اصلاح بستانکار.
 
     Refuses trade types outright, so a sale can only ever reach the books
-    through :func:`post_trade_for_sale` — one authoritative event, not two ways in.
+    through :func:`post_trade_entries` — one authoritative event, not two ways in.
     """
     if entry_type not in MANUAL_ENTRY_TYPES:
         raise LedgerError("این نوع سند به‌صورت دستی قابل ثبت نیست.")
@@ -255,65 +301,110 @@ def _trade_description(trade) -> str:
     return f"فروش {trade.product_name} · {_format_quantity(trade.quantity_sqm)} مترمربع"
 
 
+def _purchase_description(trade) -> str:
+    return f"خرید {trade.product_name} · {_format_quantity(trade.quantity_sqm)} مترمربع"
+
+
+@dataclass(frozen=True)
+class TradePosting:
+    """What a finalized Trade did to each party's books."""
+
+    sale: LedgerEntry | None = None
+    purchase: LedgerEntry | None = None
+
+
 @transaction.atomic
-def post_trade_for_sale(*, trade, membership: BusinessMembership) -> LedgerEntry | None:
-    """Post the seller's ledger entry for a finalized Trade.
+def post_trade_entries(*, trade, membership: BusinessMembership) -> TradePosting:
+    """Post both sides of a finalized Trade, in one transaction.
 
-    This is the **one** authoritative financial event of a sale. Issuing or
-    printing the invoice afterwards must never post again, which is why the
-    invoice code calls nothing here.
+    A colleague sale is one commercial event that both parties keep books on:
+    the seller records a ``SALE`` (the colleague now owes them) and the buyer
+    records the mirroring ``PURCHASE`` (they now owe the colleague). Posting only
+    the seller's side left «جمع خرید» permanently zero in the buyer's reports
+    while the seller's statement said money was owed — the same event described
+    two incompatible ways.
 
-    Returns ``None`` for a sale to a walk-in customer: there is no colleague
+    The buyer's entry is written without a buyer-side membership on purpose. It
+    is not bookkeeping the seller is authoring in someone else's name; it is the
+    other half of a transaction the buyer is a party to, and the buyer can
+    reverse it from their own statement if it is wrong.
+
+    Returns empty entries for a sale to a walk-in customer: there is no colleague
     account to move, and inventing one would create a debtor nobody can settle
     with.
 
-    Exactly-once has three layers, the same shape the offer-linked path has used
-    since v1: the pre-check runs under the counterparty row lock taken here, the
-    ``uniq_trade_entry_per_trade`` constraint catches anything that slips past,
-    and both surface as :class:`LedgerDuplicateError`.
+    Exactly-once has three layers per side: both Business rows are locked in a
+    deterministic order, the pre-check runs under those locks, and
+    ``uniq_trade_entry_per_trade`` — scoped by ``business`` — catches anything
+    that slips past. Idempotency is evaluated per side, so a party who reversed
+    their own entry can have it reposted without disturbing the other's book. If
+    neither side has anything left to write, the call is a duplicate.
     """
     if trade.buyer_business_id is None:
         logger.info("Trade %s is a direct customer sale; no colleague ledger entry", trade.id)
-        return None
+        return TradePosting()
 
-    business = trade.seller_business
+    seller = trade.seller_business
     # Authorized by SALE_FINALIZE, not LEDGER_MANAGE: this entry is a consequence
     # of the sale the user just completed, not bookkeeping they are authoring.
     if membership is None or not membership.has_capability(SALE_FINALIZE):
         raise LedgerError("اجازه نهایی کردن فروش را ندارید.")
-    if membership.business_id != business.id:
+    if membership.business_id != seller.id:
         raise LedgerError("دسترسی نامعتبر است.")
 
-    locked = _lock_counterparty(trade.buyer_business)
-    existing = LedgerEntry.objects.filter(
+    locked = _lock_both(seller, trade.buyer_business)
+    locked_seller = locked[str(seller.pk)]
+    locked_buyer = locked[str(trade.buyer_business_id)]
+
+    already_sold = _live_trade_entry(locked_seller, trade)
+    already_bought = _live_trade_entry(locked_buyer, trade)
+    if already_sold is not None and already_bought is not None:
+        raise LedgerDuplicateError(existing=already_sold)
+
+    sale = purchase = None
+    try:
+        # Savepoint so a constraint violation leaves the surrounding transaction
+        # usable instead of poisoning the whole finalization.
+        with transaction.atomic():
+            if already_sold is None:
+                sale = _write_entry(
+                    business=locked_seller,
+                    counterparty=locked_buyer,
+                    entry_type=LedgerEntry.Type.SALE,
+                    amount=trade.total_amount,
+                    description=_trade_description(trade),
+                    occurred_on=timezone.localdate(),
+                    related_lot=trade.item,
+                    related_trade=trade,
+                    actor=membership.user,
+                )
+            if already_bought is None:
+                purchase = _write_entry(
+                    business=locked_buyer,
+                    counterparty=locked_seller,
+                    entry_type=LedgerEntry.Type.PURCHASE,
+                    amount=trade.total_amount,
+                    description=_purchase_description(trade),
+                    occurred_on=timezone.localdate(),
+                    # related_lot belongs to the seller, so it is deliberately
+                    # absent here: _write_entry rejects a foreign product.
+                    related_trade=trade,
+                    actor=None,
+                )
+    except IntegrityError as exc:
+        logger.warning("Duplicate trade ledger entry blocked by constraint trade=%s", trade.id)
+        raise LedgerDuplicateError() from exc
+
+    return TradePosting(sale=sale, purchase=purchase)
+
+
+def _live_trade_entry(business: Business, trade) -> LedgerEntry | None:
+    return LedgerEntry.objects.filter(
         business=business,
         related_trade=trade,
         entry_type__in=TRADE_ENTRY_TYPES,
         reversed_at__isnull=True,
     ).first()
-    if existing is not None:
-        raise LedgerDuplicateError(existing=existing)
-
-    try:
-        # Savepoint so a constraint violation leaves the surrounding transaction
-        # usable instead of poisoning the whole finalization.
-        with transaction.atomic():
-            entry = _post(
-                business=business,
-                counterparty=locked,
-                membership=membership,
-                entry_type=LedgerEntry.Type.SALE,
-                amount=trade.total_amount,
-                description=_trade_description(trade),
-                occurred_on=timezone.localdate(),
-                related_lot=trade.item,
-                related_trade=trade,
-            )
-    except IntegrityError as exc:
-        logger.warning("Duplicate trade ledger entry blocked by constraint trade=%s", trade.id)
-        raise LedgerDuplicateError() from exc
-
-    return entry
 
 
 @transaction.atomic

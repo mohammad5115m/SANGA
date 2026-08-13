@@ -1,0 +1,44 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}ثبت فروش مستقیم | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">ثبت فروش مستقیم</h1>
+    <p class="page-lead">فروشی که تلفنی یا حضوری انجام شده و از «درخواست خرید» نیامده است.</p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+
+    <div class="alert alert-warn">
+      با ثبت این فروش، مبلغ آن در دفتر حساب هر دو طرف ثبت می‌شود و فاکتور آن صادر می‌گردد.
+      موجودی محصول به‌صورت خودکار کم نمی‌شود.
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+
+    {% for field in form %}
+      <label class="field {% if field.name == 'confirm' %}checkbox-field{% endif %}">
+        {% if field.name == 'confirm' %}
+          {{ field }} <span>{{ field.label }}</span>
+        {% else %}
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+        {% endif %}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+
+    <p class="muted">مشتری عادی حساب کاربری سنگا ندارد و برای او حسابی ساخته نمی‌شود.</p>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">ثبت فروش</button>
+      <a class="btn btn-ghost" href="{% url 'trading:trade_list' %}">انصراف</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

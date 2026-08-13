@@ -82,21 +82,23 @@ A reversal cannot itself be reversed, and an entry cannot be reversed twice.
 A sale reaches the books **exactly once**, when the seller finalizes the trade.
 
 ```text
-finalize_sale()
+finalize_sale()  /  record_direct_sale()
   → create Trade
-  → post_trade_for_sale()   ← the books move here, and only here
+  → post_trade_entries()   ← the books move here, and only here
   → create the invoice
   (one transaction)
 ```
 
 Issuing, re-issuing, printing or cancelling the invoice posts **nothing**. There
 is no second way in: `post_manual_entry()` refuses trade entry types outright, so
-a sale cannot be typed by hand either.
+a sale cannot be typed by hand either, and `create_manual_invoice()` refuses a
+colleague counterparty outright, so a document cannot stand in for a sale.
 
 Exactly-once is enforced three ways, so no single mistake breaks it:
 
-1. `select_for_update()` on the counterparty serializes concurrent attempts.
-2. A pre-check under that lock finds an existing live entry and raises
+1. `select_for_update()` on both parties' Business rows serializes concurrent
+   attempts.
+2. A pre-check under those locks finds an existing live entry and raises
    `LedgerDuplicateError`.
 3. `uniq_trade_entry_per_trade` — a partial unique index on
    `(business, related_trade)` scoped to live trade rows — rejects anything that
@@ -105,6 +107,34 @@ Exactly-once is enforced three ways, so no single mistake breaks it:
 `reversed_at__isnull=True` in the constraint means reversing frees the slot, so a
 trade recorded with a wrong amount can be corrected and re-recorded with its link
 intact.
+
+### Both parties keep books
+
+A colleague sale is one commercial event that moves two ledgers:
+
+| Party | Entry | Effect on their own books |
+|-------|-------|---------------------------|
+| Seller | `sale` | the colleague becomes **بدهکار** |
+| Buyer | `purchase` | the colleague becomes **بستانکار** |
+
+Both are written inside the seller's transaction. The buyer's row is not
+bookkeeping the seller is authoring in someone else's name — it is the other half
+of a transaction the buyer is a party to, and the buyer can reverse it from their
+own statement if it is wrong. Posting only the seller's side left «جمع خرید»
+permanently zero for the buyer while the seller's statement said money was owed:
+the same event described two incompatible ways.
+
+Idempotency is evaluated **per side**, so a party who reversed their own entry
+can have it reposted without disturbing the other's book. Each party owns the
+corrections to their own ledger; nothing reaches across the tenant boundary to
+reverse somebody else's row.
+
+Both Business rows are locked in ascending stringified-UUID order. Two trades
+running in opposite directions between the same pair would otherwise deadlock,
+each holding the row the other wants.
+
+A walk-in customer sale posts nothing: there is no colleague account to move, and
+inventing one would create a debtor nobody can settle with.
 
 ### Who is allowed to post it
 
@@ -161,6 +191,18 @@ so the FK survives too.
 This is the deliberate opposite of a catalog, which is always live:
 
 > **Catalog = current. Invoice = historical.**
+
+### One Trade, one invoice
+
+`uniq_invoice_per_trade` is a partial unique index on `trade` for non-null rows.
+The service was idempotent by lookup, which cannot hold under concurrency: two
+requests could both find no invoice for a trade and both create one, documenting
+the same sale twice. The service now locks the seller *before* looking, re-checks
+under the lock, and turns the constraint violation back into the winning
+document, so a double-click still hands both callers the same invoice.
+
+A colleague invoice therefore has exactly one origin: a finalized Trade. Typing
+one by hand is refused — see §5.
 
 ### Numbering
 

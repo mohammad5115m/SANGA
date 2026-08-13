@@ -3,28 +3,20 @@ from __future__ import annotations
 from django import forms
 from django.utils import timezone
 
-from apps.businesses.models import Business
-
 _TEXT = {"class": "field-input"}
 
 
 class ManualInvoiceForm(forms.Form):
-    """Header of a hand-typed invoice.
+    """Header of a hand-typed invoice for a walk-in customer.
 
-    The buyer is either a colleague Business or a walk-in customer named inline.
-    A walk-in never becomes a platform User.
+    A walk-in never becomes a platform User. There is deliberately no colleague
+    option: a sale to another Business moves that colleague's account, and the
+    only thing allowed to move an account is a finalized Trade — so colleague
+    sales are recorded through «ثبت فروش مستقیم» instead.
     """
 
-    buyer_business = forms.ModelChoiceField(
-        label="همکار",
-        queryset=Business.objects.none(),
-        required=False,
-        empty_label="— مشتری عادی (بدون حساب سنگا) —",
-        widget=forms.Select(attrs=_TEXT),
-    )
     customer_name = forms.CharField(
         label="نام مشتری",
-        required=False,
         max_length=150,
         widget=forms.TextInput(attrs=_TEXT),
     )
@@ -48,16 +40,6 @@ class ManualInvoiceForm(forms.Form):
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["issue_date"].input_formats = ["%Y-%m-%d"]
-        if business is not None:
-            from apps.businesses.directory import colleague_businesses
-
-            self.fields["buyer_business"].queryset = colleague_businesses(business)
-
-    def clean(self):
-        cleaned = super().clean()
-        if not cleaned.get("buyer_business") and not (cleaned.get("customer_name") or "").strip():
-            raise forms.ValidationError("یک همکار انتخاب کنید یا نام مشتری را وارد کنید.")
-        return cleaned
 
 
 class InvoiceLineForm(forms.Form):

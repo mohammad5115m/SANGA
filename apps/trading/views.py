@@ -11,7 +11,7 @@ from apps.businesses.decorators import business_login_required, require_capabili
 from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
 from apps.inventory.policy import get_eligible_item
 
-from .forms import FinalizeSaleForm, PurchaseRequestForm, PurchaseRequestResponseForm
+from .forms import DirectSaleForm, FinalizeSaleForm, PurchaseRequestForm, PurchaseRequestResponseForm
 from .models import PurchaseRequest
 from .selectors import (
     filter_requests,
@@ -26,6 +26,7 @@ from .services import (
     cancel_purchase_request,
     create_purchase_request,
     finalize_sale,
+    record_direct_sale,
     respond_to_purchase_request,
 )
 
@@ -202,6 +203,41 @@ def finalize(request: HttpRequest, request_id) -> HttpResponse:
             return redirect("trading:trade_detail", trade_id=trade.id)
 
     return render(request, "trading/finalize.html", {"pr": purchase_request, "form": form})
+
+
+@business_login_required
+@require_capability(SALE_FINALIZE)
+@require_http_methods(["GET", "POST"])
+def direct_sale(request: HttpRequest) -> HttpResponse:
+    """«ثبت فروش مستقیم» — record a phone or counter sale.
+
+    The authoritative entry point for a sale that never went through a purchase
+    request. It creates the Trade, posts both parties' books and issues the
+    invoice in one transaction, so a colleague sale can never exist as a document
+    with no matching balance.
+    """
+    form = DirectSaleForm(request.POST or None, business=request.business)
+    if request.method == "POST" and form.is_valid():
+        try:
+            trade = record_direct_sale(
+                seller_business=request.business,
+                membership=request.membership,
+                item=form.cleaned_data.get("item"),
+                quantity_sqm=form.cleaned_data["quantity_sqm"],
+                unit_price=form.cleaned_data["unit_price"],
+                buyer_business=form.cleaned_data.get("buyer_business"),
+                customer_name=form.cleaned_data.get("customer_name", ""),
+                customer_phone=form.cleaned_data.get("customer_phone", ""),
+                product_name=form.cleaned_data.get("product_name", ""),
+                note=form.cleaned_data.get("note", ""),
+            )
+        except TradingError as exc:
+            form.add_error(None, exc.message)
+        else:
+            messages.success(request, "فروش ثبت شد.")
+            return redirect("trading:trade_detail", trade_id=trade.id)
+
+    return render(request, "trading/direct_sale.html", {"form": form})
 
 
 # --- trades -------------------------------------------------------------------

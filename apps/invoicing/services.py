@@ -86,51 +86,65 @@ def create_invoice_for_trade(
 ) -> SalesInvoice:
     """Turn a finalized Trade into an invoice.
 
-    Idempotent by lookup rather than by constraint: a trade may legitimately be
-    invoiced once, and asking twice should hand back the same document rather
-    than fail. Nothing here touches the ledger — that already happened when the
-    trade was finalized.
+    Idempotent three ways, because a lookup alone is not: the seller row is
+    locked *before* the existence check so concurrent callers serialize, the
+    check runs again under that lock, and ``uniq_invoice_per_trade`` catches
+    anything that still slips past — in which case the loser returns the
+    winner's document instead of failing.
+
+    Nothing here touches the ledger; that already happened when the trade was
+    finalized.
     """
     business = trade.seller_business
     _require_manage(business, membership)
 
-    existing = SalesInvoice.objects.filter(seller_business=business, trade=trade).first()
+    # Lock first, then look. Checking before the lock is what allowed two
+    # requests to both conclude "no invoice yet" and both create one.
+    Business.objects.select_for_update().get(pk=business.pk)
+
+    existing = SalesInvoice.objects.filter(trade=trade).first()
     if existing is not None:
         return existing
 
-    # Lock the seller so the number allocation below is serialized.
-    Business.objects.select_for_update().get(pk=business.pk)
+    try:
+        with transaction.atomic():
+            invoice = SalesInvoice.objects.create(
+                seller_business=business,
+                number=allocate_number(business),
+                counterparty_type=(
+                    SalesInvoice.Counterparty.BUSINESS
+                    if trade.buyer_business_id
+                    else SalesInvoice.Counterparty.CUSTOMER
+                ),
+                buyer_business=trade.buyer_business,
+                customer_name=trade.customer_name,
+                customer_phone=trade.customer_phone,
+                buyer_name=trade.counterparty_label,
+                trade=trade,
+                issue_date=timezone.localdate(),
+                status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
+                total_amount=trade.total_amount,
+                currency=trade.currency,
+                notes=(notes or "").strip(),
+                created_by=membership.user,
+            )
+            SalesInvoiceItem.objects.create(
+                invoice=invoice,
+                item=trade.item,
+                product_name=trade.product_name,
+                stone_type=trade.stone_type,
+                grade=trade.grade,
+                quantity=trade.quantity_sqm,
+                unit_price=trade.unit_price,
+                line_total=trade.total_amount,
+            )
+    except IntegrityError:
+        winner = SalesInvoice.objects.filter(trade=trade).first()
+        if winner is None:
+            raise
+        logger.info("Concurrent invoice creation for trade %s resolved to %s", trade.id, winner.number)
+        return winner
 
-    invoice = SalesInvoice.objects.create(
-        seller_business=business,
-        number=allocate_number(business),
-        counterparty_type=(
-            SalesInvoice.Counterparty.BUSINESS
-            if trade.buyer_business_id
-            else SalesInvoice.Counterparty.CUSTOMER
-        ),
-        buyer_business=trade.buyer_business,
-        customer_name=trade.customer_name,
-        customer_phone=trade.customer_phone,
-        buyer_name=trade.counterparty_label,
-        trade=trade,
-        issue_date=timezone.localdate(),
-        status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
-        total_amount=trade.total_amount,
-        currency=trade.currency,
-        notes=(notes or "").strip(),
-        created_by=membership.user,
-    )
-    SalesInvoiceItem.objects.create(
-        invoice=invoice,
-        item=trade.item,
-        product_name=trade.product_name,
-        stone_type=trade.stone_type,
-        grade=trade.grade,
-        quantity=trade.quantity_sqm,
-        unit_price=trade.unit_price,
-        line_total=trade.total_amount,
-    )
     logger.info("Invoice %s created for trade %s", invoice.number, trade.id)
     return invoice
 
@@ -148,27 +162,32 @@ def create_manual_invoice(
     issue_date=None,
     issue: bool = True,
 ) -> SalesInvoice:
-    """An invoice typed by hand, for a colleague or a walk-in customer.
+    """An invoice typed by hand for a walk-in customer.
 
     Each line carries its own snapshot. ``item`` may be supplied for navigation,
     but the name, grade and price stored on the line are what the document shows
     forever after.
+
+    A **colleague** invoice cannot be created here. A sale to another Business
+    moves that colleague's account, and the only thing allowed to move an account
+    is a finalized Trade. Letting this path issue a colleague invoice produced a
+    valid-looking document while the colleague's balance stayed untouched — one
+    commercial event with two representations, only one of which counted. Use
+    :func:`apps.trading.services.record_direct_sale` instead; it creates the
+    Trade, posts both books and returns the invoice.
     """
     _require_manage(business, membership)
 
     if buyer_business is not None:
-        if buyer_business.id == business.id:
-            raise InvoiceError("نمی‌توانید برای کسب‌وکار خودتان فاکتور صادر کنید.")
-        counterparty_type = SalesInvoice.Counterparty.BUSINESS
-        buyer_name = buyer_business.name
-        customer_name = ""
-        customer_phone = ""
-    else:
-        counterparty_type = SalesInvoice.Counterparty.CUSTOMER
-        customer_name = (customer_name or "").strip()
-        if not customer_name:
-            raise InvoiceError("نام خریدار را وارد کنید.")
-        buyer_name = customer_name
+        raise InvoiceError(
+            "فروش به همکار باید از «ثبت فروش مستقیم» ثبت شود تا حساب همکار هم به‌روز شود."
+        )
+
+    counterparty_type = SalesInvoice.Counterparty.CUSTOMER
+    customer_name = (customer_name or "").strip()
+    if not customer_name:
+        raise InvoiceError("نام خریدار را وارد کنید.")
+    buyer_name = customer_name
 
     cleaned = [_clean_line(line) for line in (lines or []) if line]
     if not cleaned:
@@ -180,7 +199,7 @@ def create_manual_invoice(
         seller_business=business,
         number=allocate_number(business),
         counterparty_type=counterparty_type,
-        buyer_business=buyer_business,
+        buyer_business=None,
         customer_name=customer_name,
         customer_phone=(customer_phone or "").strip(),
         buyer_name=buyer_name,

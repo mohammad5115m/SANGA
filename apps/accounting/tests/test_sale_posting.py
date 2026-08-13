@@ -1,8 +1,9 @@
 """Finalizing a sale is the one event that moves the books.
 
-Two rules under test: it must happen exactly once per trade, and issuing or
-printing the invoice afterwards must never post again. A business whose every
-sale is counted twice has no usable books at all.
+Three rules under test: it must happen exactly once per trade, it must move
+*both* parties' books, and issuing or printing the invoice afterwards must never
+post again. A business whose every sale is counted twice has no usable books at
+all; a buyer whose purchases never appear has half a set.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import pytest
 
 from apps.accounting.models import LedgerEntry
 from apps.accounting.selectors import current_balance
-from apps.accounting.services import LedgerDuplicateError, post_trade_for_sale, reverse_entry
+from apps.accounting.services import LedgerDuplicateError, post_trade_entries, reverse_entry
 from apps.businesses.models import BusinessMembership
 from apps.core.testing import make_business, make_item, make_product, make_user, owner_membership
 from apps.invoicing.models import SalesInvoice
@@ -85,11 +86,64 @@ def test_finalizing_twice_does_not_double_the_balance(sale):
 
 
 @pytest.mark.django_db
+def test_finalizing_a_sale_moves_the_buyers_books_too(sale):
+    """One commercial event, two sets of books.
+
+    Posting only the seller's side left «جمع خرید» permanently zero for the buyer
+    while the seller's statement said money was owed.
+    """
+    trade = finalize_sale(request=sale["request"], membership=sale["seller_m"])
+
+    purchase = LedgerEntry.objects.get(business=sale["buyer"], entry_type=LedgerEntry.Type.PURCHASE)
+    assert purchase.counterparty_business_id == sale["seller"].id
+    assert purchase.related_trade_id == trade.id
+    assert purchase.amount == Decimal("50000000.00")
+
+    # Seller's books: the buyer owes them. Buyer's books: they owe the seller.
+    assert current_balance(sale["seller"], sale["buyer"]) == Decimal("50000000.00")
+    assert current_balance(sale["buyer"], sale["seller"]) == Decimal("-50000000.00")
+
+
+@pytest.mark.django_db
+def test_the_buyers_purchase_entry_carries_no_sellers_product(sale):
+    """``related_lot`` belongs to the seller's tenant; it must not cross over."""
+    finalize_sale(request=sale["request"], membership=sale["seller_m"])
+    purchase = LedgerEntry.objects.get(business=sale["buyer"], entry_type=LedgerEntry.Type.PURCHASE)
+    assert purchase.related_lot_id is None
+
+
+@pytest.mark.django_db
+def test_finalizing_twice_posts_neither_side_twice(sale):
+    from apps.trading.services import TradingError
+
+    finalize_sale(request=sale["request"], membership=sale["seller_m"])
+    with pytest.raises(TradingError):
+        finalize_sale(request=sale["request"], membership=sale["seller_m"])
+
+    assert LedgerEntry.objects.filter(entry_type=LedgerEntry.Type.SALE).count() == 1
+    assert LedgerEntry.objects.filter(entry_type=LedgerEntry.Type.PURCHASE).count() == 1
+    assert current_balance(sale["buyer"], sale["seller"]) == Decimal("-50000000.00")
+
+
+@pytest.mark.django_db
+def test_a_buyer_can_reverse_their_own_purchase_without_touching_the_seller(sale):
+    """Each party owns their own book, including its corrections."""
+    finalize_sale(request=sale["request"], membership=sale["seller_m"])
+    purchase = LedgerEntry.objects.get(business=sale["buyer"], entry_type=LedgerEntry.Type.PURCHASE)
+
+    reverse_entry(entry=purchase, membership=sale["buyer_m"])
+
+    assert current_balance(sale["buyer"], sale["seller"]) == Decimal("0.00")
+    assert current_balance(sale["seller"], sale["buyer"]) == Decimal("50000000.00")
+
+
+@pytest.mark.django_db
 def test_posting_the_same_trade_twice_is_refused(sale):
     trade = finalize_sale(request=sale["request"], membership=sale["seller_m"])
     with pytest.raises(LedgerDuplicateError):
-        post_trade_for_sale(trade=trade, membership=sale["seller_m"])
+        post_trade_entries(trade=trade, membership=sale["seller_m"])
     assert LedgerEntry.objects.filter(entry_type=LedgerEntry.Type.SALE).count() == 1
+    assert LedgerEntry.objects.filter(entry_type=LedgerEntry.Type.PURCHASE).count() == 1
 
 
 @pytest.mark.django_db
@@ -113,15 +167,18 @@ def test_the_database_itself_rejects_a_second_live_trade_entry(sale):
 
 @pytest.mark.django_db
 def test_a_reversal_frees_the_slot_so_a_corrected_sale_can_be_reposted(sale):
+    """And only the reversed side is rewritten: the buyer's untouched book stays."""
     trade = finalize_sale(request=sale["request"], membership=sale["seller_m"])
     entry = LedgerEntry.objects.get(entry_type=LedgerEntry.Type.SALE)
 
     reverse_entry(entry=entry, membership=sale["seller_m"])
     assert current_balance(sale["seller"], sale["buyer"]) == Decimal("0.00")
 
-    reposted = post_trade_for_sale(trade=trade, membership=sale["seller_m"])
-    assert reposted is not None
+    reposted = post_trade_entries(trade=trade, membership=sale["seller_m"])
+    assert reposted.sale is not None
+    assert reposted.purchase is None
     assert current_balance(sale["seller"], sale["buyer"]) == Decimal("50000000.00")
+    assert LedgerEntry.objects.filter(entry_type=LedgerEntry.Type.PURCHASE).count() == 1
 
 
 @pytest.mark.django_db
@@ -157,7 +214,9 @@ def test_a_direct_customer_sale_posts_no_colleague_entry(sale):
         unit_price=Decimal("2000000"),
         customer_name="آقای رضایی",
     )
-    assert post_trade_for_sale(trade=trade, membership=sale["seller_m"]) is None
+    posting = post_trade_entries(trade=trade, membership=sale["seller_m"])
+    assert posting.sale is None
+    assert posting.purchase is None
     assert not LedgerEntry.objects.exists()
 
 

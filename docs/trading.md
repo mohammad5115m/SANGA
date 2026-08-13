@@ -89,9 +89,11 @@ FK and the history behind it survive. See [inventory.md](./inventory.md) §9.
 
 ## 5. Direct sales
 
-Most sales still happen over the phone. `record_direct_sale()` creates a `Trade`
-without a purchase request, for either a colleague Business or a walk-in
-customer identified by name and mobile.
+Most sales still happen over the phone. «ثبت فروش مستقیم»
+(`/app/trading/direct-sale/`) creates a `Trade` without a purchase request, for
+either a colleague Business or a walk-in customer identified by name and mobile.
+It posts the ledger and issues the invoice in the same transaction, exactly as
+finalizing a request does.
 
 A walk-in customer is **never** a platform User. `Trade.counterparty_type`
 distinguishes the two cases, and a check constraint keeps `buyer_business`
@@ -99,6 +101,19 @@ consistent with it.
 
 Forcing sellers to invent a purchase request first would simply make them stop
 recording sales.
+
+### It is the only way to sell to a colleague outside a request
+
+There used to be a second route: hand-typing a sales invoice with a colleague as
+the buyer. It produced a valid-looking document and moved nobody's balance, so a
+business could believe it had sold something the ledger had never heard of. That
+route is gone — `create_manual_invoice()` refuses a colleague counterparty and
+points here.
+
+A direct sale describes **one product line**, because the Trade it creates
+carries one snapshot and one Trade backs one invoice and one ledger entry per
+party. A basket of different stones is several sales. Hand-typed multi-line
+invoices remain available for walk-in customers, where no account moves.
 
 ## 6. Permissions and plan
 

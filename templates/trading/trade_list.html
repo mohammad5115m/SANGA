@@ -16,6 +16,10 @@
     <a class="tab is-active" href="{% url 'trading:trade_list' %}">فروش‌های نهایی</a>
   </div>
 
+  <div class="btn-row">
+    <a class="btn btn-primary" href="{% url 'trading:direct_sale' %}">ثبت فروش مستقیم</a>
+  </div>
+
   <div class="list-stack">
     {% for trade in trades %}
       <a class="lot-card" href="{% url 'trading:trade_detail' trade.id %}">

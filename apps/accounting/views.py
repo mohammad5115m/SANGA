@@ -9,7 +9,6 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.directory import get_colleague
 from apps.businesses.permissions import LEDGER_MANAGE, LEDGER_VIEW
 
 from .forms import ManualEntryForm
@@ -18,6 +17,7 @@ from .reports import business_aging, counterparty_aging
 from .selectors import (
     BALANCE_SORTS,
     BALANCE_STATE_LABELS,
+    accounting_counterparty,
     business_financial_summary,
     counterparty_balances,
     counterparty_statement,
@@ -42,7 +42,12 @@ SORT_OPTIONS: list[tuple[str, str]] = [
 
 
 def _colleague_or_404(request: HttpRequest, business_id):
-    colleague = get_colleague(request.business, business_id)
+    """Resolve the account being read or posted to.
+
+    Goes through :func:`accounting_counterparty`, not the colleague directory: a
+    suspended debtor must keep an openable statement and a settleable balance.
+    """
+    colleague = accounting_counterparty(request.business, business_id)
     if colleague is None:
         raise Http404("همکار یافت نشد.")
     return colleague
