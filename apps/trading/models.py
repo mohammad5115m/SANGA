@@ -168,6 +168,20 @@ class Trade(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
+    #: Identifies the *submission* that asked for this sale, as opposed to the
+    #: sale itself.
+    #:
+    #: A request-driven sale is idempotent for free, because ``purchase_request``
+    #: is a OneToOneField and finalization holds the request's row lock. A direct
+    #: sale has no request, so it had neither protection: a double-click, a proxy
+    #: retry or two tabs produced two Trades describing one real-world sale, and
+    #: because they were genuinely different rows every per-trade constraint was
+    #: satisfied while the colleague's balance moved twice.
+    #:
+    #: Minted by the form before the user submits, so every retry of one attempt
+    #: carries the same value. Null for sales not recorded through that form.
+    submission_id = models.UUIDField(null=True, blank=True, editable=False)
+
     seller_business = models.ForeignKey(
         "businesses.Business",
         on_delete=models.CASCADE,
@@ -251,6 +265,19 @@ class Trade(models.Model):
                     | models.Q(counterparty_type="customer", buyer_business__isnull=True)
                 ),
                 name="trade_counterparty_matches_type",
+            ),
+            # One submission, one sale. The service looks the trade up under the
+            # seller's row lock before creating one, but a lookup is not an
+            # idempotency mechanism on its own — two connections can both find
+            # nothing. This is the invariant that holds when they do, and the
+            # service turns the violation back into the winning Trade.
+            #
+            # Scoped by seller so two businesses can never collide, and partial
+            # so historical rows and non-form callers stay legal.
+            models.UniqueConstraint(
+                fields=["seller_business", "submission_id"],
+                condition=models.Q(submission_id__isnull=False),
+                name="uniq_trade_per_submission",
             ),
         ]
         indexes = [

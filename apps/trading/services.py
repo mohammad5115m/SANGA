@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.accounting.services import post_trade_entries
@@ -336,11 +336,20 @@ def record_direct_sale(
     customer_phone: str = "",
     product_name: str = "",
     note: str = "",
+    submission_id=None,
 ) -> Trade:
     """Record a sale that did not come through a purchase request.
 
     Most sales still happen over the phone. Forcing the seller to invent a
     request first would make them stop recording sales at all.
+
+    Idempotent on ``submission_id`` three ways, because none of them is
+    sufficient alone: the seller's row is locked *before* the lookup so
+    concurrent callers serialize, the lookup runs again under that lock, and
+    ``uniq_trade_per_submission`` catches anything that still slips past — in
+    which case the loser is handed the winner's Trade rather than an error. The
+    ledger and the invoice hang off the returned Trade, so one submission moves
+    each book once and produces one document however many times it arrives.
     """
     _require(membership, SALE_FINALIZE)
     if membership.business_id != seller_business.id:
@@ -373,23 +382,49 @@ def record_direct_sale(
     if not snapshot_name:
         raise TradingError("نام محصول را وارد کنید.")
 
-    trade = Trade.objects.create(
-        seller_business=seller_business,
-        counterparty_type=counterparty_type,
-        buyer_business=buyer_business,
-        customer_name=customer_name,
-        customer_phone=(customer_phone or "").strip(),
-        item=item,
-        product_name=snapshot_name,
-        stone_type=item.product.stone_type if item else "",
-        grade=item.grade if item else "",
-        quantity_sqm=quantity,
-        unit_price=price,
-        total_amount=(price * quantity).quantize(Decimal("0.01")),
-        note=(note or "").strip(),
-        finalized_at=timezone.now(),
-        created_by=membership.user,
-    )
+    if submission_id is not None:
+        # Lock first, then look. Checking before the lock is what lets two
+        # requests both conclude "no sale yet" and both record one.
+        Business.objects.select_for_update().get(pk=seller_business.pk)
+        existing = Trade.objects.filter(
+            seller_business=seller_business, submission_id=submission_id
+        ).first()
+        if existing is not None:
+            logger.info("Direct sale submission %s already recorded as trade %s", submission_id, existing.id)
+            return existing
+
+    try:
+        # Savepoint so a constraint violation leaves the surrounding transaction
+        # usable instead of poisoning the whole sale.
+        with transaction.atomic():
+            trade = Trade.objects.create(
+                seller_business=seller_business,
+                submission_id=submission_id,
+                counterparty_type=counterparty_type,
+                buyer_business=buyer_business,
+                customer_name=customer_name,
+                customer_phone=(customer_phone or "").strip(),
+                item=item,
+                product_name=snapshot_name,
+                stone_type=item.product.stone_type if item else "",
+                grade=item.grade if item else "",
+                quantity_sqm=quantity,
+                unit_price=price,
+                total_amount=(price * quantity).quantize(Decimal("0.01")),
+                note=(note or "").strip(),
+                finalized_at=timezone.now(),
+                created_by=membership.user,
+            )
+    except IntegrityError:
+        winner = (
+            Trade.objects.filter(seller_business=seller_business, submission_id=submission_id).first()
+            if submission_id is not None
+            else None
+        )
+        if winner is None:
+            raise
+        logger.info("Concurrent direct sale for submission %s resolved to trade %s", submission_id, winner.id)
+        return winner
 
     # A finalized sale is a finalized sale, however it was reached. Posting only
     # for request-driven sales would leave the books wrong for every deal agreed

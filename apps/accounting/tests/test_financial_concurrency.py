@@ -13,6 +13,7 @@ escaped.
 from __future__ import annotations
 
 import threading
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -25,7 +26,7 @@ from apps.core.testing import make_business, make_item, make_product, owner_memb
 from apps.invoicing.models import SalesInvoice
 from apps.invoicing.services import create_invoice_for_trade
 from apps.pricing.services import ensure_default_tiers
-from apps.trading.models import PurchaseRequest
+from apps.trading.models import PurchaseRequest, Trade
 from apps.trading.services import (
     TradingError,
     create_purchase_request,
@@ -169,6 +170,68 @@ def test_two_threads_finalizing_one_request_produce_one_sale():
     assert LedgerEntry.objects.filter(related_trade=trade).count() == 2
     assert SalesInvoice.objects.filter(trade=trade).count() == 1
     assert current_balance(world["seller"], world["buyer"]) == Decimal("50000000.00")
+
+
+def test_two_threads_submitting_one_direct_sale_record_one_sale():
+    """The double-submitted phone sale.
+
+    A direct sale has no PurchaseRequest, so it inherited neither the
+    OneToOneField nor the row lock that make finalization idempotent. Two
+    connections arriving with the same submission token used to create two
+    Trades — genuinely distinct rows, so ``uniq_trade_entry_per_trade`` was
+    satisfied by both and the colleague was billed twice for one sale.
+    """
+    world = _world()
+    token = uuid.uuid4()
+
+    results, errors = _race(
+        lambda: record_direct_sale(
+            seller_business=world["seller"],
+            membership=world["seller_m"],
+            item=world["item"],
+            quantity_sqm=Decimal("10"),
+            unit_price=Decimal("1000000"),
+            buyer_business=world["buyer"],
+            submission_id=token,
+        )
+    )
+
+    assert errors == [], f"no caller may see a raw IntegrityError; got {errors}"
+    assert len(results) == 2, "both callers must be answered"
+    assert len({trade.pk for trade in results}) == 1, "both callers must resolve to the same sale"
+
+    assert Trade.objects.filter(seller_business=world["seller"]).count() == 1
+    trade = results[0]
+    assert LedgerEntry.objects.filter(related_trade=trade, entry_type=LedgerEntry.Type.SALE).count() == 1
+    assert LedgerEntry.objects.filter(related_trade=trade, entry_type=LedgerEntry.Type.PURCHASE).count() == 1
+    assert SalesInvoice.objects.filter(trade=trade).count() == 1
+
+    assert current_balance(world["seller"], world["buyer"]) == Decimal("10000000.00")
+    assert current_balance(world["buyer"], world["seller"]) == Decimal("-10000000.00")
+
+
+def test_four_threads_submitting_one_direct_sale_still_record_one_sale():
+    """Two threads can serialize by luck; four make that much less likely."""
+    world = _world()
+    token = uuid.uuid4()
+
+    results, errors = _race(
+        lambda: record_direct_sale(
+            seller_business=world["seller"],
+            membership=world["seller_m"],
+            item=world["item"],
+            quantity_sqm=Decimal("10"),
+            unit_price=Decimal("1000000"),
+            buyer_business=world["buyer"],
+            submission_id=token,
+        ),
+        count=4,
+    )
+
+    assert errors == [], errors
+    assert len({trade.pk for trade in results}) == 1
+    assert Trade.objects.filter(seller_business=world["seller"]).count() == 1
+    assert current_balance(world["seller"], world["buyer"]) == Decimal("10000000.00")
 
 
 def test_concurrent_invoice_numbering_never_collides():

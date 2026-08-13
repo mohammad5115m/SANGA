@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from django import forms
 
 from apps.businesses.models import Business
@@ -77,10 +79,14 @@ class DirectSaleForm(forms.Form):
     """«ثبت فروش مستقیم» — a sale agreed over the phone or at the counter.
 
     This is the authoritative way to record a colleague sale that never went
-    through a purchase request. It deliberately describes one product line: the
-    Trade it creates carries one snapshot, and one Trade backs one invoice and
-    one ledger entry per party. A basket of different stones is several sales.
+    through a purchase request: it creates the Trade, posts both books and
+    issues the invoice as one commercial event.
     """
+
+    #: Minted once when the blank form is rendered and carried through every
+    #: retry of that attempt, so a double-click, a refresh or a proxy retry all
+    #: identify themselves as the same sale rather than as new ones.
+    submission_id = forms.UUIDField(widget=forms.HiddenInput)
 
     buyer_business = forms.ModelChoiceField(
         label="همکار",
@@ -139,6 +145,7 @@ class DirectSaleForm(forms.Form):
     )
 
     def __init__(self, *args, business=None, **kwargs):
+        kwargs.setdefault("initial", {}).setdefault("submission_id", uuid.uuid4)
         super().__init__(*args, **kwargs)
         if business is not None:
             from apps.businesses.directory import colleague_businesses

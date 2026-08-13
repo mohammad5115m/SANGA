@@ -232,6 +232,7 @@ def direct_sale(request: HttpRequest) -> HttpResponse:
                 customer_phone=form.cleaned_data.get("customer_phone", ""),
                 product_name=form.cleaned_data.get("product_name", ""),
                 note=form.cleaned_data.get("note", ""),
+                submission_id=form.cleaned_data["submission_id"],
             )
         except TradingError as exc:
             form.add_error(None, exc.message)
