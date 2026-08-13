@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import mimetypes
 import uuid
 from decimal import Decimal
 
@@ -29,6 +28,7 @@ from apps.businesses.permissions import (
 from apps.pricing.models import LotPrice
 from apps.pricing.services import set_lot_price
 
+from .media_validation import MediaValidationError, verify_image, verify_video
 from .models import Application, InventoryLot, LotMedia, Product
 
 logger = logging.getLogger(__name__)
@@ -437,34 +437,92 @@ def delete_item(*, lot: InventoryLot, membership: BusinessMembership) -> str:
         return "archived"
 
     item_id = lot.id
+    media = list(lot.media.all())
     lot.prices.all().delete()
     lot.media.all().delete()
     lot.delete()
+    schedule_storage_cleanup(*media)
     logger.info("Item purged item=%s", item_id)
     return "purged"
 
 
-def _classify_upload(upload: UploadedFile) -> str:
-    """Decide image vs video, and refuse anything else.
+UNSUPPORTED_UPLOAD = "فقط تصویر (jpg, png, webp, gif) یا ویدیو (mp4, mov, webm) قابل بارگذاری است."
 
-    The browser-supplied content type is treated as a hint only; the extension
-    has to agree. A caller can set any Content-Type header they like, so trusting
-    it alone would let an arbitrary file through under an image label.
+
+def _claimed_kind(upload: UploadedFile) -> str:
+    """Which check to run, decided by the extension alone.
+
+    Only used to pick a size limit and a validator. It settles nothing: the
+    extension is caller-supplied, and so are Content-Type and
+    ``mimetypes.guess_type`` — which is itself derived from the extension. All
+    three agreed with each other about a file that was not an image at all.
     """
     name = (upload.name or "").lower()
     extension = name[name.rfind(".") :] if "." in name else ""
-    declared = (getattr(upload, "content_type", "") or "").lower()
-    guessed = (mimetypes.guess_type(name)[0] or "").lower()
-
-    if extension in ALLOWED_IMAGE_EXTENSIONS and (
-        not declared or declared.startswith("image/") or guessed.startswith("image/")
-    ):
+    if extension in ALLOWED_IMAGE_EXTENSIONS:
         return LotMedia.Kind.IMAGE
-    if extension in ALLOWED_VIDEO_EXTENSIONS and (
-        not declared or declared.startswith("video/") or guessed.startswith("video/")
-    ):
+    if extension in ALLOWED_VIDEO_EXTENSIONS:
         return LotMedia.Kind.VIDEO
-    raise InventoryError("فقط تصویر (jpg, png, webp, gif) یا ویدیو (mp4, mov, webm) قابل بارگذاری است.")
+    raise InventoryError(UNSUPPORTED_UPLOAD)
+
+
+def _classify_upload(upload: UploadedFile) -> str:
+    """Prove the upload is what its name claims, by reading it.
+
+    Renaming a script to ``stone.jpg`` and posting it as ``image/jpeg`` used to
+    pass every check there was. Images are decoded; videos are matched against
+    their container signature.
+    """
+    kind = _claimed_kind(upload)
+    try:
+        if kind == LotMedia.Kind.IMAGE:
+            verify_image(upload)
+        else:
+            verify_video(upload)
+    except MediaValidationError as exc:
+        raise InventoryError(exc.message) from exc
+    return kind
+
+
+def schedule_storage_cleanup(*media: LotMedia) -> None:
+    """Delete the underlying objects once the transaction commits.
+
+    Django does not remove a ``FileField``'s object when the row goes, so every
+    deleted photo and video used to stay in storage — paid for, and still
+    reachable at its old URL on a bucket served directly.
+
+    On commit rather than inline, because the opposite failure is worse: a
+    rolled-back transaction that had already deleted the file leaves a row
+    pointing at nothing. Failures are logged and swallowed; a missing object is
+    the desired end state, and re-raising here would fail a request whose
+    database work has already been committed.
+    """
+    names = [name for item in media for name in (item.file.name, getattr(item.thumbnail, "name", None)) if name]
+    if not names:
+        return
+
+    storage = media[0].file.storage
+
+    def _delete() -> None:
+        for name in names:
+            try:
+                storage.delete(name)
+            except Exception:  # noqa: BLE001 - cleanup must not break the response
+                logger.warning("Could not delete stored media object %s", name, exc_info=True)
+
+    transaction.on_commit(_delete)
+
+
+def _lock_lot(lot: InventoryLot) -> InventoryLot:
+    """Serialize primary-image changes for one item.
+
+    Two uploads, or two "make this the cover" clicks, arriving together both
+    demoted the current primary and both promoted their own, and the gallery
+    ended up with two covers. The row lock makes them queue; the partial unique
+    index on the model is what holds if anything reaches the database another
+    way.
+    """
+    return InventoryLot.objects.select_for_update().get(pk=lot.pk)
 
 
 @transaction.atomic
@@ -479,10 +537,18 @@ def add_lot_media(
     _require(membership, INVENTORY_MEDIA)
     _require_owner(lot, membership)
 
-    kind = _classify_upload(upload)
-    limit = MAX_IMAGE_BYTES if kind == LotMedia.Kind.IMAGE else MAX_VIDEO_BYTES
+    # Size first, so an oversized upload is refused without being decoded. The
+    # limit comes from the claimed kind; the content check below is what settles
+    # whether that claim was true.
+    limit = MAX_IMAGE_BYTES if _claimed_kind(upload) == LotMedia.Kind.IMAGE else MAX_VIDEO_BYTES
     if (upload.size or 0) > limit:
         raise InventoryError(f"حجم فایل بیش از حد مجاز است (حداکثر {limit // (1024 * 1024)} مگابایت).")
+
+    kind = _classify_upload(upload)
+
+    # Held for the rest of the transaction, so two concurrent uploads cannot both
+    # decide they are the first and both become the cover.
+    _lock_lot(lot)
 
     if is_primary or not lot.media.filter(is_primary=True).exists():
         lot.media.filter(is_primary=True).update(is_primary=False)
@@ -506,12 +572,14 @@ def add_lot_media(
 def delete_lot_media(*, lot: InventoryLot, membership: BusinessMembership, media_id) -> None:
     _require(membership, INVENTORY_MEDIA)
     _require_owner(lot, membership)
+    _lock_lot(lot)
 
     media = lot.media.filter(pk=media_id).first()
     if media is None:
         raise InventoryError("فایل یافت نشد.")
     was_primary = media.is_primary
     media.delete()
+    schedule_storage_cleanup(media)
     if was_primary:
         # Never leave a gallery with no cover: promote whatever is now first.
         replacement = lot.media.order_by("sort_order", "created_at").first()
@@ -524,6 +592,7 @@ def delete_lot_media(*, lot: InventoryLot, membership: BusinessMembership, media
 def set_primary_media(*, lot: InventoryLot, membership: BusinessMembership, media_id) -> None:
     _require(membership, INVENTORY_MEDIA)
     _require_owner(lot, membership)
+    _lock_lot(lot)
 
     media = lot.media.filter(pk=media_id).first()
     if media is None:

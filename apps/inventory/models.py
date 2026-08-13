@@ -342,6 +342,18 @@ class LotMedia(models.Model):
         ordering = ["sort_order", "created_at"]
         verbose_name = "رسانه محصول"
         verbose_name_plural = "رسانه‌های محصول"
+        constraints = [
+            # One cover per gallery, enforced where it cannot be raced. The
+            # services demote the current primary before promoting the new one,
+            # but two uploads arriving together both did that and both won,
+            # leaving an item with two covers and a card that picked whichever
+            # the ordering happened to return first.
+            models.UniqueConstraint(
+                fields=["lot"],
+                condition=models.Q(is_primary=True),
+                name="uniq_primary_media_per_lot",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.lot.lot_code} media"
