@@ -83,16 +83,27 @@
     {% endif %}
   </section>
 
-  {% if is_seller and trade.item %}
+  {# One link per sold line, not one for the trade: a multi-line sale leaves
+     trade.item blank on purpose, and keying off it meant a seller who sold three
+     stones was offered no way to update any of them. #}
+  {% if is_seller %}
     <section class="panel stack-md">
-      <h2 class="section-title">موجودی محصول</h2>
+      <h2 class="section-title">موجودی محصولات</h2>
       <p class="muted">
-        موجودی این محصول به‌صورت خودکار کم نشده است. اگر مقدار تغییر کرده، آن را
+        موجودی این محصولات به‌صورت خودکار کم نشده است. اگر مقدار تغییر کرده، آن را
         به‌روزرسانی کنید.
       </p>
-      <a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' trade.item.id %}">
-        به‌روزرسانی موجودی
-      </a>
+      <div class="btn-row">
+        {% for line in trade.items.all %}
+          {% if line.item_id %}
+            <a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' line.item_id %}">
+              {{ line.product_name }}
+            </a>
+          {% endif %}
+        {% empty %}
+          <p class="muted">این فروش به محصولی در فهرست شما متصل نیست.</p>
+        {% endfor %}
+      </div>
     </section>
   {% endif %}
 </section>

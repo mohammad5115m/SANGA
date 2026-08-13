@@ -94,6 +94,35 @@ def test_resubmitting_one_sale_issues_one_invoice(market):
     assert SalesInvoice.objects.count() == 1
 
 
+def test_a_retry_issues_the_invoice_the_first_attempt_could_not(market):
+    """Invoicing is best-effort, so a lapsed entitlement or a transient failure
+    can leave a finalized sale with no document. A retry is the natural moment to
+    heal that, and returning early on the idempotency check used to skip it —
+    leaving the sale permanently undocumented unless somebody found the manual
+    button."""
+    token = uuid.uuid4()
+    trade = _sale(market, token)
+    SalesInvoice.objects.filter(trade=trade).delete()
+
+    again = _sale(market, token)
+
+    assert again.pk == trade.pk
+    assert SalesInvoice.objects.filter(trade=trade).count() == 1
+
+
+def test_healing_the_invoice_does_not_move_the_books_again(market):
+    """The other half: the retry must not re-post the ledger while it is fixing
+    the document."""
+    token = uuid.uuid4()
+    trade = _sale(market, token)
+    SalesInvoice.objects.filter(trade=trade).delete()
+
+    _sale(market, token)
+
+    assert LedgerEntry.objects.filter(related_trade=trade).count() == 2
+    assert current_balance(market["seller"], market["buyer"]) == Decimal("10000000.00")
+
+
 def test_a_different_submission_is_a_different_sale(market):
     """The token must not deduplicate two genuinely separate sales of the same
     product to the same colleague on the same day, which is ordinary trading."""

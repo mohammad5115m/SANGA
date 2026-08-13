@@ -392,6 +392,10 @@ def post_trade_entries(*, trade, membership: BusinessMembership) -> TradePosting
                     amount=trade.total_amount,
                     description=_trade_description(trade),
                     occurred_on=timezone.localdate(),
+                    # One entry can reference one lot, and a multi-line sale has
+                    # no single one — ``trade.item`` is blank for those by
+                    # design. The link is navigation, not accounting; the trade
+                    # and its lines carry what was sold.
                     related_lot=trade.item,
                     related_trade=trade,
                     actor=membership.user,

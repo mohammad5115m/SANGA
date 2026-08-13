@@ -535,6 +535,14 @@ def record_direct_sale(
         ).first()
         if existing is not None:
             logger.info("Direct sale submission %s already recorded as trade %s", submission_id, existing.id)
+            # Still ask for the invoice. Invoicing is best-effort — a lapsed
+            # entitlement or a transient failure leaves a finalized sale with no
+            # document — so a retry is the natural moment to heal that. It cannot
+            # duplicate anything: create_invoice_for_trade returns the existing
+            # invoice when there is one. The ledger needs no such treatment,
+            # because it is posted inside this transaction and a failure there
+            # rolls the whole sale back rather than leaving a trade behind.
+            safe_create_invoice_for_trade(trade=existing, membership=membership)
             return existing
 
     try:
@@ -564,6 +572,7 @@ def record_direct_sale(
         if winner is None:
             raise
         logger.info("Concurrent direct sale for submission %s resolved to trade %s", submission_id, winner.id)
+        safe_create_invoice_for_trade(trade=winner, membership=membership)
         return winner
 
     # A finalized sale is a finalized sale, however it was reached. Posting only
