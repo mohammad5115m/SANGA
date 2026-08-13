@@ -139,7 +139,19 @@ def test_accepting_and_rejecting_at_once_leaves_exactly_one_answer():
 # --- B. cancel vs accept ------------------------------------------------------
 
 
-def test_cancelling_and_accepting_at_once_leaves_exactly_one_outcome():
+def test_cancelling_and_accepting_at_once_cannot_lose_either_write():
+    """Both *can* succeed, and that is the product rule rather than a race.
+
+    A buyer withdrawing after the seller has agreed but before anything ships is
+    ordinary trading, so ``ACCEPTED → CANCELLED`` is permitted. What must not
+    happen is a lost update: if the cancel landed, the stored row says so.
+
+    That makes the ordering the assertion. ``CANCELLED → ACCEPTED`` is *not*
+    permitted, so if both calls succeeded the only sequence that could have
+    produced it is accept-then-cancel — and the row must therefore read
+    CANCELLED. Reading ACCEPTED while a cancel also reported success is exactly
+    the lost update the lock exists to prevent.
+    """
     world = _world()
     request = _sent(world)
 
@@ -150,9 +162,15 @@ def test_cancelling_and_accepting_at_once_leaves_exactly_one_outcome():
         ),
     )
 
-    assert len(results) == 1, "the buyer's cancel and the seller's accept must not both land"
     final = PurchaseRequest.objects.get(pk=request.pk)
-    assert final.status == results[0].status
+    landed = {result.status for result in results}
+
+    assert final.status in landed, "the stored row matches nobody's write"
+    if len(results) == 2:
+        assert final.status == PurchaseRequest.Status.CANCELLED, (
+            "both calls succeeded, so the cancel came second and must be what the row says"
+        )
+    assert Trade.objects.count() == 0, "neither outcome creates a sale"
 
 
 # --- C. cancel vs finalize ----------------------------------------------------

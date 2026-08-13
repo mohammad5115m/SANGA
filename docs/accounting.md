@@ -209,6 +209,17 @@ This is the deliberate opposite of a catalog, which is always live:
 
 > **Catalog = current. Invoice = historical.**
 
+### One sale, one entry per party, whatever it contained
+
+A sale covering three stones is one commercial event, so it produces one seller
+`SALE` and one buyer `PURCHASE` for the sum of its lines — not one entry per
+stone. The statement describes it by its shape («فروش ۳ قلم کالا») rather than by
+whichever stone happened to be first, because naming a three-stone sale after one
+of them would describe the entry wrongly. The invoice carries the detail.
+
+A one-line sale still reads as what was sold, which is how both parties remember
+it.
+
 ### One Trade, one invoice
 
 `uniq_invoice_per_trade` is a partial unique index on `trade` for non-null rows.

@@ -276,18 +276,33 @@ That is the whole gate. There is no partnership to request or approve: every
 eligible business sees every other eligible business's published products and
 their B2B prices, and never its own in the marketplace.
 
-### Verification is a denylist
+### Only approved businesses are on the network
 
-`verification_status` defaults to `unverified` and nothing in provisioning sets
-it. Requiring `VERIFIED` to join the network would therefore empty every
-directory and marketplace on the day it shipped — a policy change disguised as a
-bug fix. What the field can mean today is a decision the platform has actually
-taken: `REJECTED` and `SUSPENDED` are explicit refusals, and a Business carrying
-one is removed from everyone else's screens.
+Network eligibility requires `verification_status = VERIFIED`. `UNVERIFIED` and
+`PENDING` do not participate; `REJECTED` and `SUSPENDED` are explicit refusals
+and never did.
 
-`SANGA_REQUIRE_VERIFIED_FOR_NETWORK` flips this to an allowlist in one line, for
-the day the platform starts verifying accounts. It is off by default, and turning
-it on requires backfilling `verification_status` first.
+This was a denylist — everything except the two refusals participated — for a
+reason that was true at the time: the field defaults to `unverified`, nothing in
+provisioning set it, and flipping to an allowlist would have emptied every
+directory on the day it shipped. That reasoning fixed the wrong half. SANGA has
+no self-service signup, so a Business exists because a platform admin provisioned
+it, which *is* the approval. `create_business_for_owner` now records it, and
+`businesses.0006` backfilled the businesses that predate it.
+
+The backfill exposed nothing: every Business it touched was already visible on
+every discovery surface. It wrote down a decision somebody had already made, so
+that from then on the policy binds new tenants.
+
+`SANGA_REQUIRE_VERIFIED_FOR_NETWORK` defaults to **on**. It exists so a
+development or demo database seeded with unverified fixtures is not an empty
+site, not as a way to run production with an open network. Turning it off never
+readmits a `REJECTED` or `SUSPENDED` business — those are a different rule.
+
+Historical access is deliberately outside all of this. A colleague who leaves the
+network still owes money, so `accounting_counterparty` resolves through shared
+history as well as current eligibility, and invoices stay readable to both
+parties. See [accounting.md](./accounting.md).
 
 What stays private between businesses regardless: unpublished products, the
 ledger and everything derived from it (balances, statements, summaries, aging),
