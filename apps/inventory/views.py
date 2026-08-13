@@ -220,6 +220,7 @@ def lot_confirm_stock(request: HttpRequest, lot_id) -> HttpResponse:
                 membership=request.membership,
                 stock_mode=form.cleaned_data["stock_mode"],
                 available_sqm=form.cleaned_data.get("available_sqm"),
+                stock_valid_for_days=form.cleaned_data["stock_valid_for_days"],
             )
         except InventoryError as exc:
             messages.error(request, exc.message)

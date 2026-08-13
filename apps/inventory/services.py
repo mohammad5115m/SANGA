@@ -345,6 +345,7 @@ def confirm_item_stock(
     membership: BusinessMembership,
     available_sqm: Decimal | None = None,
     stock_mode: str | None = None,
+    stock_valid_for_days: int | None = None,
 ) -> InventoryLot:
     """Restart the stock validity window, optionally with a new quantity.
 
@@ -363,6 +364,13 @@ def confirm_item_stock(
         if available_sqm < 0:
             raise InventoryError("مقدار موجودی نمی‌تواند منفی باشد.")
         lot.available_sqm = available_sqm
+    if stock_valid_for_days is not None:
+        # The confirmation screen has always asked how long the number should be
+        # trusted for; the view simply never passed the answer on, so the seller
+        # was told the change had been saved while the old window stayed in force.
+        if not 1 <= int(stock_valid_for_days) <= 365:
+            raise InventoryError("مدت اعتبار موجودی باید بین ۱ تا ۳۶۵ روز باشد.")
+        lot.stock_valid_for_days = int(stock_valid_for_days)
 
     lot.stock_confirmed_at = timezone.now()
     lot.save()
