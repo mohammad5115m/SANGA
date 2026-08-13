@@ -16,4 +16,5 @@ urlpatterns = [
     path("direct-sale/", views.direct_sale, name="direct_sale"),
     path("trades/", views.trade_list, name="trade_list"),
     path("trades/<uuid:trade_id>/", views.trade_detail, name="trade_detail"),
+    path("trades/<uuid:trade_id>/invoice/", views.trade_create_invoice, name="trade_create_invoice"),
 ]

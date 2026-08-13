@@ -27,17 +27,30 @@
       </p>
     </section>
 
-    <section class="panel stack-md">
-      <h2 class="section-title">قیمت همکار</h2>
-      <p class="muted">فقط کسب‌وکارهای دیگر این عدد را می‌بینند.</p>
-      {% include "inventory/_price_fields.html" with price_form=b2b_form %}
-    </section>
+    {% if can_edit_prices %}
+      <section class="panel stack-md">
+        <h2 class="section-title">قیمت همکار</h2>
+        <p class="muted">فقط کسب‌وکارهای دیگر این عدد را می‌بینند.</p>
+        {% include "inventory/_price_fields.html" with price_form=b2b_form %}
+      </section>
 
-    <section class="panel stack-md">
-      <h2 class="section-title">قیمت مشتری</h2>
-      <p class="muted">این عدد در جستجوی عمومی و لینک اشتراک‌گذاری دیده می‌شود.</p>
-      {% include "inventory/_price_fields.html" with price_form=b2c_form %}
-    </section>
+      <section class="panel stack-md">
+        <h2 class="section-title">قیمت مشتری</h2>
+        <p class="muted">این عدد در جستجوی عمومی و لینک اشتراک‌گذاری دیده می‌شود.</p>
+        {% include "inventory/_price_fields.html" with price_form=b2c_form %}
+      </section>
+    {% else %}
+      {# Hidden rather than shown-and-rejected: without prices.edit the product is
+         created priced «استعلام قیمت», which is the honest display for a price
+         nobody has set yet. #}
+      <section class="panel stack-sm">
+        <h2 class="section-title">قیمت</h2>
+        <p class="muted">
+          شما اجازه ثبت قیمت ندارید. محصول با «استعلام قیمت» ثبت می‌شود و مدیر
+          کسب‌وکار می‌تواند بعداً قیمت را وارد کند.
+        </p>
+      </section>
+    {% endif %}
 
     <button class="btn btn-primary btn-block" type="submit">ادامه</button>
   </form>

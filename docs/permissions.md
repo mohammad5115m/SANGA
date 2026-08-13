@@ -139,6 +139,29 @@ Financial writes (`ledger.manage`, `invoice.manage`) and price edits
 (`prices.edit`) are owner/manager by default: staff can see balances and prices
 but not change them.
 
+### A role must be able to finish what it can start
+
+The matrix above and the workflows were designed independently, and two
+combinations produced a dead end that only appeared after the user had committed:
+
+- The add-product wizard always wrote both prices, so staff — who hold
+  `inventory.create` but not `prices.edit` — got an error *after* the draft had
+  been saved, and had to find and clean up the orphan themselves. The wizard now
+  hides the price step for members who cannot use it, creation and pricing are
+  one transaction, and the product is created priced «استعلام قیمت», which is
+  the honest display for a price nobody has set yet.
+- Finalizing a sale created the invoice through a path that required
+  `invoice.manage`, so a staff sale moved the ledger and the document was
+  silently swallowed. Invoice creation from a Trade now requires only that the
+  *Business* may issue invoices; it produces a **draft** when the acting member
+  cannot issue, for an authorized colleague to issue later. The trade page also
+  offers an explicit «ساخت فاکتور» for the narrow case where automatic creation
+  could not run at all.
+
+Neither is fixed by giving staff more permissions. A salesperson who cannot set
+prices or issue documents is a deliberate product rule; the workflows had to stop
+assuming they could.
+
 ### Capability codes are materialized, and that is a hazard
 
 `BusinessMembership.save()` copies the role defaults into the `permissions` JSON

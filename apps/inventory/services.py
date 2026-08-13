@@ -149,7 +149,18 @@ def create_draft_item(
     width_cm: Decimal | None = None,
     thickness_mm: Decimal | None = None,
     slab_count: int | None = None,
+    b2b_price: dict | None = None,
+    b2c_price: dict | None = None,
 ) -> InventoryLot:
+    """Create the sellable item, with its prices, as one action.
+
+    Prices belong here rather than in a second service call. The wizard used to
+    create the draft and then set the prices in two transactions, so a member
+    without ``prices.edit`` — which the default staff role does not have — got a
+    saved but unpriced draft plus an error, and had to find and clean it up
+    themselves. A service boundary should match what the user thinks of as one
+    action, which here is "add this product".
+    """
     _require(membership, INVENTORY_CREATE)
     _require_plan(business, CREATE_PRODUCTS)
     if product.business_id != business.id:
@@ -190,6 +201,12 @@ def create_draft_item(
         thickness_mm=thickness_mm,
         slab_count=slab_count,
     )
+
+    if b2b_price is not None:
+        _set_price(lot=lot, membership=membership, tier_code="b2b", spec=b2b_price)
+    if b2c_price is not None:
+        _set_price(lot=lot, membership=membership, tier_code="b2c", spec=b2c_price)
+
     logger.info("Draft item created business=%s item=%s", business.id, lot.id)
     return lot
 

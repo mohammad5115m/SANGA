@@ -33,6 +33,27 @@
     {% if trade.note %}<div class="kv"><span>توضیح</span><strong>{{ trade.note }}</strong></div>{% endif %}
   </section>
 
+  <section class="panel stack-md">
+    <h2 class="section-title">فاکتور</h2>
+    {% if invoice %}
+      <div class="kv">
+        <span>شماره</span>
+        <strong><a href="{% url 'invoicing:detail' invoice.id %}">{{ invoice.number }}</a></strong>
+      </div>
+      <div class="kv"><span>وضعیت</span><strong>{{ invoice.get_status_display }}</strong></div>
+    {% elif can_create_invoice %}
+      {# A finalized sale should already have one. This is the way back when the
+         automatic creation could not run — a lapsed plan, a transient error. #}
+      <p class="muted">برای این فروش هنوز فاکتوری ساخته نشده است.</p>
+      <form method="post" action="{% url 'trading:trade_create_invoice' trade.id %}">
+        {% csrf_token %}
+        <button class="btn btn-secondary" type="submit">ساخت فاکتور</button>
+      </form>
+    {% else %}
+      <p class="muted">برای این فروش فاکتوری ثبت نشده است.</p>
+    {% endif %}
+  </section>
+
   {% if is_seller and trade.item %}
     <section class="panel stack-md">
       <h2 class="section-title">موجودی محصول</h2>

@@ -5,11 +5,12 @@ import logging
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
 from apps.inventory.policy import get_eligible_item
+from apps.invoicing.services import InvoiceError, create_invoice_for_trade
 
 from .forms import DirectSaleForm, FinalizeSaleForm, PurchaseRequestForm, PurchaseRequestResponseForm
 from .models import PurchaseRequest
@@ -263,8 +264,41 @@ def trade_detail(request: HttpRequest, trade_id) -> HttpResponse:
         messages.error(request, "معامله یافت نشد.")
         return redirect("trading:trade_list")
 
+    is_seller = trade.seller_business_id == request.business.id
     return render(
         request,
         "trading/trade_detail.html",
-        {"trade": trade, "is_seller": trade.seller_business_id == request.business.id},
+        {
+            "trade": trade,
+            "is_seller": is_seller,
+            "invoice": trade.invoices.first(),
+            "can_create_invoice": is_seller and request.membership.has_capability(SALE_FINALIZE),
+        },
     )
+
+
+@business_login_required
+@require_capability(SALE_FINALIZE)
+@require_POST
+def trade_create_invoice(request: HttpRequest, trade_id) -> HttpResponse:
+    """Issue the document for a sale that ended up without one.
+
+    Invoice creation is a consequence of finalizing, and it is best-effort so a
+    failure there can never roll back a completed sale. That leaves a narrow gap
+    — a plan that lapsed mid-flow, a transient error — where a finalized trade
+    has no document. Before this there was no way out of it but the admin.
+    """
+    from .selectors import get_trade
+
+    trade = get_trade(request.business, trade_id)
+    if trade is None or trade.seller_business_id != request.business.id:
+        messages.error(request, "معامله یافت نشد.")
+        return redirect("trading:trade_list")
+
+    try:
+        invoice = create_invoice_for_trade(trade=trade, membership=request.membership)
+    except InvoiceError as exc:
+        messages.error(request, exc.message)
+    else:
+        messages.success(request, f"فاکتور {invoice.number} ساخته شد.")
+    return redirect("trading:trade_detail", trade_id=trade.id)

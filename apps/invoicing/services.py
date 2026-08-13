@@ -37,8 +37,25 @@ class InvoiceError(Exception):
 
 
 def _require_manage(business: Business, membership: BusinessMembership) -> None:
+    """For invoices a user is authoring: they need ``invoice.manage``."""
     if membership is None or not membership.has_capability(INVOICE_MANAGE):
         raise InvoiceError("اجازه صدور فاکتور را ندارید.")
+    _require_seller_may_invoice(business, membership)
+
+
+def _require_seller_may_invoice(business: Business, membership: BusinessMembership) -> None:
+    """For invoices that are a *consequence* of a sale, not an authored document.
+
+    Deliberately no ``invoice.manage`` check. The default sales role can finalize
+    a sale but not manage invoices, so requiring it here meant a staff member
+    completed a sale, the ledger moved, and the invoice was silently swallowed —
+    leaving a finalized trade with no document and no way to ask for one. The
+    invoice is not a second commercial decision; it records the one already made.
+
+    The Business still has to be entitled to issue invoices at all.
+    """
+    if membership is None:
+        raise InvoiceError("دسترسی نامعتبر است.")
     if membership.business_id != business.id:
         raise InvoiceError("دسترسی نامعتبر است.")
     try:
@@ -82,7 +99,7 @@ def create_invoice_for_trade(
     trade,
     membership: BusinessMembership,
     notes: str = "",
-    issue: bool = True,
+    issue: bool | None = None,
 ) -> SalesInvoice:
     """Turn a finalized Trade into an invoice.
 
@@ -94,9 +111,15 @@ def create_invoice_for_trade(
 
     Nothing here touches the ledger; that already happened when the trade was
     finalized.
+
+    ``issue`` defaults to whether the acting member may issue documents. Someone
+    who can sell but not manage invoices still gets one — as a draft, for an
+    authorized colleague to issue — rather than nothing at all.
     """
     business = trade.seller_business
-    _require_manage(business, membership)
+    _require_seller_may_invoice(business, membership)
+    if issue is None:
+        issue = membership.has_capability(INVOICE_MANAGE)
 
     # Lock first, then look. Checking before the lock is what allowed two
     # requests to both conclude "no invoice yet" and both create one.
