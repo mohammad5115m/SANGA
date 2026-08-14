@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
 from decimal import Decimal, InvalidOperation
+
 from django.db.models import F, Max, Min, Q, QuerySet
+from django.utils import timezone
 
 from apps.core.persian import normalize_persian_text
 from apps.pricing.queries import effective_amount_subquery
@@ -44,6 +46,7 @@ class ItemFilterSpec:
     availability: str = ""
     price_min: Decimal | None = None
     price_max: Decimal | None = None
+    min_qty_sqm: Decimal | None = None
     sort: str = "recent"
 
     @classmethod
@@ -57,7 +60,7 @@ class ItemFilterSpec:
         # Compatibility for links generated before the controlled stone FK.
         if not clean.get("stone") and data.get("stone_type"):
             clean["stone"] = _text(data.get("stone_type"))
-        for key in ("price_min", "price_max"):
+        for key in ("price_min", "price_max", "min_qty_sqm"):
             if key in data:
                 clean[key] = _decimal(data.get(key))
         if "applications" in data:
@@ -108,6 +111,11 @@ class ItemFilterSpec:
             qs = qs.filter(product__applications__code__in=self.applications).distinct()
         if self.availability:
             qs = qs.filter(availability_status=self.availability)
+        if self.min_qty_sqm is not None:
+            qs = qs.filter(
+                available_sqm__gte=self.min_qty_sqm,
+                stock_expires_at__gt=timezone.now(),
+            )
         return qs
 
     def apply(self, qs: QuerySet[InventoryLot], *, audience: Audience = "public") -> QuerySet[InventoryLot]:

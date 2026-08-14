@@ -57,7 +57,7 @@ def test_expired_price_cannot_answer_a_price_range(market):
 @pytest.mark.django_db
 def test_live_special_price_is_used_by_filter_and_bounds(market):
     special = _item(market, "T-SPE101", b2c="1000")
-    normal = _item(market, "T-NOR101", b2c="800")
+    _item(market, "T-NOR101", b2c="800")
     set_lot_price(
         lot=special,
         tier_code="b2c",

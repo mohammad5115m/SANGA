@@ -267,6 +267,12 @@ class ItemFilterForm(forms.Form):
         data = dict(self.cleaned_data)
         stone = data.get("stone")
         data["stone"] = str(stone.pk) if stone else ""
+        # Keep old shared URLs and saved browser bookmarks working without
+        # putting the retired free-text controls back into the compact UI.
+        if not stone and self.data.get("stone_type"):
+            data["stone_type"] = self.data.get("stone_type")
+        if self.data.get("min_qty_sqm") not in (None, ""):
+            data["min_qty_sqm"] = self.data.get("min_qty_sqm")
         data["applications"] = [app.code for app in data.get("applications") or []]
         return ItemFilterSpec.from_dict(data)
 

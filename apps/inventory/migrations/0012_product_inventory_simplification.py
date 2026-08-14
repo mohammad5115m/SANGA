@@ -162,6 +162,11 @@ def migrate_products_and_lots(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    # The data step updates InventoryLot before later operations replace its
+    # constraints. PostgreSQL cannot ALTER that table while deferred trigger
+    # events from those updates are pending in the same transaction.
+    atomic = False
+
     dependencies = [
         ("inventory", "0011_normalize_catalog_text"),
         ("catalog", "0003_snapshot_selected_catalogs"),

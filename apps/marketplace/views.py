@@ -8,8 +8,8 @@ from django.shortcuts import redirect, render
 
 from apps.businesses.decorators import business_login_required
 from apps.core.pagination import paginate
-from apps.inventory.forms import ItemFilterForm
 from apps.inventory.filters import effective_price_bounds
+from apps.inventory.forms import ItemFilterForm
 
 from .selectors import filter_marketplace_lots, get_marketplace_lot, marketplace_lots_for
 from .services import b2b_price_context, marketplace_lot_card

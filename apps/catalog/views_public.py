@@ -9,8 +9,8 @@ from django.views.decorators.http import require_http_methods
 
 from apps.businesses.eligibility import public_business_or_none
 from apps.core.pagination import paginate
-from apps.inventory.forms import ItemFilterForm
 from apps.inventory.filters import effective_price_bounds
+from apps.inventory.forms import ItemFilterForm
 
 from . import cart
 from .selectors import (

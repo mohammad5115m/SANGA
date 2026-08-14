@@ -92,9 +92,9 @@ def test_a_three_stone_order_is_one_trade_with_three_lines(market):
     assert Trade.objects.count() == 1
     assert trade.items.count() == 3
     assert [line.product_name for line in trade.items.all()] == [
-        "تراورتن عباس‌آباد",
-        "تراورتن دره بخاری",
-        "مرمریت لاشتر",
+        "سنگ تراورتن عباس‌آباد",
+        "سنگ تراورتن دره بخاری",
+        "سنگ مرمریت لاشتر",
     ]
 
 
@@ -126,9 +126,9 @@ def test_a_three_stone_order_produces_one_invoice_with_three_rows(market):
     assert invoice.total_amount == EXPECTED_TOTAL
     assert invoice.items.count() == 3
     assert [line.product_name for line in invoice.items.all()] == [
-        "تراورتن عباس‌آباد",
-        "تراورتن دره بخاری",
-        "مرمریت لاشتر",
+        "سنگ تراورتن عباس‌آباد",
+        "سنگ تراورتن دره بخاری",
+        "سنگ مرمریت لاشتر",
     ]
     assert sum(line.line_total for line in invoice.items.all()) == invoice.total_amount
 
