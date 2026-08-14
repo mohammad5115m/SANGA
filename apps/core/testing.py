@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import create_business_for_owner
-from apps.inventory.models import Application, InventoryLot, Product
+from apps.inventory.models import Application, InventoryLot, Product, VocabularyTerm
 from apps.pricing.services import ensure_default_tiers, set_lot_price
 
 User = get_user_model()
@@ -60,12 +60,21 @@ def make_product(
     applications: list[str] | None = None,
     **kwargs,
 ) -> Product:
+    prefixes = {
+        "تراورتن": "T", "مرمریت": "M", "گرانیت": "G", "کریستال": "C",
+        "مرمر": "O", "لایمستون": "L", "ترامیت": "TR", "چینی": "CH",
+    }
+    stone, _created = VocabularyTerm.objects.get_or_create(
+        kind=VocabularyTerm.Kind.STONE_TYPE,
+        name=stone_type,
+        defaults={"code_prefix": prefixes.get(stone_type, ""), "is_active": True},
+    )
+    suffix = commercial_name.removeprefix("سنگ ").removeprefix(stone_type).strip()
+    suffix = kwargs.pop("name_suffix", suffix)
     product = Product.objects.create(
         business=business,
-        commercial_name=commercial_name,
-        stone_type=stone_type,
-        primary_color=primary_color,
-        quarry_region=quarry_region,
+        stone=stone,
+        name_suffix=suffix,
         **kwargs,
     )
     if applications:
@@ -80,7 +89,7 @@ def make_item(
     lot_code: str = "",
     is_visible: bool = True,
     availability_status: str = InventoryLot.Availability.AVAILABLE,
-    stock_mode: str = InventoryLot.StockMode.EXACT,
+    stock_mode: str = "exact",
     available_sqm: Decimal | str = "100",
     stock_valid_for_days: int = 7,
     stock_confirmed_at=None,
@@ -92,8 +101,32 @@ def make_item(
     """A visible, available, freshly-confirmed item unless told otherwise."""
     if product is None:
         product = make_product(business)
+    elif InventoryLot.objects.filter(product=product).exists():
+        original = product
+        product = Product.objects.create(
+            business=business,
+            stone=original.stone,
+            name_suffix=original.name_suffix,
+            pattern=original.pattern,
+            description_public=original.description_public,
+            description_professional=original.description_professional,
+        )
+        product.applications.set(original.applications.all())
     if not lot_code:
-        lot_code = f"IT-{InventoryLot.objects.filter(business=business).count() + 1:04d}"
+        lot_code = f"IT-{InventoryLot.objects.count() + 1:06d}"
+
+    for retired in (
+        "grade",
+        "original_sqm",
+        "slab_count",
+        "bundle_count",
+        "location_province",
+        "location_city",
+        "location_address",
+        "warehouse",
+    ):
+        kwargs.pop(retired, None)
+    quantity = None if stock_mode != "exact" or available_sqm is None else Decimal(str(available_sqm))
 
     item = InventoryLot.objects.create(
         business=business,
@@ -102,13 +135,11 @@ def make_item(
         status=status,
         is_visible=is_visible,
         availability_status=availability_status,
-        stock_mode=stock_mode,
-        available_sqm=Decimal(str(available_sqm)),
-        original_sqm=Decimal(str(available_sqm)),
-        stock_confirmed_at=stock_confirmed_at if stock_confirmed_at is not None else timezone.now(),
+        available_sqm=quantity,
+        stock_confirmed_at=(
+            stock_confirmed_at if stock_confirmed_at is not None else (timezone.now() if quantity is not None else None)
+        ),
         stock_valid_for_days=stock_valid_for_days,
-        location_city=business.city,
-        location_province=business.province,
         **kwargs,
     )
     if b2b is not None or b2c is not None:

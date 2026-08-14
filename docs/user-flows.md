@@ -45,23 +45,29 @@ deactivated".
 A User belonging to no Business lands on `/app/no-business/`, which explains the
 situation and links to support. It contains no form.
 
-## 3. Adding a product (4 steps)
+## 3. Adding or editing a product
+
+One page captures the controlled stone type, optional name suffix, applications,
+processing, dimensions, exact-or-blank quantity, both price channels,
+descriptions and visibility. The commercial name and immutable product code are
+generated automatically. Media is managed from the resulting product page.
+
+There is no existing-product picker, warehouse, stock-mode choice or wizard.
+The form still asks how long the seller vouches for numeric stock and prices,
+which keeps freshness explicit without nagging.
+
+## 4. Building a catalog
 
 ```text
-1. محصول    — pick an existing product definition or name a new one,
-              with stone type, colour, quarry and applications
-2. مشخصات   — grade, processing, dimensions, location
-3. موجودی و قیمت — stock mode and validity, then both price channels
-4. عکس و انتشار — media, then publish or save as a draft
+موجودی من → select rows or all current filter results
+           → create a catalog or add to an existing catalog
+           → enter metadata → share the live link
 ```
 
-Was seven steps. Media and pricing were separate screens each, and a warehouse
-had to be chosen before anything else could be entered.
+Catalog membership is explicit. Current price, stock, media and eligibility are
+resolved when the link is viewed.
 
-Step 3 asks how long the seller vouches for the numbers, which is what makes the
-freshness model work without nagging.
-
-## 4. The product lifecycle
+## 5. The product lifecycle
 
 Four independent things, never one status field. See
 [inventory.md](./inventory.md).
@@ -77,7 +83,7 @@ Four independent things, never one status field. See
 All of them are on the product page rather than buried in a menu. Deletion is
 styled as destructive and requires confirmation.
 
-## 5. Buying and selling
+## 6. Buying and selling
 
 ```text
 Buyer finds a product in بازار
@@ -92,7 +98,7 @@ Buyer finds a product in بازار
 
 Accepting is **not** selling. See [trading.md](./trading.md).
 
-## 6. Public customer
+## 7. Public customer
 
 ```text
 /search/  →  filter  →  select several products
@@ -106,7 +112,7 @@ Accepting is **not** selling. See [trading.md](./trading.md).
 No login wall, and identity is asked for once, at the end. See
 [customers.md](./customers.md).
 
-## 7. Dashboard
+## 8. Dashboard
 
 Operational, not analytical. There are no charts.
 
@@ -122,7 +128,7 @@ the top still say zero.
 Every list is bounded and every total is a database aggregate. A test pins the
 query count so an N+1 anywhere on the page fails immediately.
 
-## 8. Public URLs
+## 9. Public URLs
 
 | Path | What |
 |------|------|

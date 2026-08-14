@@ -9,6 +9,7 @@ from django.shortcuts import redirect, render
 from apps.businesses.decorators import business_login_required
 from apps.core.pagination import paginate
 from apps.inventory.forms import ItemFilterForm
+from apps.inventory.filters import effective_price_bounds
 
 from .selectors import filter_marketplace_lots, get_marketplace_lot, marketplace_lots_for
 from .services import b2b_price_context, marketplace_lot_card
@@ -22,13 +23,21 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
         return redirect("businesses:no_business")
 
     form = ItemFilterForm(request.GET or None)
-    qs = filter_marketplace_lots(marketplace_lots_for(request.business), spec=form.to_spec())
+    spec = form.to_spec()
+    base = marketplace_lots_for(request.business)
+    qs = filter_marketplace_lots(base, spec=spec)
+    minimum, maximum = effective_price_bounds(base, spec=spec, audience="colleague")
     page = paginate(request, qs)
     cards = [marketplace_lot_card(lot, request.business) for lot in page.object_list]
     return render(
         request,
         "marketplace/home.html",
-        {"filter_form": form, "cards": cards, "page": page},
+        {
+            "filter_form": form,
+            "cards": cards,
+            "page": page,
+            "price_bounds": {"minimum": minimum, "maximum": maximum},
+        },
     )
 
 

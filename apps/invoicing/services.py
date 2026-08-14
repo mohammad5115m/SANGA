@@ -275,8 +275,8 @@ def _clean_line(line: dict) -> dict:
     return {
         "item": item,
         "product_name": name,
-        "stone_type": (line.get("stone_type") or (item.product.stone_type if item else "")),
-        "grade": (line.get("grade") or (item.grade if item else "")),
+        "stone_type": (line.get("stone_type") or (item.product.stone.name if item else "")),
+        "grade": (line.get("grade") or ""),
         "quantity": quantity,
         "unit_price": unit_price,
         "line_total": (quantity * unit_price).quantize(Decimal("0.01")),

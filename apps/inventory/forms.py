@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django import forms
+from django.utils import timezone
 
 from apps.pricing.models import LotPrice
 
 from .filters import SORT_CHOICES, ItemFilterSpec
-from .models import Application, InventoryLot, Product
+from .models import Application, InventoryLot, VocabularyTerm
 from .selectors import OWNER_STATE_CHOICES
 
 _TEXT = {"class": "field-input"}
@@ -16,44 +19,27 @@ def active_applications():
     return Application.objects.filter(is_active=True)
 
 
-class ProductPickForm(forms.Form):
-    """Step 1 — which product is this, in the catalogue sense."""
+def active_stones():
+    return VocabularyTerm.objects.filter(
+        kind=VocabularyTerm.Kind.STONE_TYPE,
+        is_active=True,
+    ).order_by("sort_order", "name")
 
-    product = forms.ModelChoiceField(
-        label="محصول موجود",
-        queryset=Product.objects.none(),
-        required=False,
+
+class ProductItemForm(forms.Form):
+    """The single product form used for both creation and editing."""
+
+    stone = forms.ModelChoiceField(
+        label="نوع سنگ",
+        queryset=VocabularyTerm.objects.none(),
         widget=forms.Select(attrs=_TEXT),
     )
-    commercial_name = forms.CharField(
-        label="یا نام محصول جدید",
+    name_suffix = forms.CharField(
+        label="نام تکمیلی",
         required=False,
-        max_length=200,
-        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "مثلاً تراورتن عباس‌آباد"}),
-    )
-    # A datalist rather than a select: it steers towards the platform vocabulary
-    # while still accepting the long tail of real Iranian stone names. A closed
-    # list here would make sellers unable to record products they actually have,
-    # and a seller who cannot record their stock stops using the product.
-    stone_type = forms.CharField(
-        label="نوع سنگ",
-        required=False,
-        max_length=100,
-        widget=forms.TextInput(
-            attrs={**_TEXT, "placeholder": "تراورتن", "list": "vocab-stone_type"}
-        ),
-    )
-    primary_color = forms.CharField(
-        label="رنگ غالب",
-        required=False,
-        max_length=100,
-        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "کرم", "list": "vocab-color"}),
-    )
-    quarry_region = forms.CharField(
-        label="معدن/منطقه",
-        required=False,
-        max_length=150,
-        widget=forms.TextInput(attrs=_TEXT),
+        max_length=160,
+        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "مثلاً عباس‌آباد موج‌دار"}),
+        help_text="بخش «سنگ + نوع سنگ» خودکار ساخته می‌شود و قابل ویرایش نیست.",
     )
     applications = forms.ModelMultipleChoiceField(
         label="کاربردها",
@@ -61,150 +47,142 @@ class ProductPickForm(forms.Form):
         required=False,
         widget=forms.CheckboxSelectMultiple(attrs=_CHECK),
     )
-
-    def __init__(self, *args, business=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["applications"].queryset = active_applications()
-        if business is not None:
-            self.fields["product"].queryset = Product.objects.filter(business=business, is_active=True)
-
-    def clean(self):
-        cleaned = super().clean()
-        if not cleaned.get("product") and not (cleaned.get("commercial_name") or "").strip():
-            raise forms.ValidationError("یک محصول انتخاب کنید یا نام محصول جدید را وارد کنید.")
-        return cleaned
-
-
-class ItemDetailsForm(forms.Form):
-    """Step 2 — what distinguishes this sellable instance, and where it is."""
-
-    lot_code = forms.CharField(
-        label="کد محصول (اختیاری)",
-        required=False,
-        max_length=64,
-        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "خالی بماند = خودکار"}),
-    )
-    grade = forms.CharField(
-        label="سورت/درجه",
-        required=False,
-        max_length=50,
-        widget=forms.TextInput(attrs=_TEXT),
+    pattern = forms.CharField(
+        label="طرح/بافت", required=False, max_length=150, widget=forms.TextInput(attrs=_TEXT)
     )
     processing_type = forms.CharField(
         label="نوع فرآوری",
         required=False,
         max_length=100,
+        initial="ساب خورده",
         widget=forms.TextInput(
-            attrs={**_TEXT, "placeholder": "صیقلی / ساب خورده", "list": "vocab-processing_type"}
+            attrs={**_TEXT, "placeholder": "ساب خورده", "list": "seller-processing-suggestions"}
         ),
     )
     length_cm = forms.DecimalField(
-        label="طول (cm)", required=False, min_value=0, decimal_places=2, max_digits=8,
-        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.01"}),
+        label="طول (سانتی‌متر)",
+        required=False,
+        min_value=Decimal("0.01"),
+        decimal_places=2,
+        max_digits=8,
+        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.01", "placeholder": "خالی = آزاد"}),
+        help_text="اگر طول آزاد است، این فیلد را خالی بگذارید.",
     )
     width_cm = forms.DecimalField(
-        label="عرض (cm)", required=False, min_value=0, decimal_places=2, max_digits=8,
-        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.01"}),
-    )
-    thickness_mm = forms.DecimalField(
-        label="ضخامت (mm)", required=False, min_value=0, decimal_places=2, max_digits=8,
-        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.01"}),
-    )
-    slab_count = forms.IntegerField(
-        label="تعداد اسلب", required=False, min_value=0,
-        widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
-    )
-    location_province = forms.CharField(
-        label="استان", required=False, max_length=100, widget=forms.TextInput(attrs=_TEXT)
-    )
-    location_city = forms.CharField(
-        label="شهر", required=False, max_length=100, widget=forms.TextInput(attrs=_TEXT)
-    )
-    location_address = forms.CharField(
-        label="آدرس دقیق (فقط برای شما)",
+        label="عرض (سانتی‌متر)",
         required=False,
-        widget=forms.Textarea(attrs={**_TEXT, "rows": 2}),
-        help_text="آدرس دقیق هرگز به مشتری عمومی نمایش داده نمی‌شود.",
+        min_value=Decimal("0.01"),
+        decimal_places=2,
+        max_digits=8,
+        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.01"}),
     )
-    description = forms.CharField(
-        label="توضیح", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 3})
-    )
-
-
-class ItemStockForm(forms.Form):
-    """Step 3a — how much, and how long we vouch for it."""
-
-    stock_mode = forms.ChoiceField(
-        label="نوع موجودی",
-        choices=InventoryLot.StockMode.choices,
-        initial=InventoryLot.StockMode.EXACT,
-        widget=forms.RadioSelect(attrs=_CHECK),
+    thickness_cm = forms.DecimalField(
+        label="ضخامت (سانتی‌متر)",
+        required=False,
+        min_value=Decimal("0.01"),
+        decimal_places=2,
+        max_digits=6,
+        initial=Decimal("2"),
+        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.1"}),
     )
     available_sqm = forms.DecimalField(
-        label="متراژ موجود (m²)",
+        label="متراژ موجود (متر مربع)",
         required=False,
         min_value=0,
         decimal_places=3,
         max_digits=12,
         widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001", "inputmode": "decimal"}),
+        help_text="خالی بماند = استعلام موجودی.",
     )
     stock_valid_for_days = forms.IntegerField(
-        label="این موجودی تا چند روز معتبر است؟",
+        label="اعتبار موجودی (روز)",
         min_value=1,
         max_value=365,
         initial=7,
         widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
     )
+    min_sale_qty = forms.DecimalField(
+        label="حداقل فروش (متر مربع)",
+        required=False,
+        min_value=0,
+        decimal_places=3,
+        max_digits=12,
+        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001"}),
+    )
+    description_public = forms.CharField(
+        label="توضیح برای مشتری", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 3})
+    )
+    description_professional = forms.CharField(
+        label="توضیح حرفه‌ای", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 3})
+    )
+    defect_notes = forms.CharField(
+        label="نکات و ایرادها", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 2})
+    )
+    availability_status = forms.ChoiceField(
+        label="وضعیت موجود بودن",
+        choices=InventoryLot.Availability.choices,
+        initial=InventoryLot.Availability.AVAILABLE,
+        widget=forms.Select(attrs=_TEXT),
+    )
+    is_visible = forms.BooleanField(
+        label="نمایش به همکاران و مشتریان", required=False, widget=forms.CheckboxInput(attrs=_CHECK)
+    )
+    is_urgent_sale = forms.BooleanField(
+        label="فروش فوری", required=False, widget=forms.CheckboxInput(attrs=_CHECK)
+    )
 
-    def clean(self):
-        cleaned = super().clean()
-        # A quantity is only meaningful in exact mode; requiring one in the other
-        # modes is what pushes sellers into typing a fake number.
-        if cleaned.get("stock_mode") == InventoryLot.StockMode.EXACT and cleaned.get("available_sqm") is None:
-            self.add_error("available_sqm", "متراژ موجود را وارد کنید یا نوع موجودی دیگری انتخاب کنید.")
-        return cleaned
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["stone"].queryset = active_stones()
+        self.fields["applications"].queryset = active_applications()
+
+    def clean_name_suffix(self):
+        return " ".join((self.cleaned_data["name_suffix"] or "").split())
+
+    def clean_processing_type(self):
+        return " ".join((self.cleaned_data["processing_type"] or "ساب خورده").split())
+
+    @property
+    def thickness_mm(self):
+        value = self.cleaned_data.get("thickness_cm")
+        return value * Decimal("10") if value is not None else None
+
+
+class ItemStockForm(forms.Form):
+    available_sqm = forms.DecimalField(
+        label="متراژ موجود (متر مربع)",
+        required=False,
+        min_value=0,
+        decimal_places=3,
+        max_digits=12,
+        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001"}),
+        help_text="خالی بماند = استعلام موجودی.",
+    )
+    stock_valid_for_days = forms.IntegerField(
+        label="اعتبار موجودی (روز)", min_value=1, max_value=365, initial=7,
+        widget=forms.NumberInput(attrs=_TEXT),
+    )
 
 
 class TierPriceForm(forms.Form):
-    """One audience's price. Instantiated twice — once for B2B, once for B2C.
-
-    Keeping the two channels as two separate form instances rather than one form
-    with `b2b_*`/`b2c_*` field pairs means neither can accidentally read the
-    other's POST data.
-    """
-
     mode = forms.ChoiceField(
-        label="نوع قیمت",
-        choices=LotPrice.Mode.choices,
-        initial=LotPrice.Mode.FIXED,
+        label="نوع قیمت", choices=LotPrice.Mode.choices, initial=LotPrice.Mode.FIXED,
         widget=forms.Select(attrs=_TEXT),
     )
     amount = forms.DecimalField(
-        label="مبلغ (ریال)",
-        required=False,
-        min_value=0,
-        decimal_places=0,
-        max_digits=14,
-        widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
+        label="مبلغ هر متر مربع (ریال)", required=False, min_value=1, decimal_places=0,
+        max_digits=14, widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
     )
     valid_for_days = forms.IntegerField(
-        label="اعتبار قیمت (روز)",
-        min_value=1,
-        max_value=365,
-        initial=7,
-        widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
+        label="اعتبار قیمت (روز)", min_value=1, max_value=365, initial=7,
+        widget=forms.NumberInput(attrs=_TEXT),
     )
     special_amount = forms.DecimalField(
-        label="قیمت فروش ویژه (ریال)",
-        required=False,
-        min_value=0,
-        decimal_places=0,
-        max_digits=14,
-        widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
+        label="قیمت فروش ویژه (ریال)", required=False, min_value=1, decimal_places=0,
+        max_digits=14, widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
     )
     special_until = forms.DateTimeField(
-        label="پایان فروش ویژه",
-        required=False,
+        label="پایان فروش ویژه", required=False,
         widget=forms.DateTimeInput(attrs={**_TEXT, "type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
     )
 
@@ -215,31 +193,26 @@ class TierPriceForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("mode") == LotPrice.Mode.FIXED and cleaned.get("amount") is None:
+        mode = cleaned.get("mode")
+        amount = cleaned.get("amount")
+        special_amount = cleaned.get("special_amount")
+        special_until = cleaned.get("special_until")
+        if mode == LotPrice.Mode.FIXED and amount is None:
             self.add_error("amount", "مبلغ را وارد کنید یا «استعلام قیمت» را انتخاب کنید.")
-        if cleaned.get("special_amount") is not None and cleaned.get("mode") != LotPrice.Mode.FIXED:
+        if mode == LotPrice.Mode.INQUIRY and (special_amount is not None or special_until is not None):
             self.add_error("special_amount", "فروش ویژه فقط برای قیمت مشخص ممکن است.")
+        if (special_amount is None) != (special_until is None):
+            self.add_error("special_amount", "مبلغ و زمان پایان فروش ویژه باید با هم وارد شوند.")
+        if special_amount is not None and amount is not None and special_amount >= amount:
+            self.add_error("special_amount", "قیمت فروش ویژه باید کمتر از قیمت عادی باشد.")
+        if special_until is not None and special_until <= timezone.now():
+            self.add_error("special_until", "زمان پایان فروش ویژه باید در آینده باشد.")
         return cleaned
-
-
-class ItemVisibilityForm(forms.Form):
-    """Step 4 — publish or keep internal."""
-
-    is_visible = forms.BooleanField(
-        label="نمایش به همکاران و مشتریان",
-        required=False,
-        widget=forms.CheckboxInput(attrs=_CHECK),
-        help_text="با فعال کردن این گزینه، محصول در بازار همکاران و جستجوی عمومی دیده می‌شود.",
-    )
-    is_urgent_sale = forms.BooleanField(
-        label="فروش فوری", required=False, widget=forms.CheckboxInput(attrs=_CHECK)
-    )
 
 
 class ItemMediaForm(forms.Form):
     images = forms.FileField(
-        label="عکس / ویدیو",
-        required=False,
+        label="عکس / ویدیو", required=False,
         widget=forms.ClearableFileInput(attrs={**_TEXT, "accept": "image/*,video/*"}),
     )
     is_primary = forms.BooleanField(
@@ -247,92 +220,24 @@ class ItemMediaForm(forms.Form):
     )
 
 
-class ItemEditForm(forms.ModelForm):
-    class Meta:
-        model = InventoryLot
-        fields = (
-            "grade",
-            "processing_type",
-            "stock_mode",
-            "available_sqm",
-            "stock_valid_for_days",
-            "slab_count",
-            "length_cm",
-            "width_cm",
-            "thickness_mm",
-            "location_province",
-            "location_city",
-            "location_address",
-            "description",
-            "defect_notes",
-            "is_visible",
-            "availability_status",
-            "is_urgent_sale",
-        )
-        widgets = {
-            "grade": forms.TextInput(attrs=_TEXT),
-            "processing_type": forms.TextInput(attrs=_TEXT),
-            "stock_mode": forms.Select(attrs=_TEXT),
-            "available_sqm": forms.NumberInput(attrs={**_TEXT, "step": "0.001"}),
-            "stock_valid_for_days": forms.NumberInput(attrs=_TEXT),
-            "slab_count": forms.NumberInput(attrs=_TEXT),
-            "length_cm": forms.NumberInput(attrs={**_TEXT, "step": "0.01"}),
-            "width_cm": forms.NumberInput(attrs={**_TEXT, "step": "0.01"}),
-            "thickness_mm": forms.NumberInput(attrs={**_TEXT, "step": "0.01"}),
-            "location_province": forms.TextInput(attrs=_TEXT),
-            "location_city": forms.TextInput(attrs=_TEXT),
-            "location_address": forms.Textarea(attrs={**_TEXT, "rows": 2}),
-            "description": forms.Textarea(attrs={**_TEXT, "rows": 3}),
-            "defect_notes": forms.Textarea(attrs={**_TEXT, "rows": 2}),
-            "is_visible": forms.CheckboxInput(attrs=_CHECK),
-            "availability_status": forms.Select(attrs=_TEXT),
-            "is_urgent_sale": forms.CheckboxInput(attrs=_CHECK),
-        }
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get("stock_mode") == InventoryLot.StockMode.EXACT and cleaned.get("available_sqm") is None:
-            self.add_error("available_sqm", "متراژ موجود را وارد کنید یا نوع موجودی دیگری انتخاب کنید.")
-        return cleaned
-
-
 class ItemFilterForm(forms.Form):
-    """The one search form, reused by «موجودی من», the marketplace and public search.
-
-    Its whole job is to validate GET input and hand back an
-    :class:`~apps.inventory.filters.ItemFilterSpec`, so no surface has to invent
-    its own filter vocabulary.
-    """
-
     q = forms.CharField(
-        required=False,
-        label="جستجو",
-        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "نام سنگ، رنگ، معدن، کد..."}),
+        required=False, label="جستجو",
+        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "نام، کد یا فرآوری..."}),
     )
-    stone_type = forms.CharField(
-        required=False, label="نوع سنگ", widget=forms.TextInput(attrs={**_TEXT, "placeholder": "تراورتن"})
+    stone = forms.ModelChoiceField(
+        required=False, label="نوع سنگ", queryset=VocabularyTerm.objects.none(),
+        empty_label="همه", widget=forms.Select(attrs=_TEXT),
     )
-    color = forms.CharField(
-        required=False, label="رنگ", widget=forms.TextInput(attrs={**_TEXT, "placeholder": "کرم"})
-    )
-    quarry_region = forms.CharField(
-        required=False, label="معدن/منطقه", widget=forms.TextInput(attrs=_TEXT)
-    )
-    processing_type = forms.CharField(
-        required=False, label="فرآوری", widget=forms.TextInput(attrs=_TEXT)
-    )
-    grade = forms.CharField(required=False, label="سورت", widget=forms.TextInput(attrs=_TEXT))
+    processing_type = forms.CharField(required=False, label="فرآوری", widget=forms.TextInput(attrs=_TEXT))
     applications = forms.ModelMultipleChoiceField(
-        label="کاربرد",
-        queryset=Application.objects.none(),
-        required=False,
+        label="کاربرد", queryset=Application.objects.none(), required=False,
         widget=forms.CheckboxSelectMultiple(attrs=_CHECK),
     )
-    thickness_min = forms.DecimalField(
-        required=False, label="حداقل ضخامت", min_value=0, widget=forms.NumberInput(attrs=_TEXT)
-    )
-    thickness_max = forms.DecimalField(
-        required=False, label="حداکثر ضخامت", min_value=0, widget=forms.NumberInput(attrs=_TEXT)
+    availability = forms.ChoiceField(
+        required=False, label="موجود بودن",
+        choices=[("", "همه")] + list(InventoryLot.Availability.choices),
+        widget=forms.Select(attrs=_TEXT),
     )
     price_min = forms.DecimalField(
         required=False, label="حداقل قیمت", min_value=0, widget=forms.NumberInput(attrs=_TEXT)
@@ -340,43 +245,35 @@ class ItemFilterForm(forms.Form):
     price_max = forms.DecimalField(
         required=False, label="حداکثر قیمت", min_value=0, widget=forms.NumberInput(attrs=_TEXT)
     )
-    min_qty_sqm = forms.DecimalField(
-        required=False, label="حداقل متراژ", min_value=0, widget=forms.NumberInput(attrs=_TEXT)
-    )
-    stock_mode = forms.ChoiceField(
-        required=False,
-        label="موجودی",
-        choices=[("", "همه")] + list(InventoryLot.StockMode.choices),
-        widget=forms.Select(attrs=_TEXT),
-    )
-    only_special = forms.BooleanField(
-        required=False, label="فقط فروش ویژه", widget=forms.CheckboxInput(attrs=_CHECK)
-    )
     sort = forms.ChoiceField(
         required=False, label="ترتیب", choices=SORT_CHOICES, widget=forms.Select(attrs=_TEXT)
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["stone"].queryset = active_stones()
         self.fields["applications"].queryset = active_applications()
 
+    def clean(self):
+        cleaned = super().clean()
+        low, high = cleaned.get("price_min"), cleaned.get("price_max")
+        if low is not None and high is not None and low > high:
+            self.add_error("price_max", "حداکثر قیمت باید از حداقل قیمت بیشتر باشد.")
+        return cleaned
+
     def to_spec(self) -> ItemFilterSpec:
-        """Never raises: an unusable filter degrades to "no filter"."""
         if not self.is_valid():
             return ItemFilterSpec()
         data = dict(self.cleaned_data)
+        stone = data.get("stone")
+        data["stone"] = str(stone.pk) if stone else ""
         data["applications"] = [app.code for app in data.get("applications") or []]
         return ItemFilterSpec.from_dict(data)
 
 
 class OwnerItemFilterForm(ItemFilterForm):
-    """Seller-side search, plus the lifecycle filter only an owner may use."""
-
     state = forms.ChoiceField(
-        required=False,
-        label="وضعیت",
-        choices=OWNER_STATE_CHOICES,
-        widget=forms.Select(attrs=_TEXT),
+        required=False, label="وضعیت", choices=OWNER_STATE_CHOICES, widget=forms.Select(attrs=_TEXT)
     )
 
     @property

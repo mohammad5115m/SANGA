@@ -348,12 +348,19 @@ button, input, select, textarea { font: inherit; }
 }
 .lot-card {
   display: grid;
-  grid-template-columns: 88px 1fr;
+  grid-template-columns: auto 1fr;
   gap: var(--space-3);
   padding: var(--space-3);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-lg);
+}
+.lot-card-link {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: var(--space-3);
+  color: inherit;
 }
 .lot-thumb,
 .lot-thumb img,

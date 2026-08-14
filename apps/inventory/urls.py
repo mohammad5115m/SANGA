@@ -8,11 +8,9 @@ app_name = "inventory"
 
 urlpatterns = [
     path("", views.lot_list, name="lot_list"),
-    path("quick-add/", views.quick_add_start, name="quick_add_start"),
-    path("quick-add/product/", views.quick_add_product, name="quick_add_product"),
-    path("quick-add/details/", views.quick_add_details, name="quick_add_details"),
-    path("quick-add/stock/", views.quick_add_stock, name="quick_add_stock"),
-    path("quick-add/review/", views.quick_add_review, name="quick_add_review"),
+    path("new/", views.product_create, name="product_create"),
+    path("quick-add/", views.product_create, name="quick_add_start"),
+    path("catalog-selection/", views.catalog_selection_start, name="catalog_selection_start"),
     path("items/<uuid:lot_id>/", views.lot_detail, name="lot_detail"),
     path("items/<uuid:lot_id>/edit/", views.lot_edit, name="lot_edit"),
     path("items/<uuid:lot_id>/media/", views.lot_media, name="lot_media"),

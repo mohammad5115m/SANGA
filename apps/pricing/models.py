@@ -37,11 +37,6 @@ class LotPrice(models.Model):
     for free.
     """
 
-    class Unit(models.TextChoices):
-        PER_SQM = "per_sqm", "به ازای متر مربع"
-        PER_SLAB = "per_slab", "به ازای اسلب"
-        INQUIRY_ONLY = "inquiry_only", "فقط استعلام"
-
     class Mode(models.TextChoices):
         FIXED = "fixed", "قیمت مشخص"
         INQUIRY = "inquiry", "استعلام قیمت"
@@ -60,10 +55,9 @@ class LotPrice(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
-        validators=[MinValueValidator(Decimal("0"))],
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
     currency = models.CharField(max_length=3, default="IRR")
-    unit = models.CharField(max_length=20, choices=Unit.choices, default=Unit.PER_SQM)
 
     # Price validity is independent of stock validity: a seller may trust their
     # stock for ten days and their price for two.
@@ -80,7 +74,7 @@ class LotPrice(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
-        validators=[MinValueValidator(Decimal("0"))],
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
     special_until = models.DateTimeField("پایان فروش ویژه", null=True, blank=True)
 
@@ -94,6 +88,31 @@ class LotPrice(models.Model):
             models.CheckConstraint(
                 condition=models.Q(mode="inquiry") | models.Q(amount__isnull=False),
                 name="price_fixed_requires_amount",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__isnull=True) | models.Q(amount__gt=0),
+                name="price_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(special_amount__isnull=True) | models.Q(special_amount__gt=0),
+                name="price_special_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(special_amount__isnull=True, special_until__isnull=True)
+                    | models.Q(special_amount__isnull=False, special_until__isnull=False)
+                ),
+                name="price_special_pair",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(special_amount__isnull=True)
+                    | (
+                        models.Q(mode="fixed", amount__isnull=False)
+                        & models.Q(special_amount__lt=models.F("amount"))
+                    )
+                ),
+                name="price_special_below_amount",
             ),
         ]
 
@@ -130,9 +149,9 @@ class LotPrice(models.Model):
 
     @property
     def special_is_live(self) -> bool:
-        if self.special_amount is None:
+        if self.special_amount is None or self.special_until is None:
             return False
-        return self.special_until is None or self.special_until > timezone.now()
+        return self.special_until > timezone.now()
 
     def effective_amount(self) -> Decimal | None:
         """The number to show, or ``None`` when it must read «استعلام قیمت».
@@ -141,7 +160,7 @@ class LotPrice(models.Model):
         seller can see what they last set, but it stops being presented as
         current. A live special sale beats the standard amount.
         """
-        if self.mode == self.Mode.INQUIRY or self.unit == self.Unit.INQUIRY_ONLY:
+        if self.mode == self.Mode.INQUIRY:
             return None
         if self.special_is_live:
             return self.special_amount

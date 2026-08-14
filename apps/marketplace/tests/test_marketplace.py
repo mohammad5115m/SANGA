@@ -21,7 +21,8 @@ def network(db):
     item = make_item(
         supplier,
         lot_code="SUP-1",
-        product=make_product(supplier, commercial_name="تراورتن عباس‌آباد", quarry_region="عباس‌آباد"),
+        product=make_product(supplier, commercial_name="تراورتن عباس‌آباد"),
+        processing_type="ساب خورده",
         b2b="1000000",
         b2c="1600000",
     )
@@ -142,10 +143,10 @@ def test_marketplace_prefetch_loads_only_the_b2b_tier(network):
 
 
 @pytest.mark.django_db
-def test_filter_by_quarry(network):
+def test_filter_by_processing(network):
     qs = marketplace_lots_for(network["buyer"])
-    assert network["item"] in filter_marketplace_lots(qs, spec=ItemFilterSpec(quarry_region="عباس‌آباد"))
-    assert network["item"] not in filter_marketplace_lots(qs, spec=ItemFilterSpec(quarry_region="نی‌ریز"))
+    assert network["item"] in filter_marketplace_lots(qs, spec=ItemFilterSpec(processing_type="ساب"))
+    assert network["item"] not in filter_marketplace_lots(qs, spec=ItemFilterSpec(processing_type="چرمی"))
 
 
 @pytest.mark.django_db
@@ -172,39 +173,26 @@ def test_price_filter_uses_the_viewer_tier(network):
 @pytest.mark.django_db
 def test_filter_combination_narrows(network):
     qs = marketplace_lots_for(network["buyer"])
-    spec = ItemFilterSpec(stone_type="تراورتن", quarry_region="عباس‌آباد", min_qty_sqm=Decimal("50"))
+    spec = ItemFilterSpec(stone="تراورتن", processing_type="ساب خورده")
     assert network["item"] in filter_marketplace_lots(qs, spec=spec)
 
-    spec = ItemFilterSpec(stone_type="تراورتن", min_qty_sqm=Decimal("5000"))
+    spec = ItemFilterSpec(stone="گرانیت", processing_type="ساب خورده")
     assert network["item"] not in filter_marketplace_lots(qs, spec=spec)
-
-
-@pytest.mark.django_db
-def test_unlimited_stock_satisfies_any_minimum_quantity(network):
-    unlimited = make_item(
-        network["supplier"],
-        lot_code="UNL-1",
-        stock_mode=InventoryLot.StockMode.UNLIMITED,
-        available_sqm="0",
-        b2b="900000",
-    )
-    qs = marketplace_lots_for(network["buyer"])
-    assert unlimited in filter_marketplace_lots(qs, spec=ItemFilterSpec(min_qty_sqm=Decimal("9999")))
 
 
 @pytest.mark.django_db
 def test_filter_spec_round_trips_through_json():
     spec = ItemFilterSpec(
-        stone_type="تراورتن",
+        stone="تراورتن",
         applications=["floor"],
         price_min=Decimal("100"),
-        only_special=True,
+        availability=InventoryLot.Availability.AVAILABLE,
     )
     restored = ItemFilterSpec.from_dict(spec.to_dict())
-    assert restored.stone_type == "تراورتن"
+    assert restored.stone == "تراورتن"
     assert restored.applications == ["floor"]
     assert restored.price_min == Decimal("100")
-    assert restored.only_special is True
+    assert restored.availability == InventoryLot.Availability.AVAILABLE
 
 
 @pytest.mark.django_db
@@ -214,5 +202,4 @@ def test_filter_spec_ignores_unusable_input():
         {"price_min": "not-a-number", "stock_mode": "bogus", "sort": "nope", "unknown_key": 1}
     )
     assert spec.price_min is None
-    assert spec.stock_mode == ""
     assert spec.sort == "recent"

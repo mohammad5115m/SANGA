@@ -27,7 +27,7 @@ class VocabularyTermAdmin(admin.ModelAdmin):
     at, not a side effect of an admin save.
     """
 
-    list_display = ("name", "kind", "sort_order", "is_active")
+    list_display = ("name", "code_prefix", "sort_order", "is_active")
     list_filter = ("kind", "is_active")
     search_fields = ("name",)
 
@@ -42,8 +42,8 @@ class VocabularyTermAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("commercial_name", "business", "stone_type", "primary_color", "is_active")
-    list_filter = ("is_active", "stone_type")
+    list_display = ("commercial_name", "business", "stone", "is_active")
+    list_filter = ("is_active", "stone")
     search_fields = ("commercial_name", "slug", "business__name")
     filter_horizontal = ("applications",)
 
@@ -57,14 +57,13 @@ class InventoryLotAdmin(admin.ModelAdmin):
         "status",
         "is_visible",
         "availability_status",
-        "stock_mode",
         "available_sqm",
         "stock_expires_at",
         "deleted_at",
     )
-    list_filter = ("status", "is_visible", "availability_status", "stock_mode", "is_urgent_sale")
+    list_filter = ("status", "is_visible", "availability_status", "is_urgent_sale")
     search_fields = ("lot_code", "product__commercial_name", "business__name", "public_token")
-    readonly_fields = ("public_token", "stock_expires_at")
+    readonly_fields = ("lot_code", "public_token", "stock_expires_at")
     inlines = [LotMediaInline]
 
 

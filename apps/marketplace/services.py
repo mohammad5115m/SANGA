@@ -25,7 +25,6 @@ def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
             "has_price": False,
             "amount": None,
             "currency": None,
-            "unit": None,
             "label": "استعلام قیمت",
             "is_special": False,
         }
@@ -33,7 +32,6 @@ def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
         "has_price": True,
         "amount": price.amount,
         "currency": price.currency,
-        "unit": price.unit,
         "label": f"{price.amount:,.0f} {price.currency}",
         "is_special": price.is_special,
         "special_until": price.special_until,

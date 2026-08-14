@@ -37,6 +37,12 @@
     <div class="kv"><span>آخرین تأیید موجودی</span><strong>{{ stock.human_confirmed }}</strong></div>
 
     <div class="btn-row">
+      {% if stock.needs_confirmation %}
+      <form method="post" action="{% url 'inventory:lot_confirm_stock' lot.id %}">
+        {% csrf_token %}<input type="hidden" name="action" value="reconfirm">
+        <button class="btn btn-primary" type="submit">تأیید مجدد با یک کلیک</button>
+      </form>
+      {% endif %}
       <a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' lot.id %}">
         تأیید / بروزرسانی موجودی
       </a>
@@ -74,23 +80,15 @@
 
   <section class="panel stack-sm">
     <h2 class="section-title">جزئیات</h2>
-    <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
+    <div class="kv"><span>نوع سنگ</span><strong>{{ lot.product.stone.name }}</strong></div>
     <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
     <div class="kv">
       <span>ابعاد</span>
       <strong>
-        {% if lot.length_cm %}{{ lot.length_cm }}×{{ lot.width_cm }} cm{% else %}—{% endif %}
-        {% if lot.thickness_mm %} / {{ lot.thickness_mm }} mm{% endif %}
+        {% if lot.length_cm %}{{ lot.length_cm }}{% else %}آزاد{% endif %}{% if lot.width_cm %}×{{ lot.width_cm }}{% endif %} سانتی‌متر
+        {% if lot.thickness_cm %} / ضخامت {{ lot.thickness_cm }} سانتی‌متر{% endif %}
       </strong>
     </div>
-    <div class="kv">
-      <span>محل بار</span>
-      <strong>{{ lot.location_city|default:"—" }}{% if lot.location_province %} · {{ lot.location_province }}{% endif %}</strong>
-    </div>
-    {% if lot.location_address %}
-      <div class="kv"><span>آدرس دقیق</span><strong>{{ lot.location_address }}</strong></div>
-      <p class="muted">آدرس دقیق فقط برای شما نمایش داده می‌شود.</p>
-    {% endif %}
     {% if lot.product.applications.all %}
       <div class="kv">
         <span>کاربردها</span>

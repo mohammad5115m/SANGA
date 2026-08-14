@@ -35,12 +35,9 @@ def test_inventory_is_scoped_to_its_own_business():
 
 
 @pytest.mark.django_db
-def test_item_location_lives_on_the_item_not_a_warehouse():
-    """Warehouse management is gone; the address travels with the product."""
+def test_inventory_has_no_warehouse_or_location_fields():
     business = make_business(name="سنگ محل", owner_phone="09120000005", city="محلات", province="مرکزی")
-    item = make_item(business, lot_code="LOC-1", location_address="کیلومتر ۵ جاده معدن")
-
-    assert item.warehouse_id is None
-    assert item.location_city == "محلات"
-    assert item.location_province == "مرکزی"
-    assert item.location_address == "کیلومتر ۵ جاده معدن"
+    item = make_item(business, lot_code="T-LOC001")
+    field_names = {field.name for field in item._meta.get_fields()}
+    assert "warehouse" not in field_names
+    assert not {"location_city", "location_province", "location_address"} & field_names

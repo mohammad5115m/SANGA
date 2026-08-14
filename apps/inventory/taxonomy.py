@@ -9,9 +9,9 @@ values were saved with whatever the seller's keyboard produced, so normalizing
 one side of the comparison protected nothing: a product entered on an Arabic
 keyboard was invisible to a search typed on a Persian one, and vice versa.
 
-**Vocabulary.** «کریستال» and «چینی» are the same stone and no amount of
-letter-level normalization will ever join them. That needs a list, which is what
-:class:`~apps.inventory.models.VocabularyTerm` is.
+**Vocabulary.** The stone type itself is selected from
+:class:`~apps.inventory.models.VocabularyTerm`; distinct commercial types such
+as «کریستال» and «چینی» therefore remain distinct.
 
 Both are applied on write, so the stored value is the one that will be searched.
 Applying them only on read would mean every query paying for a scan, and would
@@ -63,10 +63,8 @@ def canonical(kind: str, value: str) -> str:
 def normalize_searchable(value: str) -> str:
     """For the free-text dimensions with no controlled list.
 
-    Quarry and region stay open on purpose — there are hundreds of Iranian
-    quarries and a closed list would be wrong within a month — and grade stays
-    open because the industry genuinely does not share one vocabulary. They still
-    have to be spelled consistently to be searchable.
+    Seller-specific suffixes, patterns and processing descriptions remain open
+    text, but still have to be spelled consistently to be searchable.
     """
     return normalize_persian_text(value or "")
 
@@ -81,10 +79,7 @@ def terms_for(kind: str) -> list[str]:
 
 
 def vocabulary_context() -> dict[str, list[str]]:
-    """Every controlled dimension, for the ``_vocabulary_lists.html`` datalists.
-
-    One query rather than three: the table is small and read together.
-    """
+    """Controlled terms grouped for compatibility with older integrations."""
     from .models import VocabularyTerm
 
     grouped: dict[str, list[str]] = {kind.value: [] for kind in VocabularyTerm.Kind}

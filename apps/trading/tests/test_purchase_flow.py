@@ -36,7 +36,6 @@ def market(db):
         seller,
         product=make_product(seller, commercial_name="تراورتن عباس‌آباد"),
         lot_code="TRD-1",
-        grade="سوپر",
         b2b="1500000",
         b2c="2000000",
     )
@@ -256,18 +255,16 @@ def test_a_trade_keeps_its_own_copy_of_what_was_sold(market):
     _accept(market, request_)
     trade = finalize_sale(request=request_, membership=market["seller_m"])
 
-    assert trade.product_name == "تراورتن عباس‌آباد"
-    assert trade.grade == "سوپر"
+    assert trade.product_name == "سنگ تراورتن عباس‌آباد"
+    assert trade.grade == ""
 
     product = market["item"].product
-    product.commercial_name = "نام کاملاً جدید"
-    product.save(update_fields=["commercial_name"])
-    market["item"].grade = "درجه سه"
-    market["item"].save()
+    product.name_suffix = "نام کاملاً جدید"
+    product.save(update_fields=["name_suffix"])
 
     trade.refresh_from_db()
-    assert trade.product_name == "تراورتن عباس‌آباد"
-    assert trade.grade == "سوپر"
+    assert trade.product_name == "سنگ تراورتن عباس‌آباد"
+    assert trade.grade == ""
 
 
 @pytest.mark.django_db
@@ -282,7 +279,7 @@ def test_a_trade_survives_the_product_being_deleted(market):
     assert outcome == "archived", "a product with a trade must not be purged"
 
     trade.refresh_from_db()
-    assert trade.product_name == "تراورتن عباس‌آباد"
+    assert trade.product_name == "سنگ تراورتن عباس‌آباد"
     assert trade.total_amount == Decimal("70000000.00")
 
 

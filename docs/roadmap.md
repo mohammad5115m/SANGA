@@ -10,7 +10,7 @@ removed, and what is genuinely left.
 | Area | State |
 |------|-------|
 | Platform provisioning | Admin-only. No self-service signup; authentication never creates an account. |
-| Products | Four independent lifecycle axes, three stock modes, read-time freshness, controlled applications taxonomy, item-level location |
+| Products | One-page create/edit, controlled stone taxonomy, immutable codes, nullable fresh quantity |
 | Pricing | Two independent channels, per-tier validity windows, special sale, expiry degrading to «استعلام قیمت» |
 | Discovery | One eligibility policy and one filter schema behind «موجودی من», the marketplace, public search and catalog rules |
 | Colleague directory | Every eligible Business, automatically |
@@ -19,7 +19,7 @@ removed, and what is genuinely left.
 | Money | Business-counterparty ledger, exactly-once posting, four manual entry types, FIFO aging |
 | Invoicing | Snapshot invoices, locked per-seller numbering, print view |
 | Public customers | Login-free browsing, multi-product inquiries, stock inquiries, customer-purpose OTP, seller inbox |
-| Catalogs | Manual, rule-based and hybrid, resolved live against eligibility |
+| Catalogs | Inventory-first explicit selection, with values resolved live against eligibility |
 | Reports | Ten operational reports with date ranges and print views |
 | UI | Six-destination navigation, operational dashboard, 4-step product creation, media management |
 

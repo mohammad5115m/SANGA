@@ -320,10 +320,10 @@ def test_an_invoice_does_not_change_when_the_product_does(world):
     )
     invoice = SalesInvoice.objects.get(trade=trade)
     product = world["item"].product
-    product.commercial_name = "نام تازه"
-    product.save(update_fields=["commercial_name"])
+    product.name_suffix = "نام تازه"
+    product.save(update_fields=["name_suffix"])
 
     line = invoice.items.get()
     line.refresh_from_db()
-    assert line.product_name == "تراورتن آزمون"
+    assert line.product_name == "سنگ تراورتن آزمون"
     assert line.unit_price == Decimal("1000000.00")

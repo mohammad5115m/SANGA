@@ -6,58 +6,69 @@
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar">
-    <div>
-      <h1 class="page-title">موجودی من</h1>
-      <p class="page-lead">محصولات قابل فروش کسب‌وکار شما</p>
-    </div>
-    <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
+    <div><h1 class="page-title">موجودی من</h1><p class="page-lead">مدیریت محصول و ساخت کاتالوگ از همین فهرست</p></div>
+    <a class="btn btn-primary" href="{% url 'inventory:product_create' %}">افزودن محصول</a>
   </div>
 
   {% include "inventory/_filter_bar.html" %}
 
-  <div class="list-stack">
-    {% for row in rows %}
-      <a class="lot-card" href="{% url 'inventory:lot_detail' row.lot.id %}">
-        <div class="lot-thumb">
-          {% if row.primary_media and row.primary_media.kind == 'image' %}
-            <img src="{{ row.primary_media.file.url }}" alt="{{ row.lot.product.commercial_name }}" loading="lazy">
-          {% else %}
-            <div class="lot-thumb-fallback" aria-hidden="true"></div>
-          {% endif %}
+  <form method="post" action="{% url 'inventory:catalog_selection_start' %}" class="stack-md">
+    {% csrf_token %}
+    <input type="hidden" name="filter_query" value="{{ request.GET.urlencode }}">
+
+    <section class="panel stack-sm">
+      <div class="toolbar">
+        <div>
+          <strong>ساخت یا تکمیل کاتالوگ</strong>
+          <p class="muted">چند محصول را علامت بزنید، یا همه نتایج فعلی را در تمام صفحه‌ها انتخاب کنید.</p>
         </div>
-        <div class="lot-body">
-          <div class="list-title">{{ row.lot.product.commercial_name }}</div>
-          <div class="muted" dir="ltr">{{ row.lot.lot_code }}</div>
-          <div class="badge-row">
-            {% if row.lot.status == 'draft' %}
-              <span class="badge">پیش‌نویس</span>
-            {% elif not row.lot.is_visible %}
-              <span class="badge">منتشر نشده</span>
-            {% endif %}
-            {% if row.lot.is_unavailable %}
-              <span class="badge badge-danger">ناموجود</span>
-            {% endif %}
-            {% if row.stock.needs_confirmation %}
-              <span class="badge badge-warn">نیاز به تأیید موجودی</span>
-            {% endif %}
-            {% if row.lot.is_urgent_sale %}<span class="badge badge-danger">فروش فوری</span>{% endif %}
-          </div>
-          <div class="muted">{{ row.stock.label }}</div>
-          {% if can_view_prices %}
-            <div class="price-inline muted">
-              {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount|default:"استعلام"|rial }}{% endif %}
-              {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount|default:"استعلام"|rial }}{% endif %}
-            </div>
-          {% endif %}
-        </div>
-      </a>
-    {% empty %}
-      <div class="empty-state stack-md">
-        <div>هنوز محصولی ثبت نشده است.</div>
-        <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">اولین محصول را ثبت کنید</a>
+        <select class="field-input" name="catalog_id" aria-label="کاتالوگ مقصد">
+          <option value="">کاتالوگ جدید</option>
+          {% for catalog in catalogs %}<option value="{{ catalog.id }}">افزودن به {{ catalog.title }}</option>{% endfor %}
+        </select>
       </div>
-    {% endfor %}
-  </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" type="submit" name="selection_scope" value="selected">استفاده از انتخاب‌شده‌ها</button>
+        <button class="btn btn-ghost" type="submit" name="selection_scope" value="filter">استفاده از همه نتایج فیلتر</button>
+      </div>
+    </section>
+
+    <div class="list-stack">
+      {% for row in rows %}
+        <div class="lot-card">
+          <label class="chip chip-choice" aria-label="انتخاب {{ row.lot.product.commercial_name }}">
+            <input type="checkbox" name="lot_ids" value="{{ row.lot.id }}">
+          </label>
+          <a class="lot-card-link" href="{% url 'inventory:lot_detail' row.lot.id %}">
+            <div class="lot-thumb">
+              {% if row.primary_media and row.primary_media.kind == 'image' %}
+                <img src="{{ row.primary_media.file.url }}" alt="{{ row.lot.product.commercial_name }}" loading="lazy">
+              {% else %}<div class="lot-thumb-fallback" aria-hidden="true"></div>{% endif %}
+            </div>
+            <div class="lot-body">
+              <div class="list-title">{{ row.lot.product.commercial_name }}</div>
+              <div class="muted" dir="ltr">{{ row.lot.lot_code }}</div>
+              <div class="badge-row">
+                {% if row.lot.status == 'draft' %}<span class="badge">پیش‌نویس</span>{% elif not row.lot.is_visible %}<span class="badge">منتشر نشده</span>{% endif %}
+                {% if row.lot.is_unavailable %}<span class="badge badge-danger">ناموجود</span>{% endif %}
+                {% if row.stock.needs_confirmation %}<span class="badge badge-warn">نیاز به تأیید موجودی</span>{% endif %}
+                {% if row.lot.is_urgent_sale %}<span class="badge badge-danger">فروش فوری</span>{% endif %}
+              </div>
+              <div class="muted">{{ row.stock.label }}</div>
+              {% if can_view_prices %}
+                <div class="price-inline muted">
+                  {% if row.prices.b2b %}همکار: {{ row.prices.b2b.amount|default:"استعلام"|rial }}{% endif %}
+                  {% if row.prices.b2c %} · مشتری: {{ row.prices.b2c.amount|default:"استعلام"|rial }}{% endif %}
+                </div>
+              {% endif %}
+            </div>
+          </a>
+        </div>
+      {% empty %}
+        <div class="empty-state stack-md"><div>محصولی پیدا نشد.</div><a class="btn btn-primary" href="{% url 'inventory:product_create' %}">ثبت محصول</a></div>
+      {% endfor %}
+    </div>
+  </form>
 
   {% include "_pager.html" %}
 </section>

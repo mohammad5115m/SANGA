@@ -419,11 +419,11 @@ def test_the_line_keeps_a_product_name_snapshot(market):
         items=[{"item": market["first"], "quantity": Decimal("30")}],
     )
     product = market["first"].product
-    product.commercial_name = "نام جدید"
-    product.save(update_fields=["commercial_name"])
+    product.name_suffix = "نام جدید"
+    product.save(update_fields=["name_suffix"])
 
     line = InquiryItem.objects.get(inquiry=inquiry)
-    assert line.product_name == "تراورتن عباس‌آباد"
+    assert line.product_name == "سنگ تراورتن عباس‌آباد"
 
 
 # --- seller inbox ----------------------------------------------------------------

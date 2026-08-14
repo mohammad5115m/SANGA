@@ -12,7 +12,7 @@
 
   <div>
     <h1 class="page-title">{{ product.commercial_name }}</h1>
-    <p class="page-lead">{{ product.description_public|default:product.stone_type }}</p>
+    <p class="page-lead">{{ product.description_public|default:product.stone.name }}</p>
     <div class="catalog-price catalog-price-lg">{{ price.label }}</div>
     {% if price.is_special %}
       <div class="badge badge-special">

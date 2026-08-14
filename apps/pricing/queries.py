@@ -25,8 +25,8 @@ AMOUNT_FIELD = DecimalField(max_digits=14, decimal_places=2)
 
 def special_is_live_q(prefix: str = "") -> Q:
     field = f"{prefix}__" if prefix else ""
-    return Q(**{f"{field}special_amount__isnull": False}) & (
-        Q(**{f"{field}special_until__isnull": True}) | Q(**{f"{field}special_until__gt": timezone.now()})
+    return Q(**{f"{field}special_amount__isnull": False}) & Q(
+        **{f"{field}special_until__gt": timezone.now()}
     )
 
 
@@ -41,7 +41,7 @@ def _effective_amount_case():
     """``special_amount`` if the sale is live, else ``amount`` if still fresh."""
     return Case(
         When(
-            Q(mode=LotPrice.Mode.INQUIRY) | Q(unit=LotPrice.Unit.INQUIRY_ONLY),
+            Q(mode=LotPrice.Mode.INQUIRY),
             then=None,
         ),
         When(special_is_live_q(), then=F("special_amount")),

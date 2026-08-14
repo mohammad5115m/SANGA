@@ -27,8 +27,7 @@
               <div>
                 <div class="list-title">{{ row.item.product.commercial_name }}</div>
                 <div class="muted">
-                  {{ row.item.product.stone_type }}
-                  {% if row.item.grade %} · {{ row.item.grade }}{% endif %}
+                  {{ row.item.product.stone.name }}
                 </div>
               </div>
               <label class="field">

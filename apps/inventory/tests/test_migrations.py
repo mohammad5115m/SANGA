@@ -20,7 +20,6 @@ from django.db.migrations.executor import MigrationExecutor
 
 BEFORE = ("inventory", "0004_item_lifecycle_fields")
 AFTER = ("inventory", "0005_backfill_item_lifecycle")
-HEAD = ("inventory", "0008_lotmedia_terminology")
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -70,6 +69,13 @@ def _migrate(inventory_migration: str) -> object:
     return executor.loader.project_state(targets).apps
 
 
+def _migrate_to_project_heads() -> None:
+    """Restore every app, including dependants rewound with inventory."""
+    executor = MigrationExecutor(connection)
+    executor.loader.build_graph()
+    executor.migrate(executor.loader.graph.leaf_nodes())
+
+
 @pytest.fixture
 def legacy():
     """Rewind to the pre-backfill schema and hand back its model registry."""
@@ -77,7 +83,7 @@ def legacy():
     yield apps
     # Leave the database at head, or every later test in the process runs against
     # a half-migrated schema.
-    _migrate(HEAD[1])
+    _migrate_to_project_heads()
 
 
 def _seed(apps, *, visibility: str, status: str) -> str:

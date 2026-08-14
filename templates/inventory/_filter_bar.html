@@ -25,15 +25,9 @@ Expects: filter_form
           {{ filter_form.state }}
         </label>
       {% endif %}
-      <label class="field"><span class="field-label">{{ filter_form.stone_type.label }}</span>{{ filter_form.stone_type }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.color.label }}</span>{{ filter_form.color }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.quarry_region.label }}</span>{{ filter_form.quarry_region }}</label>
+      <label class="field"><span class="field-label">{{ filter_form.stone.label }}</span>{{ filter_form.stone }}</label>
       <label class="field"><span class="field-label">{{ filter_form.processing_type.label }}</span>{{ filter_form.processing_type }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.grade.label }}</span>{{ filter_form.grade }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.stock_mode.label }}</span>{{ filter_form.stock_mode }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.min_qty_sqm.label }}</span>{{ filter_form.min_qty_sqm }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.thickness_min.label }}</span>{{ filter_form.thickness_min }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.thickness_max.label }}</span>{{ filter_form.thickness_max }}</label>
+      <label class="field"><span class="field-label">{{ filter_form.availability.label }}</span>{{ filter_form.availability }}</label>
       <label class="field"><span class="field-label">{{ filter_form.price_min.label }}</span>{{ filter_form.price_min }}</label>
       <label class="field"><span class="field-label">{{ filter_form.price_max.label }}</span>{{ filter_form.price_max }}</label>
       <label class="field"><span class="field-label">{{ filter_form.sort.label }}</span>{{ filter_form.sort }}</label>
@@ -48,9 +42,9 @@ Expects: filter_form
       </div>
     </fieldset>
 
-    <label class="field checkbox-field">
-      {{ filter_form.only_special }} <span>{{ filter_form.only_special.label }}</span>
-    </label>
+    {% if price_bounds.minimum or price_bounds.maximum %}
+      <p class="field-help">بازه قیمت فعلی این نتایج: {{ price_bounds.minimum|default:"—" }} تا {{ price_bounds.maximum|default:"—" }} ریال</p>
+    {% endif %}
 
     <button class="btn btn-secondary" type="submit">اعمال فیلترها</button>
   </div>

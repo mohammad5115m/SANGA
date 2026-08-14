@@ -10,7 +10,6 @@ from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.entitlements import MANAGE_CATALOGS, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import CATALOG_MANAGE
-from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.freshness import stock_view
 from apps.inventory.models import InventoryLot
 from apps.pricing.services import resolve_visible_prices
@@ -50,7 +49,6 @@ def b2c_price_context(lot: InventoryLot) -> dict:
             "has_price": False,
             "amount": None,
             "currency": None,
-            "unit": None,
             "label": "استعلام قیمت",
             "is_special": False,
         }
@@ -58,7 +56,6 @@ def b2c_price_context(lot: InventoryLot) -> dict:
         "has_price": True,
         "amount": b2c.amount,
         "currency": b2c.currency,
-        "unit": b2c.unit,
         "label": f"{b2c.amount:,.0f} {b2c.currency}",
         "is_special": b2c.is_special,
         "special_until": b2c.special_until,
@@ -86,8 +83,6 @@ def create_custom_catalog(
     custom_message: str = "",
     lot_ids: list | None = None,
     expires_at=None,
-    mode: str = CustomCatalog.Mode.MANUAL,
-    rules: dict | None = None,
 ) -> CustomCatalog:
     _require_catalog_manage(membership)
     if membership.business_id != business.id:
@@ -95,36 +90,16 @@ def create_custom_catalog(
     title = (title or "").strip()
     if len(title) < 2:
         raise CatalogError("عنوان کاتالوگ خیلی کوتاه است.")
-    if mode not in set(CustomCatalog.Mode.values):
-        raise CatalogError("نوع کاتالوگ نامعتبر است.")
-
     catalog = CustomCatalog.objects.create(
         business=business,
         title=title,
         customer_name=(customer_name or "").strip(),
         custom_message=(custom_message or "").strip(),
         expires_at=expires_at,
-        mode=mode,
-        rules=_clean_rules(rules, mode),
     )
     if lot_ids:
         set_catalog_lots(catalog=catalog, membership=membership, lot_ids=lot_ids)
     return catalog
-
-
-def _clean_rules(rules: dict | None, mode: str) -> dict:
-    """Normalize incoming rule JSON through the shared filter schema.
-
-    Round-tripping through :class:`ItemFilterSpec` means a stored rule is always
-    in the same vocabulary the search bar produces, and unknown or unparseable
-    keys are dropped rather than persisted to fail later.
-    """
-    if mode == CustomCatalog.Mode.MANUAL:
-        return {}
-    spec = ItemFilterSpec.from_dict(rules or {})
-    if spec.is_empty:
-        raise CatalogError("برای کاتالوگ فیلتری، حداقل یک فیلتر انتخاب کنید.")
-    return spec.to_dict()
 
 
 @transaction.atomic
@@ -137,8 +112,6 @@ def update_catalog(
     custom_message: str | None = None,
     expires_at=...,
     is_active: bool | None = None,
-    mode: str | None = None,
-    rules: dict | None = None,
 ) -> CustomCatalog:
     _require_catalog_manage(membership)
     if catalog.business_id != membership.business_id:
@@ -157,52 +130,7 @@ def update_catalog(
         catalog.expires_at = expires_at
     if is_active is not None:
         catalog.is_active = is_active
-    if mode is not None:
-        if mode not in set(CustomCatalog.Mode.values):
-            raise CatalogError("نوع کاتالوگ نامعتبر است.")
-        catalog.mode = mode
-    if mode is not None or rules is not None:
-        catalog.rules = _clean_rules(rules if rules is not None else catalog.rules, catalog.mode)
-
     catalog.save()
-    return catalog
-
-
-@transaction.atomic
-def set_catalog_exclusions(
-    *,
-    catalog: CustomCatalog,
-    membership: BusinessMembership,
-    lot_ids: list,
-) -> CustomCatalog:
-    """Replace the "not this one" overrides on a rule-based catalog.
-
-    Separate from the includes because a rule that has to encode its own
-    exceptions stops being readable — «همه تراورتن‌های عباس‌آباد، غیر از این
-    یکی» is two ideas, and the seller should be able to see both.
-    """
-    _require_catalog_manage(membership)
-    if catalog.business_id != membership.business_id:
-        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
-
-    owned = _owned_ids(catalog, lot_ids)
-    catalog.items.filter(inclusion=CustomCatalogItem.Inclusion.EXCLUDE).delete()
-    # A product cannot be both added and removed by hand — the two instructions
-    # contradict each other. Excluding wins, because it is the one the seller
-    # just gave.
-    catalog.items.filter(lot_id__in=owned).delete()
-    CustomCatalogItem.objects.bulk_create(
-        [
-            CustomCatalogItem(
-                catalog=catalog,
-                lot_id=lot_id,
-                inclusion=CustomCatalogItem.Inclusion.EXCLUDE,
-                sort_order=index,
-            )
-            for index, lot_id in enumerate(owned)
-        ]
-    )
-    catalog.save(update_fields=["updated_at"])
     return catalog
 
 
@@ -264,23 +192,41 @@ def set_catalog_lots(
 
     valid_ids = _owned_ids(catalog, lot_ids)
 
-    # Only the includes are replaced; exclusions on a hybrid catalog are managed
-    # separately and must survive an edit to the manual selection. An id that is
-    # currently excluded and is now being included drops its exclusion, since the
-    # two cannot both hold.
-    catalog.items.filter(inclusion=CustomCatalogItem.Inclusion.INCLUDE).delete()
-    catalog.items.filter(lot_id__in=valid_ids).delete()
+    catalog.items.all().delete()
     CustomCatalogItem.objects.bulk_create(
         [
             CustomCatalogItem(
                 catalog=catalog,
                 lot_id=lot_id,
-                inclusion=CustomCatalogItem.Inclusion.INCLUDE,
                 sort_order=index,
             )
             for index, lot_id in enumerate(valid_ids)
         ]
     )
+    catalog.save(update_fields=["updated_at"])
+    return catalog
+
+
+@transaction.atomic
+def add_catalog_lots(*, catalog: CustomCatalog, membership: BusinessMembership, lot_ids: list) -> CustomCatalog:
+    _require_catalog_manage(membership)
+    if catalog.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
+    valid_ids = _owned_ids(catalog, lot_ids)
+    existing = list(catalog.items.order_by("sort_order").values_list("lot_id", flat=True))
+    seen = {str(item) for item in existing}
+    merged = existing + [item for item in valid_ids if str(item) not in seen]
+    return set_catalog_lots(catalog=catalog, membership=membership, lot_ids=merged)
+
+
+@transaction.atomic
+def remove_catalog_lot(*, catalog: CustomCatalog, membership: BusinessMembership, lot_id) -> CustomCatalog:
+    _require_catalog_manage(membership)
+    if catalog.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
+    deleted, _details = catalog.items.filter(lot_id=lot_id).delete()
+    if not deleted:
+        raise CatalogError("محصول در این کاتالوگ یافت نشد.")
     catalog.save(update_fields=["updated_at"])
     return catalog
 

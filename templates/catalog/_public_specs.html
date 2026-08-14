@@ -3,7 +3,7 @@ Public-safe specification table.
 
 Everything here is explicitly listed. There is deliberately no loop over model
 fields: that is how internal notes, defect notes and the exact address end up on
-a public page. `location_city` appears; `location_address` never does.
+a public page. Only buyer-useful product and stock facts belong here.
 
 Expects: lot, product, stock
 {% endcomment %}
@@ -19,16 +19,13 @@ Expects: lot, product, stock
       <button class="btn btn-secondary btn-sm" type="submit">استعلام موجودی از فروشنده</button>
     </form>
   {% endif %}
-  <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone_type|default:"—" }}</strong></div>
-  <div class="kv"><span>رنگ</span><strong>{{ product.primary_color|default:"—" }}</strong></div>
-  <div class="kv"><span>معدن/منطقه</span><strong>{{ product.quarry_region|default:"—" }}</strong></div>
+  <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone.name|default:"—" }}</strong></div>
   <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
-  <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
   <div class="kv">
     <span>ابعاد</span>
     <strong>
-      {% if lot.length_cm %}{{ lot.length_cm }}×{{ lot.width_cm }} cm{% else %}—{% endif %}
-      {% if lot.thickness_mm %} / {{ lot.thickness_mm }} mm{% endif %}
+      {% if lot.length_cm %}{{ lot.length_cm }}{% else %}آزاد{% endif %}{% if lot.width_cm %}×{{ lot.width_cm }}{% endif %} سانتی‌متر
+      {% if lot.thickness_cm %} / ضخامت {{ lot.thickness_cm }} سانتی‌متر{% endif %}
     </strong>
   </div>
   {% if product.applications.all %}
@@ -37,5 +34,4 @@ Expects: lot, product, stock
       <strong>{% for a in product.applications.all %}{{ a.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong>
     </div>
   {% endif %}
-  <div class="kv"><span>محل بار</span><strong>{{ lot.location_city|default:"—" }}</strong></div>
 </section>

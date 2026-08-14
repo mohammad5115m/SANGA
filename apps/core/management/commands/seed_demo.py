@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.businesses.models import BusinessMembership
 from apps.businesses.services import complete_onboarding, create_business_for_owner
-from apps.inventory.models import Application, InventoryLot, Product
+from apps.inventory.models import Application, InventoryLot, Product, VocabularyTerm
 from apps.pricing.services import ensure_default_tiers, set_lot_price
 
 #: name, stone, colour, quarry, sqm, b2b, b2c, application codes
@@ -48,39 +48,41 @@ class Command(BaseCommand):
             )
             complete_onboarding(business)
 
-        for idx, (name, stone, color, region, qty, b2b, b2c, apps) in enumerate(SAMPLES, start=1):
-            product, _ = Product.objects.get_or_create(
-                business=business,
-                commercial_name=name,
-                defaults={
-                    "stone_type": stone,
-                    "primary_color": color,
-                    "quarry_region": region,
-                    "description_public": "نمونه فرضی توسعه سنگا — داده واقعی نیست.",
-                },
+        prefixes = {
+            "تراورتن": "T", "مرمریت": "M", "گرانیت": "G", "کریستال": "C",
+            "مرمر": "O", "لایمستون": "L", "ترامیت": "TR", "چینی": "CH",
+        }
+        for idx, (name, stone_name, _color, _region, qty, b2b, b2c, apps) in enumerate(
+            SAMPLES, start=1
+        ):
+            stone, _ = VocabularyTerm.objects.get_or_create(
+                kind=VocabularyTerm.Kind.STONE_TYPE,
+                name=stone_name,
+                defaults={"code_prefix": prefixes[stone_name], "is_active": True},
             )
-            product.applications.set(Application.objects.filter(code__in=apps))
-
             code = f"DEMO-{idx:03d}"
-            item, created = InventoryLot.objects.get_or_create(
-                business=business,
-                lot_code=code,
-                defaults={
-                    "product": product,
-                    "status": InventoryLot.Status.ACTIVE,
-                    "is_visible": True,
-                    "availability_status": InventoryLot.Availability.AVAILABLE,
-                    "stock_mode": InventoryLot.StockMode.EXACT,
-                    "available_sqm": Decimal(qty),
-                    "original_sqm": Decimal(qty),
-                    "stock_confirmed_at": timezone.now(),
-                    "location_city": "محلات",
-                    "location_province": "مرکزی",
-                    "grade": "ممتاز",
-                    "processing_type": "صیقلی",
-                    "description": "داده دمو فرضی برای تست سنگا",
-                },
-            )
+            item = InventoryLot.objects.filter(lot_code=code, business=business).first()
+            created = item is None
+            if item is None:
+                product = Product.objects.create(
+                    business=business,
+                    stone=stone,
+                    name_suffix=name.removeprefix("سنگ ").removeprefix(stone_name).strip(),
+                    description_public="نمونه فرضی توسعه سنگا — داده واقعی نیست.",
+                )
+                product.applications.set(Application.objects.filter(code__in=apps))
+                item = InventoryLot.objects.create(
+                    business=business,
+                    lot_code=code,
+                    product=product,
+                    status=InventoryLot.Status.ACTIVE,
+                    is_visible=True,
+                    availability_status=InventoryLot.Availability.AVAILABLE,
+                    available_sqm=Decimal(qty),
+                    stock_confirmed_at=timezone.now(),
+                    processing_type="صیقلی",
+                    description="داده دمو فرضی برای تست سنگا",
+                )
             if created or not item.prices.exists():
                 set_lot_price(lot=item, tier_code="b2b", amount=Decimal(b2b))
                 set_lot_price(lot=item, tier_code="b2c", amount=Decimal(b2c))
@@ -94,8 +96,9 @@ class Command(BaseCommand):
 
         inquiry_item = InventoryLot.objects.filter(business=business, lot_code="DEMO-003").first()
         if inquiry_item is not None:
-            inquiry_item.stock_mode = InventoryLot.StockMode.INQUIRY
-            inquiry_item.save()
+            inquiry_item.available_sqm = None
+            inquiry_item.stock_confirmed_at = None
+            inquiry_item.save(update_fields=["available_sqm", "stock_confirmed_at", "stock_expires_at", "updated_at"])
 
         partner_owner, _ = User.objects.get_or_create(
             phone="09122222222",

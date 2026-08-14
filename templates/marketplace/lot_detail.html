@@ -24,14 +24,10 @@
       <div class="kv"><span>آخرین تأیید موجودی</span><strong>{{ stock.human_confirmed }}</strong></div>
     {% endif %}
     <div class="kv"><span>کد محصول</span><strong dir="ltr">{{ lot.lot_code }}</strong></div>
-    <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone_type|default:"—" }}</strong></div>
-    <div class="kv"><span>رنگ</span><strong>{{ product.primary_color|default:"—" }}</strong></div>
-    <div class="kv"><span>معدن/منطقه</span><strong>{{ product.quarry_region|default:"—" }}</strong></div>
-    <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
+    <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone.name|default:"—" }}</strong></div>
     <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
     {% if lot.thickness_mm %}<div class="kv"><span>ضخامت</span><strong>{{ lot.thickness_mm }} mm</strong></div>{% endif %}
     {# City only: the exact address is the seller's private information. #}
-    <div class="kv"><span>محل بار</span><strong>{{ lot.location_city|default:"—" }}</strong></div>
     {% if product.applications.all %}
       <div class="kv">
         <span>کاربردها</span>

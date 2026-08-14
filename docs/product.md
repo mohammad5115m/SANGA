@@ -64,8 +64,9 @@ See [inventory.md](./inventory.md).
 `inventory.policy.eligible_items()`. Three near-copies of that question drifted
 apart in v1 and the drift was a live data leak.
 
-**One filter schema.** «موجودی من», the marketplace, public search and catalog
-rules share `ItemFilterSpec`, so a rule catalog is literally a saved search.
+**One filter schema.** «موجودی من», the marketplace and public search share
+`ItemFilterSpec`. Catalog creation can select all current matches without
+persisting a second filtering language.
 
 **Current versus historical is a modelling decision.** A catalog always renders
 live data. An invoice never changes. Same products, two representations, on

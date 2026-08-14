@@ -58,7 +58,7 @@ def owned_items(business: Business) -> QuerySet[InventoryLot]:
     """
     return (
         InventoryLot.objects.filter(business=business, deleted_at__isnull=True)
-        .select_related("product", "business")
+        .select_related("product", "product__stone", "business")
         .prefetch_related(_price_prefetch("owner"), "media")
         .order_by("-updated_at")
     )
@@ -115,7 +115,7 @@ def eligible_items(
         qs = qs.exclude(business=viewer_business)
 
     return (
-        qs.select_related("product", "business")
+        qs.select_related("product", "product__stone", "business")
         .prefetch_related(_price_prefetch(audience), "media")
         .order_by("-is_urgent_sale", "-stock_confirmed_at", "-updated_at")
     )

@@ -48,38 +48,23 @@ class Application(models.Model):
 #: list is reviewable in a diff. Extending it means adding a row here plus a
 #: migration that calls the same sync helper.
 class VocabularyTerm(models.Model):
-    """A controlled term for one product-discovery dimension.
-
-    ``Application`` proved the shape: buyers filter on it, free text cannot be
-    filtered reliably, and a platform-wide list means one seller's search matches
-    another seller's products. Stone type, colour and surface finish are the same
-    kind of field and were left as free text, so «مرمریت», «مرمريت» and «مرمریت
-    لاشتر» were three unrelated values for filtering purposes.
-
-    One table with a ``kind`` discriminator rather than three near-identical
-    models: they differ only in what they list, and one seeding migration and one
-    admin screen is less to keep in step.
-
-    **The columns on Product and InventoryLot stay.** A term is the canonical
-    spelling, not a foreign key: sellers still type, the form offers the list,
-    and the service maps what was typed onto a term when it recognises it. That
-    keeps the long tail of real Iranian stone names recordable — refusing a name
-    because it is not on a list would make the product unusable for the sellers
-    it exists for — while stopping the common values fragmenting.
-    """
+    """An admin-controlled stone vocabulary shared by every seller."""
 
     class Kind(models.TextChoices):
         STONE_TYPE = "stone_type", "نوع سنگ"
-        COLOR = "color", "رنگ غالب"
-        FINISH = "processing_type", "نوع فرآوری"
 
     kind = models.CharField(max_length=20, choices=Kind.choices)
     #: The spelling SANGA stores when it recognises a value.
     name = models.CharField("عنوان", max_length=100)
-    #: Other spellings that mean this term, matched after normalization. Where
-    #: the fragmentation actually comes from: «کریستال» and «چینی» are the same
-    #: stone, and no amount of orthographic normalization would ever join them.
+    #: Alternative spellings matched after orthographic normalization. Distinct
+    #: commercial stone types such as «کریستال» and «چینی» remain separate terms.
     aliases = models.JSONField(default=list, blank=True)
+    code_prefix = models.CharField(
+        "پیشوند کد محصول",
+        max_length=3,
+        blank=True,
+        help_text="حروف لاتین بزرگ؛ برای نمونه T یا CH",
+    )
     sort_order = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
@@ -89,6 +74,11 @@ class VocabularyTerm(models.Model):
         ordering = ["kind", "sort_order", "name"]
         constraints = [
             models.UniqueConstraint(fields=["kind", "name"], name="uniq_vocabulary_term"),
+            models.UniqueConstraint(
+                fields=["code_prefix"],
+                condition=models.Q(kind="stone_type") & ~models.Q(code_prefix=""),
+                name="uniq_stone_code_prefix",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -97,39 +87,16 @@ class VocabularyTerm(models.Model):
 
 #: Seeded on migration. Aliases carry the spellings that normalization cannot
 #: reach on its own — different words for one stone, not different letters.
-DEFAULT_VOCABULARY: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+DEFAULT_VOCABULARY: dict[str, tuple[tuple[str, tuple[str, ...], str], ...]] = {
     VocabularyTerm.Kind.STONE_TYPE: (
-        ("تراورتن", ("تراورتون", "travertine")),
-        ("مرمریت", ("مرمر", "marble")),
-        ("گرانیت", ("granite",)),
-        ("کریستال", ("چینی", "سنگ چینی", "crystal")),
-        ("مرمر انیکس", ("انیکس", "اونیکس", "onyx")),
-        ("لایم استون", ("لایم‌استون", "limestone")),
-        ("تراونیکس", ("تراونیکس", "traonyx")),
-        ("چینی ازنا", ()),
-        ("دهبید", ()),
-    ),
-    VocabularyTerm.Kind.COLOR: (
-        ("کرم", ("کرمی",)),
-        ("سفید", ()),
-        ("بژ", ()),
-        ("طوسی", ("خاکستری", "گری")),
-        ("مشکی", ("سیاه",)),
-        ("قهوه‌ای", ("قهوه ای",)),
-        ("قرمز", ("سرخ",)),
-        ("زرد", ()),
-        ("سبز", ()),
-        ("صورتی", ()),
-        ("چندرنگ", ("چند رنگ", "ملتی")),
-    ),
-    VocabularyTerm.Kind.FINISH: (
-        ("صیقلی", ("پولیش", "براق")),
-        ("ساب خورده", ("ساب‌خورده", "هوند")),
-        ("چرمی", ("لدر",)),
-        ("چکشی", ("بوش همر",)),
-        ("سندبلاست", ("سند بلاست", "تیشه‌ای")),
-        ("برش خورده", ("برش‌خورده", "کات")),
-        ("آنتیک", ()),
+        ("تراورتن", ("تراورتون", "travertine"), "T"),
+        ("مرمریت", ("marble tile",), "M"),
+        ("گرانیت", ("granite",), "G"),
+        ("کریستال", ("crystal",), "C"),
+        ("مرمر", ("انیکس", "اونیکس", "onyx"), "O"),
+        ("لایمستون", ("لایم استون", "لایم‌استون", "limestone"), "L"),
+        ("ترامیت", ("tramite",), "TR"),
+        ("چینی", ("سنگ چینی",), "CH"),
     ),
 }
 
@@ -155,11 +122,16 @@ class Product(models.Model):
         on_delete=models.CASCADE,
         related_name="products",
     )
-    commercial_name = models.CharField("نام تجاری", max_length=200)
+    commercial_name = models.CharField("نام تجاری", max_length=200, editable=False)
+    name_suffix = models.CharField("نام تکمیلی", max_length=160, blank=True)
     slug = models.SlugField(max_length=220, allow_unicode=True)
-    stone_type = models.CharField("نوع سنگ", max_length=100, blank=True)
-    quarry_region = models.CharField("معدن/منطقه", max_length=150, blank=True)
-    primary_color = models.CharField("رنگ غالب", max_length=100, blank=True)
+    stone = models.ForeignKey(
+        VocabularyTerm,
+        on_delete=models.PROTECT,
+        related_name="products",
+        limit_choices_to={"kind": VocabularyTerm.Kind.STONE_TYPE},
+        verbose_name="نوع سنگ",
+    )
     pattern = models.CharField("طرح/بافت", max_length=150, blank=True)
     vein_notes = models.CharField(max_length=255, blank=True)
     applications = models.ManyToManyField(
@@ -190,6 +162,9 @@ class Product(models.Model):
         return self.commercial_name
 
     def save(self, *args, **kwargs):
+        stone_name = self.stone.name if self.stone_id else ""
+        self.name_suffix = " ".join((self.name_suffix or "").split())
+        self.commercial_name = " ".join(part for part in ("سنگ", stone_name, self.name_suffix) if part)
         if not self.slug:
             base = slugify(self.commercial_name, allow_unicode=True) or "product"
             candidate = base
@@ -198,6 +173,9 @@ class Product(models.Model):
                 idx += 1
                 candidate = f"{base}-{idx}"
             self.slug = candidate
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"commercial_name", "name_suffix", "slug"}
         super().save(*args, **kwargs)
 
 
@@ -226,26 +204,14 @@ class InventoryLot(models.Model):
         AVAILABLE = "available", "موجود"
         UNAVAILABLE = "unavailable", "ناموجود"
 
-    class StockMode(models.TextChoices):
-        EXACT = "exact", "مقدار مشخص"
-        UNLIMITED = "unlimited", "موجودی نامحدود"
-        INQUIRY = "inquiry", "استعلام موجودی"
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     business = models.ForeignKey(
         "businesses.Business",
         on_delete=models.CASCADE,
         related_name="lots",
     )
-    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="lots")
-    warehouse = models.ForeignKey(
-        "businesses.Warehouse",
-        on_delete=models.PROTECT,
-        related_name="lots",
-        null=True,
-        blank=True,
-    )
-    lot_code = models.CharField("کد محصول", max_length=64)
+    product = models.OneToOneField(Product, on_delete=models.PROTECT, related_name="lot")
+    lot_code = models.CharField("کد محصول", max_length=12, unique=True, editable=False)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT)
 
     is_visible = models.BooleanField("منتشر شده", default=False)
@@ -263,12 +229,6 @@ class InventoryLot(models.Model):
         editable=False,
     )
 
-    stock_mode = models.CharField(
-        "نوع موجودی",
-        max_length=20,
-        choices=StockMode.choices,
-        default=StockMode.EXACT,
-    )
     stock_confirmed_at = models.DateTimeField(null=True, blank=True)
     stock_valid_for_days = models.PositiveSmallIntegerField("اعتبار موجودی (روز)", default=7)
     # Derived from the two fields above and refreshed on save. It exists so that
@@ -277,29 +237,18 @@ class InventoryLot(models.Model):
     # scheduled job — nothing mutates a row just because time passed.
     stock_expires_at = models.DateTimeField(null=True, blank=True, db_index=True, editable=False)
 
-    location_province = models.CharField("استان", max_length=100, blank=True)
-    location_city = models.CharField("شهر", max_length=100, blank=True)
-    location_address = models.TextField("آدرس دقیق", blank=True)
-
     available_sqm = models.DecimalField(
         max_digits=12,
         decimal_places=3,
-        default=Decimal("0"),
+        null=True,
+        blank=True,
+        default=None,
         validators=[MinValueValidator(Decimal("0"))],
     )
-    original_sqm = models.DecimalField(
-        max_digits=12,
-        decimal_places=3,
-        default=Decimal("0"),
-        validators=[MinValueValidator(Decimal("0"))],
-    )
-    slab_count = models.PositiveIntegerField(null=True, blank=True)
-    bundle_count = models.PositiveIntegerField(null=True, blank=True)
     length_cm = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     width_cm = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     thickness_mm = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
-    grade = models.CharField(max_length=50, blank=True)
-    processing_type = models.CharField(max_length=100, blank=True)
+    processing_type = models.CharField(max_length=100, default="ساب خورده")
     min_sale_qty = models.DecimalField(
         max_digits=12,
         decimal_places=3,
@@ -320,14 +269,9 @@ class InventoryLot(models.Model):
         verbose_name_plural = "محصولات قابل فروش"
         ordering = ["-updated_at"]
         constraints = [
-            models.UniqueConstraint(fields=["business", "lot_code"], name="uniq_lot_code_per_business"),
             models.CheckConstraint(
-                condition=models.Q(available_sqm__gte=0),
+                condition=models.Q(available_sqm__isnull=True) | models.Q(available_sqm__gte=0),
                 name="lot_available_sqm_nonnegative",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(original_sqm__gte=0),
-                name="lot_original_sqm_nonnegative",
             ),
         ]
         indexes = [
@@ -344,6 +288,10 @@ class InventoryLot(models.Model):
         return f"{self.lot_code} — {self.product.commercial_name}"
 
     def save(self, *args, **kwargs):
+        if self.pk and hasattr(self, "_original_lot_code") and self.lot_code != self._original_lot_code:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"lot_code": "کد محصول پس از ایجاد قابل تغییر نیست."})
         expires_at = self.compute_stock_expiry()
         if expires_at != self.stock_expires_at:
             self.stock_expires_at = expires_at
@@ -351,6 +299,13 @@ class InventoryLot(models.Model):
             if update_fields is not None:
                 kwargs["update_fields"] = {*update_fields, "stock_expires_at"}
         super().save(*args, **kwargs)
+        self._original_lot_code = self.lot_code
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        instance._original_lot_code = instance.lot_code
+        return instance
 
     # --- derived lifecycle state ---------------------------------------------
 
@@ -360,7 +315,7 @@ class InventoryLot(models.Model):
         ``None`` means the question does not apply: either the seller never
         confirmed, or the mode carries no number that could go stale.
         """
-        if self.stock_mode == self.StockMode.INQUIRY:
+        if self.available_sqm is None:
             return None
         if self.stock_confirmed_at is None:
             return None
@@ -375,22 +330,13 @@ class InventoryLot(models.Model):
         return self.availability_status == self.Availability.UNAVAILABLE
 
     @property
+    def thickness_cm(self):
+        return self.thickness_mm / Decimal("10") if self.thickness_mm is not None else None
+
+    @property
     def is_stock_fresh(self) -> bool:
         expires_at = self.compute_stock_expiry()
         return expires_at is not None and expires_at > timezone.now()
-
-    @property
-    def effective_stock_mode(self) -> str:
-        """The stock mode a buyer should be shown.
-
-        An exact or unlimited quantity whose confirmation window has lapsed
-        degrades to «استعلام موجودی». The stored mode is left alone: the seller
-        said 650 m², and we still know that — we just stop presenting it as
-        current.
-        """
-        if self.stock_mode == self.StockMode.INQUIRY:
-            return self.StockMode.INQUIRY
-        return self.stock_mode if self.is_stock_fresh else self.StockMode.INQUIRY
 
     def mark_stock_confirmed(self) -> None:
         self.stock_confirmed_at = timezone.now()
@@ -405,7 +351,7 @@ class InventoryLot(models.Model):
         """
         from django.db.models import Q
 
-        return ~Q(stock_mode=cls.StockMode.INQUIRY) & (
+        return Q(available_sqm__isnull=False) & (
             Q(stock_expires_at__isnull=True) | Q(stock_expires_at__lte=timezone.now())
         )
 

@@ -108,7 +108,7 @@ Stored on `BusinessMembership.permissions` (list of strings), with role defaults
 | `inventory.view` | See the business's own products |
 | `inventory.create` | Create products |
 | `inventory.edit` | Edit product fields |
-| `inventory.quantity` | Change quantities and stock mode |
+| `inventory.quantity` | Change or reconfirm numeric quantities |
 | `inventory.media` | Upload, reorder and delete media |
 | `inventory.publish` | Publish / unpublish |
 | `inventory.confirm` | Confirm stock |
@@ -144,12 +144,12 @@ but not change them.
 The matrix above and the workflows were designed independently, and two
 combinations produced a dead end that only appeared after the user had committed:
 
-- The add-product wizard always wrote both prices, so staff — who hold
+- The old add-product wizard always wrote both prices, so staff — who hold
   `inventory.create` but not `prices.edit` — got an error *after* the draft had
-  been saved, and had to find and clean up the orphan themselves. The wizard now
-  hides the price step for members who cannot use it, creation and pricing are
-  one transaction, and the product is created priced «استعلام قیمت», which is
-  the honest display for a price nobody has set yet.
+  been saved, and had to find and clean up the orphan themselves. The unified
+  one-page form now hides price fields from members who cannot use them,
+  creation and pricing are one transaction, and an unset price is shown as
+  «استعلام قیمت», which is the honest display for a price nobody has set yet.
 - Finalizing a sale created the invoice through a path that required
   `invoice.manage`, so a staff sale moved the ledger and the document was
   silently swallowed. Invoice creation from a Trade now requires only that the
@@ -362,7 +362,7 @@ Navigation composes both: `business_context` exposes `can_add_products`,
 `can_manage_catalogs`, `can_finalize_sales` and `can_issue_invoices`, each a
 capability *and* an entitlement, plus a `business_block_reason` banner. Owner
 capability bypass meant checking capabilities alone left «افزودن» — the most
-prominent control on the screen — pointing at a wizard that could not finish.
+prominent control on the screen — pointing at a create flow that could not finish.
 
 Products attachable to a request, a ledger entry or a catalog are restricted to
 the acting business's own non-deleted products, in the form *and* again in the

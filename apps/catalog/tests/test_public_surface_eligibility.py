@@ -51,7 +51,6 @@ def shop(db):
     catalog = CustomCatalog.objects.create(
         business=seller,
         title="کاتالوگ ویترین",
-        mode=CustomCatalog.Mode.MANUAL,
         is_active=True,
     )
     CustomCatalogItem.objects.create(catalog=catalog, lot=item)

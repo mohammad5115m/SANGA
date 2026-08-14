@@ -188,12 +188,14 @@ def test_renaming_a_product_does_not_rewrite_a_sold_line(market):
     trade = _three_line_sale(market)
 
     product = market["marble"].product
-    product.commercial_name = "یک نام کاملاً متفاوت"
-    product.stone_type = "گرانیت"
+    from apps.inventory.models import VocabularyTerm
+
+    product.name_suffix = "یک نام کاملاً متفاوت"
+    product.stone = VocabularyTerm.objects.get(name="گرانیت")
     product.save()
 
     line = trade.items.get(item=market["marble"])
-    assert line.product_name == "مرمریت لاشتر"
+    assert line.product_name == "سنگ مرمریت لاشتر"
     assert line.stone_type == "مرمریت"
 
 
@@ -203,7 +205,7 @@ def test_deleting_a_product_leaves_the_sold_line_readable(market):
 
     InventoryLot.objects.filter(pk=lot_id).delete()
 
-    line = trade.items.get(product_name="مرمریت لاشتر")
+    line = trade.items.get(product_name="سنگ مرمریت لاشتر")
     assert line.item_id is None, "the navigation link goes, the history stays"
     assert line.quantity == Decimal("50.000")
     assert line.line_total == Decimal("100000000.00")

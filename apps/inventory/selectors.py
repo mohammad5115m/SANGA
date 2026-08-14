@@ -12,6 +12,7 @@ from .policy import owned_items
 def products_for_business(business: Business) -> QuerySet[Product]:
     return (
         Product.objects.filter(business=business, is_active=True)
+        .select_related("stone")
         .prefetch_related("applications")
         .order_by("commercial_name")
     )

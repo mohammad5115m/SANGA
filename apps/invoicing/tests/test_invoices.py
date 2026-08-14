@@ -34,7 +34,6 @@ def shop(db):
         seller,
         product=make_product(seller, commercial_name="تراورتن عباس‌آباد", stone_type="تراورتن"),
         lot_code="INV-1",
-        grade="سوپر",
         b2b="1500000",
         b2c="2000000",
     )
@@ -98,8 +97,8 @@ def test_an_invoice_keeps_its_own_copy_of_every_line(shop):
     invoice = _invoice(shop)
     line = invoice.items.get()
 
-    assert line.product_name == "تراورتن عباس‌آباد"
-    assert line.grade == "سوپر"
+    assert line.product_name == "سنگ تراورتن عباس‌آباد"
+    assert line.grade == ""
     assert line.unit_price == Decimal("1500000.00")
     assert line.line_total == Decimal("60000000.00")
     assert invoice.total_amount == Decimal("60000000.00")
@@ -110,15 +109,15 @@ def test_renaming_or_repricing_the_product_does_not_change_the_invoice(shop):
     invoice = _invoice(shop)
 
     product = shop["item"].product
-    product.commercial_name = "نام جدید کاملاً متفاوت"
-    product.save(update_fields=["commercial_name"])
+    product.name_suffix = "نام جدید کاملاً متفاوت"
+    product.save(update_fields=["name_suffix"])
     from apps.pricing.services import set_lot_price
 
     set_lot_price(lot=shop["item"], tier_code="b2b", amount=Decimal("9999999"))
 
     line = invoice.items.get()
     line.refresh_from_db()
-    assert line.product_name == "تراورتن عباس‌آباد"
+    assert line.product_name == "سنگ تراورتن عباس‌آباد"
     assert line.unit_price == Decimal("1500000.00")
 
 
@@ -132,7 +131,7 @@ def test_deleting_the_product_does_not_change_the_invoice(shop):
 
     line = invoice.items.get()
     line.refresh_from_db()
-    assert line.product_name == "تراورتن عباس‌آباد"
+    assert line.product_name == "سنگ تراورتن عباس‌آباد"
     assert line.line_total == Decimal("60000000.00")
 
 

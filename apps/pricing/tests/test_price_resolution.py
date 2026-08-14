@@ -200,16 +200,16 @@ def test_expired_special_sale_falls_back_to_the_normal_price(seller):
 
 
 @pytest.mark.django_db
-def test_special_sale_without_an_end_date_stays_live(seller):
+def test_special_sale_requires_an_end_date(seller):
     item = make_item(seller, b2c="1600000")
-    set_lot_price(
-        lot=item,
-        tier_code="b2c",
-        amount=Decimal("1600000"),
-        special_amount=Decimal("1000000"),
-        special_until=None,
-    )
-    assert resolve_visible_prices(item, "b2c_public")["b2c"].amount == Decimal("1000000.00")
+    with pytest.raises(ValueError):
+        set_lot_price(
+            lot=item,
+            tier_code="b2c",
+            amount=Decimal("1600000"),
+            special_amount=Decimal("1000000"),
+            special_until=None,
+        )
 
 
 @pytest.mark.django_db
