@@ -110,7 +110,8 @@ def test_login_code_is_never_shown_without_debug(client, settings, monkeypatch):
     response = client.post("/auth/login/", {"phone": "09123334446"}, follow=True)
 
     assert response.status_code == 200
-    assert "888888" not in response.content.decode()
+    assert "محیط توسعه — کد ورود:" not in response.content.decode()
+    assert "otp_dev_code" not in client.session
 
 
 @pytest.mark.django_db
