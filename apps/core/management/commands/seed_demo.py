@@ -7,7 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.businesses.models import BusinessMembership
+from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import complete_onboarding, create_business_for_owner
 from apps.inventory.models import Application, InventoryLot, Product, VocabularyTerm
 from apps.pricing.services import ensure_default_tiers, set_lot_price
@@ -23,6 +23,50 @@ SAMPLES = [
 ]
 
 
+def _restore_demo_business(*, phone: str, full_name: str, name: str, city: str, province: str):
+    """Create or repair one login-ready fictional demo business."""
+    user, _ = User.objects.update_or_create(
+        phone=phone,
+        defaults={"full_name": full_name, "is_active": True},
+    )
+    membership = BusinessMembership.objects.filter(
+        user=user,
+        role=BusinessMembership.Role.OWNER,
+    ).first()
+    if membership is None:
+        business = create_business_for_owner(
+            owner=user,
+            name=name,
+            city=city,
+            province=province,
+            phone=phone,
+        )
+        complete_onboarding(business)
+        return user, business
+
+    business = membership.business
+    if membership.status != BusinessMembership.Status.ACTIVE:
+        membership.status = BusinessMembership.Status.ACTIVE
+        membership.save(update_fields=["status"])
+
+    business.status = Business.Status.ACTIVE
+    business.verification_status = Business.VerificationStatus.VERIFIED
+    business.plan = Business.Plan.SELLER
+    business.active_until = None
+    business.save(
+        update_fields=[
+            "status",
+            "verification_status",
+            "plan",
+            "active_until",
+            "updated_at",
+        ]
+    )
+    if not business.is_onboarded:
+        complete_onboarding(business)
+    return user, business
+
+
 class Command(BaseCommand):
     help = "Seed fictional Persian demo data for local development (SANGA)."
 
@@ -30,23 +74,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         ensure_default_tiers()
 
-        owner, _ = User.objects.get_or_create(
+        owner, business = _restore_demo_business(
             phone="09121111111",
-            defaults={"full_name": "مالک دمو (فرضی)"},
+            full_name="مالک دمو (فرضی)",
+            name="سنگبری آذرخش (دمو ـ فرضی)",
+            city="محلات",
+            province="مرکزی",
         )
-
-        membership = BusinessMembership.objects.filter(user=owner, role=BusinessMembership.Role.OWNER).first()
-        if membership:
-            business = membership.business
-        else:
-            business = create_business_for_owner(
-                owner=owner,
-                name="سنگبری آذرخش (دمو ـ فرضی)",
-                city="محلات",
-                province="مرکزی",
-                phone="09121111111",
-            )
-            complete_onboarding(business)
 
         prefixes = {
             "تراورتن": "T", "مرمریت": "M", "گرانیت": "G", "کریستال": "C",
@@ -100,19 +134,13 @@ class Command(BaseCommand):
             inquiry_item.stock_confirmed_at = None
             inquiry_item.save(update_fields=["available_sqm", "stock_confirmed_at", "stock_expires_at", "updated_at"])
 
-        partner_owner, _ = User.objects.get_or_create(
+        partner_owner, _partner_business = _restore_demo_business(
             phone="09122222222",
-            defaults={"full_name": "شریک دمو (فرضی)"},
+            full_name="شریک دمو (فرضی)",
+            name="بازرگانی سنگ پارس (دمو ـ فرضی)",
+            city="تهران",
+            province="تهران",
         )
-        if not BusinessMembership.objects.filter(user=partner_owner, role=BusinessMembership.Role.OWNER).exists():
-            partner_business = create_business_for_owner(
-                owner=partner_owner,
-                name="بازرگانی سنگ پارس (دمو ـ فرضی)",
-                city="تهران",
-                province="تهران",
-                phone="09122222222",
-            )
-            complete_onboarding(partner_business)
 
         self.stdout.write(self.style.SUCCESS("Demo seed complete (fictional SANGA data)."))
         self.stdout.write(f"Seller login phone: {owner.phone}")
