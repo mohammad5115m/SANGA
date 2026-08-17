@@ -9,8 +9,10 @@ docker compose up --build
 
 - App: http://localhost:8000/
 - Health: http://localhost:8000/health/
-- OTP codes appear on the verification page and in the `web` container log,
-  because development uses `DEBUG=true` with `SMS_PROVIDER=console`.
+- OTP codes appear on the verification page and in the `web` container log
+  whenever `SMS_PROVIDER=console`. This explicit no-gateway mode works even with
+  `DEBUG=false`; production refuses it unless `SMS_ALLOW_UNDELIVERED=true` was
+  deliberately configured.
 
 `docker-compose.yml` is a development file: it bind-mounts the source, publishes
 the database and Redis ports, and runs `runserver`. Do not deploy it.

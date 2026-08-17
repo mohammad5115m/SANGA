@@ -52,10 +52,9 @@ def verify_view(request: HttpRequest) -> HttpResponse:
         messages.error(request, "ابتدا شماره موبایل خود را وارد کنید.")
         return redirect("accounts:login")
 
-    # The plaintext code exists in the session only for the console-backed
-    # development flow. Gate it again at render time so a stale session cannot
-    # expose a code if the environment is switched to a real provider.
-    show_dev_code = settings.DEBUG and settings.SMS_PROVIDER == "console"
+    # Console is the explicit no-gateway/test mode. Gate again at render time so
+    # a stale session cannot expose a code after switching to a real provider.
+    show_dev_code = (settings.SMS_PROVIDER or "").strip().lower() == "console"
     dev_code = request.session.get("otp_dev_code") if show_dev_code else None
 
     form = OTPVerifyForm(request.POST or None, initial={"phone": phone})

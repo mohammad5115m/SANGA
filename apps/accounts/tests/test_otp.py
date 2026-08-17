@@ -97,11 +97,12 @@ def test_console_login_code_is_shown_on_verification_page(client, settings, monk
 
     assert response.status_code == 200
     assert response.request["PATH_INFO"] == "/auth/verify/"
+    assert 'class="dev-otp-code"' in response.content.decode()
     assert "777777" in response.content.decode()
 
 
 @pytest.mark.django_db
-def test_login_code_is_never_shown_without_debug(client, settings, monkeypatch):
+def test_console_login_code_is_shown_without_debug(client, settings, monkeypatch):
     settings.DEBUG = False
     settings.SMS_PROVIDER = "console"
     _provision("09123334446")
@@ -110,7 +111,22 @@ def test_login_code_is_never_shown_without_debug(client, settings, monkeypatch):
     response = client.post("/auth/login/", {"phone": "09123334446"}, follow=True)
 
     assert response.status_code == 200
-    assert "محیط توسعه — کد ورود:" not in response.content.decode()
+    assert 'class="dev-otp-code"' in response.content.decode()
+    assert client.session["otp_dev_code"] == "888888"
+
+
+@pytest.mark.django_db
+def test_login_code_is_never_shown_with_a_real_provider(client, settings, monkeypatch):
+    settings.DEBUG = True
+    settings.SMS_PROVIDER = "kavenegar"
+    _provision("09123334447")
+    monkeypatch.setattr("apps.accounts.services._send_code", lambda **_kwargs: None)
+    monkeypatch.setattr("apps.accounts.services.secrets.choice", lambda _digits: "9")
+
+    response = client.post("/auth/login/", {"phone": "09123334447"}, follow=True)
+
+    assert response.status_code == 200
+    assert 'class="dev-otp-code"' not in response.content.decode()
     assert "otp_dev_code" not in client.session
 
 
@@ -148,7 +164,7 @@ def test_unknown_phone_receives_no_sms_but_still_burns_rate_limit(settings, monk
     result = request_login_otp("09120000002")
 
     assert sent == []
-    assert result.dev_code is None
+    assert result.dev_code is not None
     assert OTPChallenge.objects.filter(phone="09120000002").count() == 1
 
 
