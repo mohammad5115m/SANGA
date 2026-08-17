@@ -269,6 +269,15 @@ button, input, select, textarea { font: inherit; }
   border-color: rgba(154, 107, 47, 0.35);
   color: #6d4a1d;
 }
+.dev-otp { text-align: center; }
+.dev-otp-code {
+  display: block;
+  margin: var(--space-2) 0;
+  direction: ltr;
+  font-size: 1.55rem;
+  letter-spacing: 0.18em;
+}
+.dev-otp small { display: block; }
 
 .toast-region {
   position: fixed;

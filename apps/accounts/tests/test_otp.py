@@ -87,6 +87,33 @@ def test_login_page_creates_challenge(client, settings):
 
 
 @pytest.mark.django_db
+def test_console_login_code_is_shown_on_verification_page(client, settings, monkeypatch):
+    settings.DEBUG = True
+    settings.SMS_PROVIDER = "console"
+    _provision("09123334445")
+    monkeypatch.setattr("apps.accounts.services.secrets.choice", lambda _digits: "7")
+
+    response = client.post("/auth/login/", {"phone": "09123334445"}, follow=True)
+
+    assert response.status_code == 200
+    assert response.request["PATH_INFO"] == "/auth/verify/"
+    assert "777777" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_login_code_is_never_shown_without_debug(client, settings, monkeypatch):
+    settings.DEBUG = False
+    settings.SMS_PROVIDER = "console"
+    _provision("09123334446")
+    monkeypatch.setattr("apps.accounts.services.secrets.choice", lambda _digits: "8")
+
+    response = client.post("/auth/login/", {"phone": "09123334446"}, follow=True)
+
+    assert response.status_code == 200
+    assert "888888" not in response.content.decode()
+
+
+@pytest.mark.django_db
 def test_invalid_phone_rejected():
     with pytest.raises(OTPValidationError):
         request_login_otp("123")

@@ -44,7 +44,8 @@ docker compose up --build
 - جستجوی عمومی: http://localhost:8000/search/
 - Health: http://localhost:8000/health/
 
-ورود توسعه: OTP در لاگ کانتینر `web` چاپ می‌شود (Console SMS provider). در
+ورود توسعه: OTP در صفحه تأیید نمایش داده می‌شود و در لاگ کانتینر `web` نیز
+چاپ می‌شود (Console SMS provider). در
 پروداکشن `SMS_PROVIDER=kavenegar` است و اپلیکیشن بدون کلید و قالب تأییدشده بالا
 نمی‌آید؛ ارائه‌دهنده‌ای که پیامک نمی‌فرستد در پروداکشن پذیرفته نمی‌شود.
 
