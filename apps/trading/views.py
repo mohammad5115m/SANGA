@@ -1,44 +1,41 @@
 from __future__ import annotations
 
-import logging
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
+from apps.businesses.permissions import SALE_FINALIZE, TRADE_CONFIRM, TRADE_PROPOSE
 from apps.core.pagination import ROW_PAGE_SIZE, paginate
-from apps.inventory.policy import get_eligible_item
+from apps.inventory.policy import eligible_items, get_eligible_item
+from apps.inventory.selectors import lots_for_business
 from apps.invoicing.services import InvoiceError, create_invoice_for_trade
 
-from .forms import (
-    DirectSaleForm,
-    DirectSaleLineFormSet,
-    FinalizeSaleForm,
-    PurchaseRequestForm,
-    PurchaseRequestResponseForm,
-)
-from .models import PurchaseRequest
+from .forms import TradeProposalForm, TradeProposalLineFormSet
+from .models import PurchaseRequest, TradeProposal
 from .selectors import (
     filter_requests,
+    get_proposal,
     get_received_request,
     get_sent_request,
+    get_trade,
+    proposals_for_business,
     received_requests,
     sent_requests,
-    trades_for_seller,
+    trades_for_business,
 )
 from .services import (
     TradingError,
-    cancel_purchase_request,
-    create_purchase_request,
-    finalize_sale,
-    record_direct_sale,
-    respond_to_purchase_request,
+    cancel_trade_proposal,
+    confirm_trade_proposal,
+    reject_trade_proposal,
+    save_trade_proposal,
+    submit_trade_proposal,
 )
-
-logger = logging.getLogger(__name__)
 
 STATUS_FILTERS = (
     ("", "همه"),
@@ -50,231 +47,380 @@ STATUS_FILTERS = (
 )
 
 
-# --- buyer side ---------------------------------------------------------------
+def _proposal_item_queryset(*, seller, viewer):
+    if seller.id == viewer.id:
+        return lots_for_business(seller)
+    return eligible_items(audience="colleague", viewer_business=viewer, seller_business=seller)
 
 
-@business_login_required
-@require_capability(PURCHASE_REQUEST)
-@require_http_methods(["GET", "POST"])
-def request_create(request: HttpRequest, item_id) -> HttpResponse:
-    """«درخواست خرید» from a marketplace product page."""
-    item = get_eligible_item(audience="colleague", viewer_business=request.business, item_id=item_id)
-    if item is None:
-        messages.error(request, "این محصول برای خرید در دسترس نیست.")
-        return redirect("marketplace:home")
+def _proposal_form_context(*, form, lines, proposal=None):
+    return {
+        "form": form,
+        "lines": lines,
+        "proposal": proposal,
+        "page_title": "ویرایش پیش‌نویس توافق" if proposal else "ثبت توافق معامله",
+    }
 
-    form = PurchaseRequestForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            purchase_request = create_purchase_request(
-                buyer_business=request.business,
-                membership=request.membership,
-                item=item,
-                requested_qty_sqm=form.cleaned_data["requested_qty_sqm"],
-                proposed_unit_price=form.cleaned_data.get("proposed_unit_price"),
-                buyer_note=form.cleaned_data.get("buyer_note", ""),
-            )
-        except TradingError as exc:
-            form.add_error(None, exc.message)
-        else:
-            messages.success(request, "درخواست خرید برای فروشنده ارسال شد.")
-            return redirect("trading:sent_detail", request_id=purchase_request.id)
 
-    from apps.marketplace.services import b2b_price_context
-
-    return render(
-        request,
-        "trading/request_form.html",
-        {"item": item, "form": form, "price": b2b_price_context(item, request.business)},
+def _trade_view_allowed(request) -> bool:
+    return request.membership is not None and (
+        request.membership.has_capability(TRADE_PROPOSE)
+        or request.membership.has_capability(TRADE_CONFIRM)
     )
 
 
+def _trade_view_denied(request):
+    if request.membership is None:
+        return redirect("businesses:no_business")
+    messages.error(request, "دسترسی لازم برای مشاهده معاملات را ندارید.")
+    return redirect("businesses:dashboard")
+
+
+# --- bilateral trade agreements ---------------------------------------------
+
+
 @business_login_required
-@require_capability(PURCHASE_REQUEST)
-def sent_list(request: HttpRequest) -> HttpResponse:
-    status = request.GET.get("status", "")
-    qs = filter_requests(sent_requests(request.business), status=status)
+def proposal_list(request: HttpRequest) -> HttpResponse:
+    if not _trade_view_allowed(request):
+        return _trade_view_denied(request)
+    tab = request.GET.get("tab", "action")
+    qs = proposals_for_business(request.business)
+    if tab == "mine":
+        qs = qs.filter(
+            initiated_by_business=request.business,
+            status__in=(TradeProposal.Status.DRAFT, TradeProposal.Status.PENDING),
+        )
+    elif tab == "final":
+        qs = qs.filter(status=TradeProposal.Status.CONFIRMED)
+    elif tab == "closed":
+        qs = qs.filter(status__in=(TradeProposal.Status.REJECTED, TradeProposal.Status.CANCELLED))
+    else:
+        tab = "action"
+        qs = qs.filter(status=TradeProposal.Status.PENDING).exclude(
+            initiated_by_business=request.business
+        )
     page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
-        "trading/sent_list.html",
-        {"requests": page.object_list, "page": page, "status": status, "status_filters": STATUS_FILTERS},
+        "trading/proposal_list.html",
+        {"proposals": page.object_list, "page": page, "tab": tab},
     )
 
 
 @business_login_required
-@require_capability(PURCHASE_REQUEST)
+@require_capability(TRADE_PROPOSE)
 @require_http_methods(["GET", "POST"])
-def sent_detail(request: HttpRequest, request_id) -> HttpResponse:
-    purchase_request = get_sent_request(request.business, request_id)
-    if purchase_request is None:
-        messages.error(request, "درخواست یافت نشد.")
-        return redirect("trading:sent_list")
+def proposal_create(request: HttpRequest) -> HttpResponse:
+    initial = {}
+    item_initial = []
+    counterparty_id = request.GET.get("counterparty")
+    direction = request.GET.get("direction")
+    if counterparty_id:
+        initial["counterparty"] = counterparty_id
+    if direction in {TradeProposalForm.Direction.SELL, TradeProposalForm.Direction.BUY}:
+        initial["direction"] = direction
+
+    form = TradeProposalForm(request.POST or None, business=request.business, initial=initial)
+    seller = request.business
+    header_valid = False
+    if request.method == "POST":
+        header_valid = form.is_valid()
+        if header_valid:
+            seller = form.cleaned_data["seller_business"]
+    elif direction == TradeProposalForm.Direction.BUY and counterparty_id:
+        seller = form.fields["counterparty"].queryset.filter(pk=counterparty_id).first() or seller
+
+    item_qs = _proposal_item_queryset(seller=seller, viewer=request.business)
+    requested_item = request.GET.get("item")
+    if request.method == "GET" and requested_item and item_qs.filter(pk=requested_item).exists():
+        item_initial = [{"item": requested_item}]
+    lines = TradeProposalLineFormSet(
+        request.POST or None,
+        prefix="lines",
+        item_queryset=item_qs,
+        initial=item_initial,
+    )
 
     if request.method == "POST":
-        try:
-            cancel_purchase_request(request=purchase_request, membership=request.membership)
-        except TradingError as exc:
-            messages.error(request, exc.message)
-        else:
-            messages.success(request, "درخواست لغو شد.")
-        return redirect("trading:sent_detail", request_id=purchase_request.id)
+        lines_valid = lines.is_valid()
+        if header_valid and lines_valid:
+            try:
+                proposal = save_trade_proposal(
+                    seller_business=form.cleaned_data["seller_business"],
+                    buyer_business=form.cleaned_data["buyer_business"],
+                    membership=request.membership,
+                    lines=lines.lines,
+                    note=form.cleaned_data.get("note", ""),
+                    submission_id=form.cleaned_data["submission_id"],
+                    submit=request.POST.get("action") != "draft",
+                )
+            except TradingError as exc:
+                form.add_error(None, exc.message)
+            else:
+                if proposal.status == TradeProposal.Status.DRAFT:
+                    messages.success(request, "پیش‌نویس توافق ذخیره شد.")
+                else:
+                    messages.success(request, "توافق برای تأیید طرف مقابل ارسال شد.")
+                return redirect("trading:proposal_detail", proposal_id=proposal.id)
 
-    return render(request, "trading/sent_detail.html", {"pr": purchase_request})
-
-
-# --- seller side --------------------------------------------------------------
-
-
-@business_login_required
-@require_capability(PURCHASE_REQUEST)
-def received_list(request: HttpRequest) -> HttpResponse:
-    status = request.GET.get("status", "")
-    qs = filter_requests(received_requests(request.business), status=status)
-    page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
-        "trading/received_list.html",
-        {"requests": page.object_list, "page": page, "status": status, "status_filters": STATUS_FILTERS},
+        "trading/proposal_form.html",
+        _proposal_form_context(form=form, lines=lines),
     )
 
 
 @business_login_required
-@require_capability(PURCHASE_REQUEST)
+@require_capability(TRADE_PROPOSE)
 @require_http_methods(["GET", "POST"])
-def received_detail(request: HttpRequest, request_id) -> HttpResponse:
-    purchase_request = get_received_request(request.business, request_id)
-    if purchase_request is None:
-        messages.error(request, "درخواست یافت نشد.")
-        return redirect("trading:received_list")
+def proposal_edit(request: HttpRequest, proposal_id) -> HttpResponse:
+    proposal = get_proposal(request.business, proposal_id)
+    if proposal is None:
+        messages.error(request, "توافق یافت نشد.")
+        return redirect("trading:proposal_list")
+    if (
+        proposal.initiated_by_business_id != request.business.id
+        or proposal.status != TradeProposal.Status.DRAFT
+    ):
+        messages.error(request, "فقط پیش‌نویس خودتان قابل ویرایش است.")
+        return redirect("trading:proposal_detail", proposal_id=proposal.id)
 
-    form = PurchaseRequestResponseForm(
-        request.POST or None,
-        initial={
-            "final_qty_sqm": purchase_request.requested_qty_sqm,
-            "final_unit_price": purchase_request.proposed_unit_price,
-        },
-    )
-    if request.method == "POST" and form.is_valid():
-        try:
-            respond_to_purchase_request(
-                request=purchase_request,
-                membership=request.membership,
-                accept=request.POST.get("decision") == "accept",
-                final_qty_sqm=form.cleaned_data.get("final_qty_sqm"),
-                final_unit_price=form.cleaned_data.get("final_unit_price"),
-                seller_note=form.cleaned_data.get("seller_note", ""),
-            )
-        except TradingError as exc:
-            form.add_error(None, exc.message)
-        else:
-            messages.success(request, "پاسخ شما ثبت شد.")
-            return redirect("trading:received_detail", request_id=purchase_request.id)
-
-    return render(
-        request,
-        "trading/received_detail.html",
+    is_seller = proposal.seller_business_id == request.business.id
+    initial = {
+        "submission_id": proposal.submission_id,
+        "direction": (
+            TradeProposalForm.Direction.SELL if is_seller else TradeProposalForm.Direction.BUY
+        ),
+        "counterparty": proposal.buyer_business if is_seller else proposal.seller_business,
+        "note": proposal.note,
+    }
+    form = TradeProposalForm(request.POST or None, business=request.business, initial=initial)
+    seller = proposal.seller_business
+    header_valid = False
+    if request.method == "POST":
+        header_valid = form.is_valid()
+        if header_valid:
+            seller = form.cleaned_data["seller_business"]
+    item_qs = _proposal_item_queryset(seller=seller, viewer=request.business)
+    line_initial = [
         {
-            "pr": purchase_request,
-            "form": form,
-            "can_finalize": request.membership.has_capability(SALE_FINALIZE),
+            "item": line.item_id,
+            "product_name": "" if line.item_id else line.product_name,
+            "quantity": line.quantity,
+            "unit_price": line.unit_price,
+        }
+        for line in proposal.items.all()
+    ]
+    lines = TradeProposalLineFormSet(
+        request.POST or None,
+        prefix="lines",
+        item_queryset=item_qs,
+        initial=line_initial,
+    )
+    if request.method == "POST":
+        lines_valid = lines.is_valid()
+        if header_valid and lines_valid:
+            try:
+                proposal = save_trade_proposal(
+                    proposal=proposal,
+                    seller_business=form.cleaned_data["seller_business"],
+                    buyer_business=form.cleaned_data["buyer_business"],
+                    membership=request.membership,
+                    lines=lines.lines,
+                    note=form.cleaned_data.get("note", ""),
+                    submit=request.POST.get("action") != "draft",
+                )
+            except TradingError as exc:
+                form.add_error(None, exc.message)
+            else:
+                messages.success(
+                    request,
+                    "توافق برای تأیید ارسال شد."
+                    if proposal.status == TradeProposal.Status.PENDING
+                    else "پیش‌نویس توافق ذخیره شد.",
+                )
+                return redirect("trading:proposal_detail", proposal_id=proposal.id)
+
+    return render(
+        request,
+        "trading/proposal_form.html",
+        _proposal_form_context(form=form, lines=lines, proposal=proposal),
+    )
+
+
+@business_login_required
+def proposal_detail(request: HttpRequest, proposal_id) -> HttpResponse:
+    if not _trade_view_allowed(request):
+        return _trade_view_denied(request)
+    proposal = get_proposal(request.business, proposal_id)
+    if proposal is None:
+        messages.error(request, "توافق یافت نشد.")
+        return redirect("trading:proposal_list")
+    is_initiator = proposal.initiated_by_business_id == request.business.id
+    can_answer = (
+        proposal.status == TradeProposal.Status.PENDING
+        and not is_initiator
+        and request.membership.has_capability(TRADE_CONFIRM)
+    )
+    return render(
+        request,
+        "trading/proposal_detail.html",
+        {
+            "proposal": proposal,
+            "is_initiator": is_initiator,
+            "can_answer": can_answer,
+            "other_business": proposal.other_business(request.business),
+        },
+    )
+
+
+def _proposal_action(request, proposal_id, action):
+    proposal = get_proposal(request.business, proposal_id)
+    if proposal is None:
+        messages.error(request, "توافق یافت نشد.")
+        return redirect("trading:proposal_list")
+    try:
+        result = action(proposal=proposal, membership=request.membership)
+    except (TradingError, InvoiceError) as exc:
+        messages.error(request, exc.message)
+    else:
+        if action is confirm_trade_proposal:
+            messages.success(request, "معامله تأیید شد؛ فاکتور و حساب دفتری هر دو طرف ثبت شدند.")
+            return redirect("trading:trade_detail", trade_id=result.id)
+        messages.success(request, "وضعیت توافق به‌روز شد.")
+    return redirect("trading:proposal_detail", proposal_id=proposal.id)
+
+
+@business_login_required
+@require_capability(TRADE_PROPOSE)
+@require_POST
+def proposal_submit(request: HttpRequest, proposal_id) -> HttpResponse:
+    return _proposal_action(request, proposal_id, submit_trade_proposal)
+
+
+@business_login_required
+@require_capability(TRADE_CONFIRM)
+@require_POST
+def proposal_confirm(request: HttpRequest, proposal_id) -> HttpResponse:
+    return _proposal_action(request, proposal_id, confirm_trade_proposal)
+
+
+@business_login_required
+@require_capability(TRADE_CONFIRM)
+@require_POST
+def proposal_reject(request: HttpRequest, proposal_id) -> HttpResponse:
+    return _proposal_action(request, proposal_id, reject_trade_proposal)
+
+
+@business_login_required
+@require_capability(TRADE_PROPOSE)
+@require_POST
+def proposal_cancel(request: HttpRequest, proposal_id) -> HttpResponse:
+    return _proposal_action(request, proposal_id, cancel_trade_proposal)
+
+
+# --- retired purchase-request history ---------------------------------------
+
+
+@business_login_required
+@require_capability(TRADE_PROPOSE)
+def request_create(request: HttpRequest, item_id) -> HttpResponse:
+    """Old marketplace links become a pre-filled bilateral agreement."""
+    item = get_eligible_item(audience="colleague", viewer_business=request.business, item_id=item_id)
+    if item is None:
+        messages.error(request, "این محصول برای معامله در دسترس نیست.")
+        return redirect("marketplace:home")
+    query = urlencode({"direction": "buy", "counterparty": item.business_id, "item": item.id})
+    return redirect(f"{reverse('trading:proposal_create')}?{query}")
+
+
+def _legacy_request_list(request, *, sent):
+    status = request.GET.get("status", "")
+    qs = sent_requests(request.business) if sent else received_requests(request.business)
+    page = paginate(request, filter_requests(qs, status=status), per_page=ROW_PAGE_SIZE)
+    return render(
+        request,
+        "trading/legacy_request_list.html",
+        {
+            "requests": page.object_list,
+            "page": page,
+            "status": status,
+            "status_filters": STATUS_FILTERS,
+            "sent": sent,
         },
     )
 
 
 @business_login_required
-@require_capability(SALE_FINALIZE)
-@require_http_methods(["GET", "POST"])
-def finalize(request: HttpRequest, request_id) -> HttpResponse:
-    """«نهایی کردن فروش» — a separate, deliberate step after acceptance."""
-    purchase_request = get_received_request(request.business, request_id)
+@require_capability(TRADE_PROPOSE)
+def sent_list(request: HttpRequest) -> HttpResponse:
+    return _legacy_request_list(request, sent=True)
+
+
+@business_login_required
+@require_capability(TRADE_PROPOSE)
+def received_list(request: HttpRequest) -> HttpResponse:
+    return _legacy_request_list(request, sent=False)
+
+
+def _legacy_request_detail(request, *, request_id, sent):
+    resolver = get_sent_request if sent else get_received_request
+    purchase_request = resolver(request.business, request_id)
     if purchase_request is None:
         messages.error(request, "درخواست یافت نشد.")
-        return redirect("trading:received_list")
-
-    if purchase_request.status == PurchaseRequest.Status.COMPLETED:
-        messages.info(request, "این فروش قبلاً نهایی شده است.")
-        return redirect("trading:received_detail", request_id=purchase_request.id)
-
-    form = FinalizeSaleForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            trade = finalize_sale(
-                request=purchase_request,
-                membership=request.membership,
-                note=form.cleaned_data.get("note", ""),
-            )
-        except TradingError as exc:
-            form.add_error(None, exc.message)
-        else:
-            messages.success(request, "فروش نهایی شد و در حساب همکار ثبت گردید.")
-            return redirect("trading:trade_detail", trade_id=trade.id)
-
-    return render(request, "trading/finalize.html", {"pr": purchase_request, "form": form})
-
-
-@business_login_required
-@require_capability(SALE_FINALIZE)
-@require_http_methods(["GET", "POST"])
-def direct_sale(request: HttpRequest) -> HttpResponse:
-    """«ثبت فروش مستقیم» — record a phone or counter sale.
-
-    The authoritative entry point for a sale that never went through a purchase
-    request. It creates the Trade, posts both parties' books and issues the
-    invoice in one transaction, so a colleague sale can never exist as a document
-    with no matching balance.
-
-    One submission is one sale however many product rows it carries: one Trade,
-    one total, one entry in each book, one invoice.
-    """
-    form = DirectSaleForm(request.POST or None, business=request.business)
-    lines = DirectSaleLineFormSet(request.POST or None, business=request.business)
-
-    if request.method == "POST" and form.is_valid() and lines.is_valid():
-        try:
-            trade = record_direct_sale(
-                seller_business=request.business,
-                membership=request.membership,
-                lines=lines.lines,
-                buyer_business=form.cleaned_data.get("buyer_business"),
-                customer_name=form.cleaned_data.get("customer_name", ""),
-                customer_phone=form.cleaned_data.get("customer_phone", ""),
-                note=form.cleaned_data.get("note", ""),
-                submission_id=form.cleaned_data["submission_id"],
-            )
-        except TradingError as exc:
-            form.add_error(None, exc.message)
-        else:
-            messages.success(request, "فروش ثبت شد.")
-            return redirect("trading:trade_detail", trade_id=trade.id)
-
-    return render(request, "trading/direct_sale.html", {"form": form, "lines": lines})
-
-
-# --- trades -------------------------------------------------------------------
-
-
-@business_login_required
-@require_capability(PURCHASE_REQUEST)
-def trade_list(request: HttpRequest) -> HttpResponse:
-    page = paginate(request, trades_for_seller(request.business), per_page=ROW_PAGE_SIZE)
+        return redirect("trading:sent_list" if sent else "trading:received_list")
     return render(
         request,
-        "trading/trade_list.html",
-        {"trades": page.object_list, "page": page},
+        "trading/legacy_request_detail.html",
+        {"pr": purchase_request, "sent": sent},
     )
 
 
 @business_login_required
-@require_capability(PURCHASE_REQUEST)
-def trade_detail(request: HttpRequest, trade_id) -> HttpResponse:
-    from .selectors import get_trade
+@require_capability(TRADE_PROPOSE)
+def sent_detail(request: HttpRequest, request_id) -> HttpResponse:
+    return _legacy_request_detail(request, request_id=request_id, sent=True)
 
+
+@business_login_required
+@require_capability(TRADE_PROPOSE)
+def received_detail(request: HttpRequest, request_id) -> HttpResponse:
+    return _legacy_request_detail(request, request_id=request_id, sent=False)
+
+
+@business_login_required
+@require_capability(TRADE_CONFIRM)
+def finalize(request: HttpRequest, request_id) -> HttpResponse:
+    messages.info(request, "روند قدیمی درخواست خرید فقط برای مشاهده سوابق نگه‌داری می‌شود.")
+    return redirect("trading:received_detail", request_id=request_id)
+
+
+@business_login_required
+@require_capability(TRADE_PROPOSE)
+def direct_sale(request: HttpRequest) -> HttpResponse:
+    messages.info(request, "معامله همکار اکنون با توافق و تأیید دوطرفه ثبت می‌شود.")
+    return redirect("trading:proposal_create")
+
+
+# --- finalized trades --------------------------------------------------------
+
+
+@business_login_required
+def trade_list(request: HttpRequest) -> HttpResponse:
+    if not _trade_view_allowed(request):
+        return _trade_view_denied(request)
+    page = paginate(request, trades_for_business(request.business), per_page=ROW_PAGE_SIZE)
+    return render(request, "trading/trade_list.html", {"trades": page.object_list, "page": page})
+
+
+@business_login_required
+def trade_detail(request: HttpRequest, trade_id) -> HttpResponse:
+    if not _trade_view_allowed(request):
+        return _trade_view_denied(request)
     trade = get_trade(request.business, trade_id)
     if trade is None:
         messages.error(request, "معامله یافت نشد.")
         return redirect("trading:trade_list")
-
     is_seller = trade.seller_business_id == request.business.id
     return render(
         request,
@@ -292,20 +438,11 @@ def trade_detail(request: HttpRequest, trade_id) -> HttpResponse:
 @require_capability(SALE_FINALIZE)
 @require_POST
 def trade_create_invoice(request: HttpRequest, trade_id) -> HttpResponse:
-    """Issue the document for a sale that ended up without one.
-
-    Invoice creation is a consequence of finalizing, and it is best-effort so a
-    failure there can never roll back a completed sale. That leaves a narrow gap
-    — a plan that lapsed mid-flow, a transient error — where a finalized trade
-    has no document. Before this there was no way out of it but the admin.
-    """
-    from .selectors import get_trade
-
+    """Recovery path for historical finalized trades that have no invoice."""
     trade = get_trade(request.business, trade_id)
     if trade is None or trade.seller_business_id != request.business.id:
         messages.error(request, "معامله یافت نشد.")
         return redirect("trading:trade_list")
-
     try:
         invoice = create_invoice_for_trade(trade=trade, membership=request.membership)
     except InvoiceError as exc:

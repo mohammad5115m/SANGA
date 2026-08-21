@@ -12,7 +12,7 @@ class ManualInvoiceForm(forms.Form):
     A walk-in never becomes a platform User. There is deliberately no colleague
     option: a sale to another Business moves that colleague's account, and the
     only thing allowed to move an account is a finalized Trade — so colleague
-    sales are recorded through «ثبت فروش مستقیم» instead.
+    sales are recorded through the bilateral «توافق معامله» flow instead.
     """
 
     customer_name = forms.CharField(

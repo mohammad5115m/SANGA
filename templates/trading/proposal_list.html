@@ -1,0 +1,39 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}توافق‌های معامله | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">توافق‌های معامله</h1>
+    <p class="page-lead">ثبت معامله‌های تلفنی و حضوری با تأیید دوطرفه</p>
+  </div>
+  {% if 'trade.propose' in capabilities %}<div class="btn-row"><a class="btn btn-primary" href="{% url 'trading:proposal_create' %}">ثبت توافق جدید</a></div>{% endif %}
+  <div class="tab-row">
+    <a class="tab {% if tab == 'action' %}is-active{% endif %}" href="?tab=action">نیازمند پاسخ من</a>
+    {% if 'trade.propose' in capabilities %}<a class="tab {% if tab == 'mine' %}is-active{% endif %}" href="?tab=mine">ثبت‌شده توسط من</a>{% endif %}
+    <a class="tab {% if tab == 'final' %}is-active{% endif %}" href="?tab=final">نهایی‌شده</a>
+    <a class="tab {% if tab == 'closed' %}is-active{% endif %}" href="?tab=closed">رد یا لغو</a>
+  </div>
+  <div class="list-stack">
+    {% for proposal in proposals %}
+      <a class="lot-card" href="{% url 'trading:proposal_detail' proposal.id %}">
+        <div class="lot-body">
+          <div class="list-title">{{ proposal.seller_business.name }} ← {{ proposal.buyer_business.name }}</div>
+          <div class="muted">{{ proposal.items.all|length }} قلم · ثبت‌کننده: {{ proposal.initiated_by_business.name }}</div>
+          <div class="muted" dir="ltr">{{ proposal.total_amount|rial }} {{ proposal.currency }}</div>
+          <div class="badge-row">{% include "trading/_proposal_status_badge.html" %}</div>
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state">موردی در این بخش وجود ندارد.</div>
+    {% endfor %}
+  </div>
+  {% include "_pager.html" %}
+  <div class="btn-row">
+    <a class="btn btn-ghost" href="{% url 'trading:trade_list' %}">همه معاملات نهایی</a>
+    <a class="btn btn-ghost" href="{% url 'trading:received_list' %}">سوابق درخواست‌های قدیمی</a>
+  </div>
+</section>
+{% endblock %}

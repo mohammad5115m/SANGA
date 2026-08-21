@@ -169,7 +169,7 @@ def _post(
     Split from :func:`post_entry` because the two ways money reaches the books
     are authorized differently. A manual entry is bookkeeping and needs
     ``ledger.manage``. A sale's entry is a *consequence* of finalizing that sale,
-    which a salesperson holding ``sale.finalize`` is allowed to do — requiring
+    which a salesperson holding ``trade.confirm`` is allowed to do — requiring
     ``ledger.manage`` there would mean no salesperson could complete a sale.
     """
     if membership.business_id != business.id:
@@ -363,11 +363,12 @@ def post_trade_entries(*, trade, membership: BusinessMembership) -> TradePosting
         return TradePosting()
 
     seller = trade.seller_business
-    # Authorized by SALE_FINALIZE, not LEDGER_MANAGE: this entry is a consequence
-    # of the sale the user just completed, not bookkeeping they are authoring.
+    # Authorized by TRADE_CONFIRM (the compatibility alias is SALE_FINALIZE),
+    # not LEDGER_MANAGE: this entry is a consequence of a bilateral confirmation,
+    # not bookkeeping the actor is authoring by hand.
     if membership is None or not membership.has_capability(SALE_FINALIZE):
         raise LedgerError("اجازه نهایی کردن فروش را ندارید.")
-    if membership.business_id != seller.id:
+    if membership.business_id not in {seller.id, trade.buyer_business_id}:
         raise LedgerError("دسترسی نامعتبر است.")
 
     locked = _lock_both(seller, trade.buyer_business)
@@ -411,7 +412,7 @@ def post_trade_entries(*, trade, membership: BusinessMembership) -> TradePosting
                     # related_lot belongs to the seller, so it is deliberately
                     # absent here: _write_entry rejects a foreign product.
                     related_trade=trade,
-                    actor=None,
+                    actor=membership.user,
                 )
     except IntegrityError as exc:
         logger.warning("Duplicate trade ledger entry blocked by constraint trade=%s", trade.id)

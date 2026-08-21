@@ -420,33 +420,32 @@ def test_a_third_business_sees_neither(client, market):
 
 
 @pytest.mark.django_db
-def test_the_accepted_page_says_the_sale_is_not_final_yet(client, market):
+def test_the_accepted_request_page_is_read_only_history(client, market):
     request_ = _request(market)
     _accept(market, request_)
 
     _login(client, market["seller"])
     url = reverse("trading:received_detail", kwargs={"request_id": request_.id})
     body = client.get(url).content.decode("utf-8")
-    assert "هنوز نهایی نشده" in body
-    assert "نهایی کردن فروش" in body
+    assert "فقط خواندنی" in body
+    assert "توافق دوطرفه" in body
+    assert "نهایی کردن فروش" not in body
 
 
 @pytest.mark.django_db
-def test_finalize_view_requires_confirmation(client, market):
+def test_the_retired_finalize_view_cannot_create_a_trade(client, market):
     request_ = _request(market)
     _accept(market, request_)
 
     _login(client, market["seller"])
     url = reverse("trading:finalize", kwargs={"request_id": request_.id})
     client.post(url, {"note": ""})
-    assert not Trade.objects.exists()
-
     client.post(url, {"note": "", "confirm": "on"})
-    assert Trade.objects.count() == 1
+    assert Trade.objects.count() == 0
 
 
 @pytest.mark.django_db
-def test_double_posting_the_finalize_form_creates_one_trade(client, market):
+def test_double_posting_the_retired_finalize_route_changes_nothing(client, market):
     request_ = _request(market)
     _accept(market, request_)
 
@@ -455,7 +454,7 @@ def test_double_posting_the_finalize_form_creates_one_trade(client, market):
     client.post(url, {"note": "", "confirm": "on"})
     client.post(url, {"note": "", "confirm": "on"}, follow=True)
 
-    assert Trade.objects.count() == 1
+    assert Trade.objects.count() == 0
 
 
 @pytest.mark.django_db

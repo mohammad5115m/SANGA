@@ -30,9 +30,9 @@ hourly, so the primary bar stays short enough to read on a phone.
          href="{% url 'inventory:lot_list' %}">موجودی من</a>
       <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
          href="{% url 'marketplace:home' %}">بازار</a>
-      {% if 'purchase.request' in capabilities %}
+      {% if 'trade.propose' in capabilities or 'trade.confirm' in capabilities %}
         <a class="topbar-link {% if request.resolver_match.app_name == 'trading' %}is-active{% endif %}"
-           href="{% url 'trading:received_list' %}">خرید و فروش</a>
+           href="{% url 'trading:proposal_list' %}">خرید و فروش</a>
       {% endif %}
       {% if can_manage_catalogs %}
         <a class="topbar-link {% if request.resolver_match.app_name == 'catalog_manage' %}is-active{% endif %}"

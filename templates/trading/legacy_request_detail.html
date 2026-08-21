@@ -1,0 +1,20 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}سابقه درخواست خرید | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div><h1 class="page-title">سابقه درخواست خرید</h1><p class="page-lead">این رکورد فقط خواندنی است.</p></div>
+  <div class="alert alert-info">روند درخواست خرید بازنشسته شده است. برای معامله جدید از توافق دوطرفه استفاده کنید.</div>
+  <section class="panel stack-sm">
+    <div class="kv"><span>محصول</span><strong>{{ pr.item.product.commercial_name }}</strong></div>
+    <div class="kv"><span>فروشنده</span><strong>{{ pr.seller_business.name }}</strong></div>
+    <div class="kv"><span>خریدار</span><strong>{{ pr.buyer_business.name }}</strong></div>
+    <div class="kv"><span>متراژ</span><strong>{{ pr.agreed_qty_sqm }} m²</strong></div>
+    {% if pr.agreed_unit_price %}<div class="kv"><span>قیمت واحد</span><strong dir="ltr">{{ pr.agreed_unit_price|rial }} {{ pr.currency }}</strong></div>{% endif %}
+    <div class="kv"><span>وضعیت</span><strong>{% include "trading/_status_badge.html" %}</strong></div>
+  </section>
+  <a class="btn btn-primary" href="{% url 'trading:proposal_create' %}">ثبت توافق جدید</a>
+</section>
+{% endblock %}

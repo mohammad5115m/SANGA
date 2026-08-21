@@ -23,7 +23,7 @@ from django.utils import timezone
 
 from apps.businesses.entitlements import ISSUE_INVOICES, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import INVOICE_MANAGE
+from apps.businesses.permissions import INVOICE_MANAGE, TRADE_CONFIRM
 
 from .models import SalesInvoice, SalesInvoiceItem
 
@@ -117,6 +117,60 @@ def create_invoice_for_trade(
     if issue is None:
         issue = membership.has_capability(INVOICE_MANAGE)
 
+    return _create_invoice_for_trade(
+        trade=trade,
+        created_by=membership.user,
+        notes=notes,
+        issue=issue,
+    )
+
+
+@transaction.atomic
+def create_invoice_for_confirmed_trade(
+    *,
+    trade,
+    membership: BusinessMembership,
+    notes: str = "",
+) -> SalesInvoice:
+    """Issue the document produced by a bilateral trade confirmation.
+
+    The confirming member may belong to either side of the agreement.  This is
+    intentionally narrower than :func:`create_invoice_for_trade`: it only works
+    for a Trade linked to a confirmed proposal, and always issues the invoice in
+    the seller's book as part of the same database transaction.
+    """
+    if membership is None or not membership.has_capability(TRADE_CONFIRM):
+        raise InvoiceError("اجازه تأیید معامله را ندارید.")
+    if membership.business_id not in {trade.seller_business_id, trade.buyer_business_id}:
+        raise InvoiceError("دسترسی نامعتبر است.")
+
+    proposal = getattr(trade, "source_proposal", None)
+    if proposal is None or proposal.status != "confirmed":
+        raise InvoiceError("این معامله از توافق دوطرفه تأییدشده ایجاد نشده است.")
+
+    try:
+        require_entitlement(trade.seller_business, ISSUE_INVOICES)
+    except EntitlementError as exc:
+        raise InvoiceError(exc.message) from exc
+
+    return _create_invoice_for_trade(
+        trade=trade,
+        created_by=membership.user,
+        notes=notes,
+        issue=True,
+    )
+
+
+def _create_invoice_for_trade(
+    *,
+    trade,
+    created_by,
+    notes: str,
+    issue: bool,
+) -> SalesInvoice:
+    """Create the immutable invoice snapshot after authorization is complete."""
+    business = trade.seller_business
+
     # Lock first, then look. Checking before the lock is what allowed two
     # requests to both conclude "no invoice yet" and both create one.
     Business.objects.select_for_update().get(pk=business.pk)
@@ -145,7 +199,7 @@ def create_invoice_for_trade(
                 total_amount=trade.total_amount,
                 currency=trade.currency,
                 notes=(notes or "").strip(),
-                created_by=membership.user,
+                created_by=created_by,
             )
             # One row per line of the sale. Copied from the trade's own lines
             # rather than re-read from the products, so the document is fixed at
@@ -202,14 +256,14 @@ def create_manual_invoice(
     is a finalized Trade. Letting this path issue a colleague invoice produced a
     valid-looking document while the colleague's balance stayed untouched — one
     commercial event with two representations, only one of which counted. Use
-    :func:`apps.trading.services.record_direct_sale` instead; it creates the
-    Trade, posts both books and returns the invoice.
+    bilateral trade-agreement flow instead; confirmation creates the Trade,
+    posts both books and issues the invoice atomically.
     """
     _require_manage(business, membership)
 
     if buyer_business is not None:
         raise InvoiceError(
-            "فروش به همکار باید از «ثبت فروش مستقیم» ثبت شود تا حساب همکار هم به‌روز شود."
+            "فروش به همکار باید از «توافق معامله» ثبت شود تا پس از تأیید دوطرفه حساب‌ها به‌روز شوند."
         )
 
     counterparty_type = SalesInvoice.Counterparty.CUSTOMER

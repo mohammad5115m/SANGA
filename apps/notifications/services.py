@@ -14,7 +14,7 @@ def members_who_can(business, capability: str) -> list:
 
     Notifications used to go to whoever held the OWNER or MANAGER *role*. SANGA
     authorizes by capability, not by role, and the default ``staff`` role holds
-    ``sale.finalize``, ``purchase.request`` and ``leads.manage`` — so the
+    ``trade.confirm``, ``trade.propose`` and ``leads.manage`` — so the
     salesperson whose job it is to answer a customer inquiry was the one person
     guaranteed never to hear about one. A permission set edited to grant a
     capability granted the work without the notification, which is the same bug

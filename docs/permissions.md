@@ -57,7 +57,7 @@ membership says this User may do this   (apps/businesses/permissions.py)
 ```
 
 They answer different questions and are stored in different places. A seller
-whose subscription lapsed still has `sale.finalize` on their membership; they
+whose subscription lapsed still has `trade.confirm` on their membership; they
 simply cannot use it.
 
 ### 3.0 Four questions about a Business, kept apart
@@ -84,8 +84,8 @@ Collapsing any two of these is how the contradictions came back last time.
 
 | Plan | Can |
 |------|-----|
-| `browse` | Log in, search the marketplace, view colleagues, send purchase requests, receive invoices, see its own records |
-| `seller` | All of that, plus create/publish products, receive purchase requests, finalize sales, manage catalogs, issue invoices, use the ledger |
+| `browse` | Log in, search the marketplace, view colleagues, propose purchases, receive invoices, see its own records |
+| `seller` | All of that, plus create/publish products, propose sales, confirm trades, manage catalogs, issue invoices, use the ledger |
 
 `Business.seat_limit` caps how many *active* memberships may share the account.
 It is checked when a membership is created or reactivated, not at login: lowering
@@ -114,8 +114,8 @@ Stored on `BusinessMembership.permissions` (list of strings), with role defaults
 | `inventory.confirm` | Confirm stock |
 | `prices.view` | See B2B and B2C prices |
 | `prices.edit` | Change prices |
-| `purchase.request` | Send purchase requests to colleagues |
-| `sale.finalize` | Turn an accepted request into a finalized sale |
+| `trade.propose` | Record and send a bilateral trade agreement |
+| `trade.confirm` | Confirm or reject the counterparty's agreement |
 | `invoice.view` | See invoices |
 | `invoice.manage` | Issue and manage invoices |
 | `ledger.view` | See balances and statements |
@@ -181,8 +181,8 @@ Two further consequences that have bitten this codebase:
 
 So every capability change ships with a paired data migration. V2's rename is
 `businesses.0003`, which maps `inquiries.view` → `leads.view`,
-`inquiries.respond` → `leads.manage` (plus the implied `purchase.request` and
-`sale.finalize`), `customers.manage` → `leads.manage`, and drops `analytics.view`
+`inquiries.respond` → `leads.manage` (plus the implied `trade.propose` and
+`trade.confirm`), `customers.manage` → `leads.manage`, and drops `analytics.view`
 and `audit.view` — both declared in v1 and never checked by anything.
 
 Stale strings left over from removed apps (`partners.manage`,
@@ -324,20 +324,19 @@ counterparty could not be mapped. It has no UI. See
 
 | Action | Capability | Plan entitlement |
 |--------|-----------|------------------|
-| Send a purchase request | `purchase.request` | none — browse-only accounts can buy |
-| Answer a request (accept / reject / adjust) | `purchase.request` | `receive_purchase_requests` |
-| Finalize a sale | `sale.finalize` | `finalize_sales` |
-| Post the sale's ledger entry | `sale.finalize` | `finalize_sales` |
+| Record/send a trade agreement | `trade.propose` | seller has `finalize_sales` |
+| Confirm/reject the counterparty's agreement | `trade.confirm` | seller has `finalize_sales` |
+| Post both ledger entries during confirmation | `trade.confirm` | seller has `finalize_sales` |
 | Post a manual ledger entry | `ledger.manage` | `manage_ledger` |
 | Issue an invoice | `invoice.manage` | `issue_invoices` |
 
-The sale's ledger entry is authorized by `sale.finalize`, **not** `ledger.manage`.
+The sale's ledger entry is authorized by `trade.confirm`, **not** `ledger.manage`.
 It is a consequence of the sale the user just completed, not bookkeeping they are
 authoring — requiring `ledger.manage` would mean no salesperson could complete a
 sale. Manual entries still require it.
 
-Accepting a request holds no stock and moves no money. Finalizing is a separate,
-deliberate action. See [trading.md](./trading.md).
+A proposal holds no stock and moves no money. The counterparty's confirmation is
+the single deliberate finalization action. See [trading.md](./trading.md).
 
 ### Both sides must be active
 
@@ -387,7 +386,7 @@ the server-side checks). It also exposes `entitlements`, the plan's set.
 
 Templates use both **only** to hide links that would end in «دسترسی ندارید» —
 «دفتر حساب» needs `ledger.view`, «کاتالوگ‌ها» needs `catalog.manage`,
-«خرید و فروش» needs `purchase.request`. Neither is a substitute for the decorator
+«خرید و فروش» needs `trade.propose`. Neither is a substitute for the decorator
 and the service check, and neither injects prices or tenant data.
 
 A browse-only account stopped by a missing menu item is not stopped at all: the

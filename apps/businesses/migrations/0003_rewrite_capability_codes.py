@@ -31,7 +31,11 @@ FORWARD = {
 IMPLIED = {
     # Anyone who could respond to demand-board offers was already the person
     # buying and selling.
-    "inquiries.respond": ("purchase.request", "sale.finalize"),
+    # These names were later refined when the request workflow became a
+    # bilateral agreement. Fresh databases should materialize the current
+    # codes directly; businesses.0007 upgrades databases that already ran this
+    # migration with the request-era values.
+    "inquiries.respond": ("trade.propose", "trade.confirm"),
     # Seeing the ledger already meant seeing what the business had sold.
     "ledger.view": ("invoice.view",),
     "ledger.manage": ("invoice.manage",),
@@ -42,7 +46,14 @@ BACKWARD = {
     "leads.manage": "inquiries.respond",
 }
 
-DROP_ON_BACKWARD = {"purchase.request", "sale.finalize", "invoice.view", "invoice.manage"}
+DROP_ON_BACKWARD = {
+    "purchase.request",
+    "sale.finalize",
+    "trade.propose",
+    "trade.confirm",
+    "invoice.view",
+    "invoice.manage",
+}
 
 
 def forwards(apps, schema_editor):

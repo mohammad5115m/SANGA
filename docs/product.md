@@ -19,7 +19,7 @@ reports numbers nobody has checked.
 1. Product discovery
 2. B2B colleague marketplace
 3. Public B2C discovery
-4. Product-bound purchase requests
+4. Bilateral agreements for phone/in-person colleague trades
 5. Finalized trades and invoices
 6. Per-colleague account ledger
 7. Dynamic catalogs
@@ -105,7 +105,7 @@ Product metrics, not necessarily instrumented yet:
 - active visible products
 - share of products with current stock information
 - share with current price information
-- B2B product views → purchase requests
+- B2B product views → pre-filled bilateral agreements
 - accepted requests → finalized sales
 - public product views → customer inquiries
 - inquiries containing more than one product

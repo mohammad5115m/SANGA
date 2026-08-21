@@ -1,0 +1,58 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}توافق معامله | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">توافق معامله</h1>
+    <p class="page-lead">{% include "trading/_proposal_status_badge.html" %}</p>
+  </div>
+  <section class="panel stack-sm">
+    <div class="kv"><span>فروشنده</span><strong>{{ proposal.seller_business.name }}</strong></div>
+    <div class="kv"><span>خریدار</span><strong>{{ proposal.buyer_business.name }}</strong></div>
+    <div class="kv"><span>ثبت‌کننده</span><strong>{{ proposal.initiated_by_business.name }}</strong></div>
+    {% if proposal.note %}<div class="kv"><span>توضیح</span><strong>{{ proposal.note }}</strong></div>{% endif %}
+  </section>
+  <section class="panel stack-md">
+    <h2 class="section-title">اقلام توافق</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>#</th><th>محصول</th><th>متراژ</th><th>قیمت واحد</th><th>جمع</th></tr></thead>
+        <tbody>
+          {% for line in proposal.items.all %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ line.product_name }}{% if line.stone_type or line.grade %}<div class="muted">{{ line.stone_type }}{% if line.grade %} · {{ line.grade }}{% endif %}</div>{% endif %}</td>
+              <td class="num">{{ line.quantity }} m²</td>
+              <td class="num" dir="ltr">{{ line.unit_price|rial }}</td>
+              <td class="num" dir="ltr">{{ line.line_total|rial }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="4">مبلغ کل</th><th class="num" dir="ltr">{{ proposal.total_amount|rial }} {{ proposal.currency }}</th></tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+  {% if can_answer %}
+    <div class="alert alert-warn">با تأیید شما، معامله، دو سند دفتر حساب و فاکتور نهایی در یک مرحله ثبت می‌شوند.</div>
+    <div class="btn-row">
+      <form method="post" action="{% url 'trading:proposal_confirm' proposal.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit">تأیید و نهایی‌کردن معامله</button></form>
+      <form method="post" action="{% url 'trading:proposal_reject' proposal.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit">رد توافق</button></form>
+    </div>
+  {% elif is_initiator and proposal.status == 'draft' %}
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{% url 'trading:proposal_edit' proposal.id %}">ویرایش پیش‌نویس</a>
+      <form method="post" action="{% url 'trading:proposal_submit' proposal.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">ارسال برای تأیید</button></form>
+      <form method="post" action="{% url 'trading:proposal_cancel' proposal.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit">لغو</button></form>
+    </div>
+  {% elif is_initiator and proposal.status == 'pending' %}
+    <div class="alert alert-info">این توافق در انتظار تأیید {{ other_business.name }} است و هنوز اثر مالی ندارد.</div>
+    <form method="post" action="{% url 'trading:proposal_cancel' proposal.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit">لغو توافق</button></form>
+  {% elif proposal.status == 'confirmed' and proposal.trade_id %}
+    <a class="btn btn-primary" href="{% url 'trading:trade_detail' proposal.trade_id %}">مشاهده معامله و فاکتور</a>
+  {% endif %}
+</section>
+{% endblock %}

@@ -7,6 +7,14 @@ from . import views
 app_name = "trading"
 
 urlpatterns = [
+    path("agreements/", views.proposal_list, name="proposal_list"),
+    path("agreements/new/", views.proposal_create, name="proposal_create"),
+    path("agreements/<uuid:proposal_id>/", views.proposal_detail, name="proposal_detail"),
+    path("agreements/<uuid:proposal_id>/edit/", views.proposal_edit, name="proposal_edit"),
+    path("agreements/<uuid:proposal_id>/submit/", views.proposal_submit, name="proposal_submit"),
+    path("agreements/<uuid:proposal_id>/confirm/", views.proposal_confirm, name="proposal_confirm"),
+    path("agreements/<uuid:proposal_id>/reject/", views.proposal_reject, name="proposal_reject"),
+    path("agreements/<uuid:proposal_id>/cancel/", views.proposal_cancel, name="proposal_cancel"),
     path("received/", views.received_list, name="received_list"),
     path("received/<uuid:request_id>/", views.received_detail, name="received_detail"),
     path("received/<uuid:request_id>/finalize/", views.finalize, name="finalize"),

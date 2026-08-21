@@ -9,7 +9,7 @@ Six primary destinations, matching the six things a seller does:
 | خانه | what needs doing today |
 | موجودی من | the business's own products |
 | بازار | colleagues' products |
-| خرید و فروش | purchase requests in both directions, and finalized sales |
+| خرید و فروش | bilateral agreements, confirmations, and finalized trades |
 | کاتالوگ‌ها | shareable catalogs |
 | بیشتر | everything visited weekly rather than hourly |
 
@@ -86,17 +86,16 @@ styled as destructive and requires confirmation.
 ## 6. Buying and selling
 
 ```text
-Buyer finds a product in بازار
-  → درخواست خرید (quantity, optional proposed price, note)
-  → seller reviews it in درخواست‌های خرید دریافتی
-  → seller may change quantity, price and note
-  → accept or reject
-  → if accepted: «توافق شده — هنوز نهایی نشده»
-  → seller performs نهایی کردن فروش
-  → Trade created, ledger posted, invoice issued
+Seller or buyer records a phone/in-person agreement
+  → select the counterparty and own role
+  → add registered seller products and/or miscellaneous products
+  → enter agreed quantities and prices
+  → send to the other Business
+  → counterparty confirms or rejects
+  → on confirmation: Trade + both ledgers + issued invoice
 ```
 
-Accepting is **not** selling. See [trading.md](./trading.md).
+Sending a proposal is **not** selling. See [trading.md](./trading.md).
 
 ## 7. Public customer
 
@@ -117,8 +116,8 @@ No login wall, and identity is asked for once, at the end. See
 Operational, not analytical. There are no charts.
 
 Top of the page is what needs doing: products needing a stock check, prices
-needing review, open purchase requests, unanswered inquiries, and a warning when
-an agreed sale has not been finalized. Below that: the financial summary and the
+needing review, trade agreements waiting for this Business's confirmation, and
+unanswered inquiries. Below that: the financial summary and the
 largest debtors and creditors (only with `ledger.view`), recent sales and
 invoices, and the newest colleague products.
 

@@ -29,10 +29,12 @@ from apps.pricing.services import ensure_default_tiers
 from apps.trading.models import PurchaseRequest, Trade
 from apps.trading.services import (
     TradingError,
+    confirm_trade_proposal,
     create_purchase_request,
     finalize_sale,
     record_direct_sale,
     respond_to_purchase_request,
+    save_trade_proposal,
 )
 
 pytestmark = [pytest.mark.concurrency, pytest.mark.django_db(transaction=True)]
@@ -170,6 +172,29 @@ def test_two_threads_finalizing_one_request_produce_one_sale():
     assert LedgerEntry.objects.filter(related_trade=trade).count() == 2
     assert SalesInvoice.objects.filter(trade=trade).count() == 1
     assert current_balance(world["seller"], world["buyer"]) == Decimal("50000000.00")
+
+
+def test_two_threads_confirming_one_bilateral_agreement_produce_one_financial_event():
+    world = _world()
+    proposal = save_trade_proposal(
+        seller_business=world["seller"],
+        buyer_business=world["buyer"],
+        membership=world["seller_m"],
+        lines=[{"item": world["item"], "quantity": "10", "unit_price": "1000000"}],
+    )
+
+    results, errors = _race(
+        lambda: confirm_trade_proposal(proposal=proposal, membership=world["buyer_m"])
+    )
+
+    assert errors == []
+    assert len(results) == 2
+    assert len({trade.pk for trade in results}) == 1
+    trade = results[0]
+    assert Trade.objects.count() == 1
+    assert LedgerEntry.objects.filter(related_trade=trade).count() == 2
+    assert SalesInvoice.objects.filter(trade=trade).count() == 1
+    assert current_balance(world["seller"], world["buyer"]) == Decimal("10000000.00")
 
 
 def test_two_threads_submitting_one_direct_sale_record_one_sale():

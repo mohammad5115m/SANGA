@@ -25,7 +25,7 @@ from apps.inventory.models import InventoryLot
 from apps.invoicing.models import SalesInvoice
 from apps.pricing.services import ensure_default_tiers
 from apps.reporting.reports import DateRange, sales_by_product, sales_by_stone_type, sales_summary
-from apps.trading.models import Trade, TradeItem
+from apps.trading.models import Trade, TradeItem, TradeProposal
 from apps.trading.services import TradingError, record_direct_sale
 
 WINDOW = DateRange()
@@ -295,83 +295,85 @@ def test_a_line_naming_another_business_product_is_refused(market):
 # --- through the view ---------------------------------------------------------
 
 
-def test_the_seller_can_record_three_stones_in_one_submission(client, market):
+def test_the_seller_can_propose_three_stones_in_one_submission(client, market):
     client.force_login(market["seller_m"].user)
-    url = reverse("trading:direct_sale")
+    url = reverse("trading:proposal_create")
 
     token = client.get(url).context["form"]["submission_id"].value()
     response = client.post(
         url,
         {
             "submission_id": str(token),
-            "buyer_business": str(market["buyer"].id),
-            "confirm": "on",
-            "form-TOTAL_FORMS": "3",
-            "form-INITIAL_FORMS": "0",
-            "form-0-item": str(market["travertine"].id),
-            "form-0-quantity": "100",
-            "form-0-unit_price": "1500000",
-            "form-1-item": str(market["dareh"].id),
-            "form-1-quantity": "70",
-            "form-1-unit_price": "1200000",
-            "form-2-item": str(market["marble"].id),
-            "form-2-quantity": "50",
-            "form-2-unit_price": "2000000",
+            "direction": "sell",
+            "counterparty": str(market["buyer"].id),
+            "lines-TOTAL_FORMS": "3",
+            "lines-INITIAL_FORMS": "0",
+            "lines-0-item": str(market["travertine"].id),
+            "lines-0-quantity": "100",
+            "lines-0-unit_price": "1500000",
+            "lines-1-item": str(market["dareh"].id),
+            "lines-1-quantity": "70",
+            "lines-1-unit_price": "1200000",
+            "lines-2-item": str(market["marble"].id),
+            "lines-2-quantity": "50",
+            "lines-2-unit_price": "2000000",
         },
         follow=True,
     )
 
     assert response.status_code == 200
-    trade = Trade.objects.get()
-    assert trade.items.count() == 3
-    assert trade.total_amount == EXPECTED_TOTAL
-    assert SalesInvoice.objects.get(trade=trade).items.count() == 3
+    proposal = TradeProposal.objects.get()
+    assert proposal.items.count() == 3
+    assert proposal.total_amount == EXPECTED_TOTAL
+    assert Trade.objects.count() == 0
+    assert SalesInvoice.objects.count() == 0
 
 
 def test_blank_extra_rows_are_ignored_rather_than_reported_as_errors(client, market):
     client.force_login(market["seller_m"].user)
-    url = reverse("trading:direct_sale")
+    url = reverse("trading:proposal_create")
 
     token = client.get(url).context["form"]["submission_id"].value()
     client.post(
         url,
         {
             "submission_id": str(token),
-            "buyer_business": str(market["buyer"].id),
-            "confirm": "on",
-            "form-TOTAL_FORMS": "3",
-            "form-INITIAL_FORMS": "0",
-            "form-0-item": str(market["marble"].id),
-            "form-0-quantity": "50",
-            "form-0-unit_price": "2000000",
-            "form-1-item": "",
-            "form-1-quantity": "",
-            "form-1-unit_price": "",
-            "form-2-item": "",
-            "form-2-quantity": "",
-            "form-2-unit_price": "",
+            "direction": "sell",
+            "counterparty": str(market["buyer"].id),
+            "lines-TOTAL_FORMS": "3",
+            "lines-INITIAL_FORMS": "0",
+            "lines-0-item": str(market["marble"].id),
+            "lines-0-quantity": "50",
+            "lines-0-unit_price": "2000000",
+            "lines-1-item": "",
+            "lines-1-quantity": "",
+            "lines-1-unit_price": "",
+            "lines-2-item": "",
+            "lines-2-quantity": "",
+            "lines-2-unit_price": "",
         },
     )
 
-    trade = Trade.objects.get()
-    assert trade.items.count() == 1
+    proposal = TradeProposal.objects.get()
+    assert proposal.items.count() == 1
 
 
 def test_a_submission_with_every_row_blank_is_refused(client, market):
     client.force_login(market["seller_m"].user)
-    url = reverse("trading:direct_sale")
+    url = reverse("trading:proposal_create")
 
     token = client.get(url).context["form"]["submission_id"].value()
     response = client.post(
         url,
         {
             "submission_id": str(token),
-            "buyer_business": str(market["buyer"].id),
-            "confirm": "on",
-            "form-TOTAL_FORMS": "3",
-            "form-INITIAL_FORMS": "0",
+            "direction": "sell",
+            "counterparty": str(market["buyer"].id),
+            "lines-TOTAL_FORMS": "3",
+            "lines-INITIAL_FORMS": "0",
         },
     )
 
     assert response.status_code == 200
     assert Trade.objects.count() == 0
+    assert TradeProposal.objects.count() == 0

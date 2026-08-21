@@ -1,9 +1,11 @@
 """Buying and selling.
 
-The rule this module exists to enforce: **accepting a purchase request is not a
-sale.** Agreement and finalization are two deliberate actions, because a
-preliminary "yes, I can do 180 at 1.6m" that never becomes a shipment must not
-land in the ledger.
+Current colleague trades start as bilateral ``TradeProposal`` records. A
+proposal is financially inert until the non-initiating party confirms it; that
+single atomic action creates the Trade, both books and one issued invoice.
+
+The request-era services below remain for historical records and compatibility.
+No current UI creates, answers or finalizes a ``PurchaseRequest``.
 """
 
 from __future__ import annotations
@@ -15,7 +17,11 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.accounting.services import post_trade_entries
-from apps.businesses.eligibility import NotOperationalError, require_operational
+from apps.businesses.eligibility import (
+    NotOperationalError,
+    business_is_network_eligible,
+    require_operational,
+)
 from apps.businesses.entitlements import (
     FINALIZE_SALES,
     RECEIVE_PURCHASE_REQUESTS,
@@ -23,13 +29,18 @@ from apps.businesses.entitlements import (
     require_entitlement,
 )
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import PURCHASE_REQUEST, SALE_FINALIZE
+from apps.businesses.permissions import (
+    PURCHASE_REQUEST,
+    SALE_FINALIZE,
+    TRADE_CONFIRM,
+    TRADE_PROPOSE,
+)
 from apps.inventory.models import InventoryLot
 from apps.inventory.policy import get_eligible_item
-from apps.invoicing.services import safe_create_invoice_for_trade
+from apps.invoicing.services import create_invoice_for_confirmed_trade, safe_create_invoice_for_trade
 from apps.notifications.services import notify_business
 
-from .models import PurchaseRequest, Trade, TradeItem
+from .models import PurchaseRequest, Trade, TradeItem, TradeProposal, TradeProposalItem
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +152,25 @@ def _header_snapshot(lines: list[dict]) -> dict:
     }
 
 
+def _write_proposal_lines(proposal: TradeProposal, lines: list[dict]) -> None:
+    TradeProposalItem.objects.bulk_create(
+        [
+            TradeProposalItem(
+                proposal=proposal,
+                item=line["item"],
+                product_name=line["product_name"],
+                stone_type=line["stone_type"],
+                grade=line["grade"],
+                quantity=line["quantity"],
+                unit_price=line["unit_price"],
+                line_total=line["line_total"],
+                sort_order=index,
+            )
+            for index, line in enumerate(lines)
+        ]
+    )
+
+
 def _notify_business(business: Business, *, capability: str, title: str, body: str, link: str) -> None:
     """Tell the members who hold the capability this notification is about.
 
@@ -149,6 +179,269 @@ def _notify_business(business: Business, *, capability: str, title: str, body: s
     never heard that a purchase request had arrived.
     """
     notify_business(business, capability=capability, title=title, body=body, link=link)
+
+
+# --- bilateral offline agreements -------------------------------------------
+
+
+def _validate_proposal_parties(
+    *,
+    seller_business: Business,
+    buyer_business: Business,
+    membership: BusinessMembership,
+) -> None:
+    if seller_business.id == buyer_business.id:
+        raise TradingError("خریدار و فروشنده نمی‌توانند یکی باشند.")
+    if membership.business_id not in {seller_business.id, buyer_business.id}:
+        raise TradingError("فقط یکی از دو طرف معامله می‌تواند این توافق را ثبت کند.")
+    other = buyer_business if membership.business_id == seller_business.id else seller_business
+    if not business_is_network_eligible(other):
+        raise TradingError("این همکار در حال حاضر امکان انجام معامله در سنگا را ندارد.")
+    try:
+        require_operational(seller_business)
+        require_operational(buyer_business)
+    except NotOperationalError as exc:
+        raise TradingError(exc.message) from exc
+    _require_plan(seller_business, FINALIZE_SALES)
+
+
+def _clean_proposal_lines(
+    lines: list[dict],
+    *,
+    seller_business: Business,
+    membership: BusinessMembership,
+) -> list[dict]:
+    cleaned: list[dict] = []
+    for line in lines or []:
+        if not line:
+            continue
+        item = line.get("item")
+        if item is not None and membership.business_id != seller_business.id:
+            visible = get_eligible_item(
+                audience="colleague",
+                viewer_business=membership.business,
+                item_id=item.pk,
+            )
+            if visible is None or visible.business_id != seller_business.id:
+                raise TradingError("محصول انتخاب‌شده دیگر برای این معامله در دسترس نیست.")
+            line = {**line, "item": visible}
+        cleaned.append(_clean_line(line, seller_business=seller_business))
+    if not cleaned:
+        raise TradingError("حداقل یک محصول به توافق اضافه کنید.")
+    return cleaned
+
+
+@transaction.atomic
+def save_trade_proposal(
+    *,
+    seller_business: Business,
+    buyer_business: Business,
+    membership: BusinessMembership,
+    lines: list[dict],
+    note: str = "",
+    submission_id=None,
+    submit: bool = True,
+    proposal: TradeProposal | None = None,
+) -> TradeProposal:
+    """Create or edit a proposal without touching invoices or either ledger."""
+    _require(membership, TRADE_PROPOSE)
+    _validate_proposal_parties(
+        seller_business=seller_business,
+        buyer_business=buyer_business,
+        membership=membership,
+    )
+    cleaned = _clean_proposal_lines(
+        lines,
+        seller_business=seller_business,
+        membership=membership,
+    )
+    total = sum((line["line_total"] for line in cleaned), Decimal("0")).quantize(Decimal("0.01"))
+
+    if proposal is not None:
+        locked = TradeProposal.objects.select_for_update().get(pk=proposal.pk)
+        if locked.initiated_by_business_id != membership.business_id:
+            raise TradingError("فقط ثبت‌کننده توافق می‌تواند پیش‌نویس را ویرایش کند.")
+        if locked.status != TradeProposal.Status.DRAFT:
+            raise TradingError("فقط پیش‌نویس قابل ویرایش است.")
+        proposal = locked
+    else:
+        if submission_id is not None:
+            # Serialize retries from this initiator before the existence check;
+            # the partial unique constraint remains the final invariant.
+            Business.objects.select_for_update().get(pk=membership.business_id)
+            existing = TradeProposal.objects.filter(
+                initiated_by_business=membership.business,
+                submission_id=submission_id,
+            ).first()
+            if existing is not None:
+                return existing
+        proposal = TradeProposal(
+            initiated_by_business=membership.business,
+            created_by=membership.user,
+            submission_id=submission_id,
+        )
+
+    proposal.seller_business = seller_business
+    proposal.buyer_business = buyer_business
+    proposal.note = (note or "").strip()
+    proposal.total_amount = total
+    proposal.status = TradeProposal.Status.PENDING if submit else TradeProposal.Status.DRAFT
+    proposal.submitted_at = timezone.now() if submit else None
+    proposal.save()
+    proposal.items.all().delete()
+    _write_proposal_lines(proposal, cleaned)
+
+    if submit:
+        counterparty = proposal.other_business(membership.business)
+        _notify_business(
+            counterparty,
+            capability=TRADE_CONFIRM,
+            title="توافق معامله جدید برای تأیید",
+            body=(
+                f"{membership.business.name} جزئیات معامله‌ای به مبلغ "
+                f"{proposal.total_amount:,.0f} ریال را برای تأیید شما ثبت کرد."
+            ),
+            link=f"/app/trading/agreements/{proposal.id}/",
+        )
+    return proposal
+
+
+@transaction.atomic
+def submit_trade_proposal(*, proposal: TradeProposal, membership: BusinessMembership) -> TradeProposal:
+    _require(membership, TRADE_PROPOSE)
+    locked = TradeProposal.objects.select_for_update().get(pk=proposal.pk)
+    if locked.initiated_by_business_id != membership.business_id:
+        raise TradingError("فقط ثبت‌کننده توافق می‌تواند آن را ارسال کند.")
+    if locked.status != TradeProposal.Status.DRAFT:
+        raise TradingError("این توافق قبلاً ارسال یا بسته شده است.")
+    if not locked.items.exists():
+        raise TradingError("توافق بدون محصول قابل ارسال نیست.")
+    _validate_proposal_parties(
+        seller_business=locked.seller_business,
+        buyer_business=locked.buyer_business,
+        membership=membership,
+    )
+    locked.status = TradeProposal.Status.PENDING
+    locked.submitted_at = timezone.now()
+    locked.save(update_fields=["status", "submitted_at", "updated_at"])
+    counterparty = locked.other_business(membership.business)
+    _notify_business(
+        counterparty,
+        capability=TRADE_CONFIRM,
+        title="توافق معامله جدید برای تأیید",
+        body=f"{membership.business.name} یک توافق معامله برای تأیید شما ثبت کرد.",
+        link=f"/app/trading/agreements/{locked.id}/",
+    )
+    return locked
+
+
+@transaction.atomic
+def cancel_trade_proposal(*, proposal: TradeProposal, membership: BusinessMembership) -> TradeProposal:
+    _require(membership, TRADE_PROPOSE)
+    locked = TradeProposal.objects.select_for_update().get(pk=proposal.pk)
+    if locked.initiated_by_business_id != membership.business_id:
+        raise TradingError("فقط ثبت‌کننده توافق می‌تواند آن را لغو کند.")
+    if locked.status not in TradeProposal.OPEN_STATUSES:
+        raise TradingError("این توافق دیگر قابل لغو نیست.")
+    locked.status = TradeProposal.Status.CANCELLED
+    locked.decided_at = timezone.now()
+    locked.save(update_fields=["status", "decided_at", "updated_at"])
+    return locked
+
+
+@transaction.atomic
+def reject_trade_proposal(*, proposal: TradeProposal, membership: BusinessMembership) -> TradeProposal:
+    _require(membership, TRADE_CONFIRM)
+    locked = TradeProposal.objects.select_for_update().get(pk=proposal.pk)
+    if locked.status != TradeProposal.Status.PENDING:
+        raise TradingError("این توافق دیگر در انتظار پاسخ نیست.")
+    if membership.business_id == locked.initiated_by_business_id:
+        raise TradingError("ثبت‌کننده توافق نمی‌تواند پاسخ طرف مقابل را ثبت کند.")
+    if membership.business_id not in {locked.seller_business_id, locked.buyer_business_id}:
+        raise TradingError("شما طرف این توافق نیستید.")
+    locked.status = TradeProposal.Status.REJECTED
+    locked.decided_at = timezone.now()
+    locked.save(update_fields=["status", "decided_at", "updated_at"])
+    _notify_business(
+        locked.initiated_by_business,
+        capability=TRADE_PROPOSE,
+        title="توافق معامله رد شد",
+        body=f"{membership.business.name} توافق معامله را رد کرد.",
+        link=f"/app/trading/agreements/{locked.id}/",
+    )
+    return locked
+
+
+@transaction.atomic
+def confirm_trade_proposal(*, proposal: TradeProposal, membership: BusinessMembership) -> Trade:
+    """Atomically confirm once, then create the Trade, books and issued invoice."""
+    _require(membership, TRADE_CONFIRM)
+    locked = (
+        TradeProposal.objects.select_for_update()
+        .select_related("seller_business", "buyer_business", "initiated_by_business", "trade")
+        .prefetch_related("items")
+        .get(pk=proposal.pk)
+    )
+    if locked.status == TradeProposal.Status.CONFIRMED and locked.trade_id:
+        return locked.trade
+    if locked.status != TradeProposal.Status.PENDING:
+        raise TradingError("این توافق دیگر در انتظار تأیید نیست.")
+    if membership.business_id == locked.initiated_by_business_id:
+        raise TradingError("تأیید باید توسط طرف مقابل انجام شود.")
+    if membership.business_id not in {locked.seller_business_id, locked.buyer_business_id}:
+        raise TradingError("شما طرف این توافق نیستید.")
+
+    _validate_proposal_parties(
+        seller_business=locked.seller_business,
+        buyer_business=locked.buyer_business,
+        membership=membership,
+    )
+    proposal_lines = list(locked.items.all())
+    if not proposal_lines:
+        raise TradingError("توافق بدون محصول قابل تأیید نیست.")
+    lines = [
+        {
+            "item": line.item,
+            "product_name": line.product_name,
+            "stone_type": line.stone_type,
+            "grade": line.grade,
+            "quantity": line.quantity,
+            "unit_price": line.unit_price,
+            "line_total": line.line_total,
+        }
+        for line in proposal_lines
+    ]
+
+    trade = Trade.objects.create(
+        seller_business=locked.seller_business,
+        counterparty_type=Trade.Counterparty.BUSINESS,
+        buyer_business=locked.buyer_business,
+        total_amount=locked.total_amount,
+        currency=locked.currency,
+        note=locked.note,
+        finalized_at=timezone.now(),
+        created_by=membership.user,
+        **_header_snapshot(lines),
+    )
+    _write_lines(trade, lines)
+    locked.status = TradeProposal.Status.CONFIRMED
+    locked.trade = trade
+    locked.confirmed_by = membership.user
+    locked.decided_at = timezone.now()
+    locked.save(update_fields=["status", "trade", "confirmed_by", "decided_at", "updated_at"])
+
+    post_trade_entries(trade=trade, membership=membership)
+    create_invoice_for_confirmed_trade(trade=trade, membership=membership, notes=locked.note)
+
+    _notify_business(
+        locked.initiated_by_business,
+        capability=TRADE_PROPOSE,
+        title="توافق معامله تأیید و نهایی شد",
+        body=f"{membership.business.name} معامله را تأیید کرد؛ فاکتور و حساب دفتری ثبت شدند.",
+        link=f"/app/trading/agreements/{locked.id}/",
+    )
+    logger.info("Trade proposal confirmed proposal=%s trade=%s", locked.id, trade.id)
+    return trade
 
 
 #: What to tell someone acting on a request that has already finished. Keyed by

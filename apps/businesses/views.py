@@ -18,7 +18,15 @@ from .directory import (
 from .entitlements import entitlements_for, seats_remaining
 from .forms import BusinessProfileForm
 from .models import BusinessMembership
-from .permissions import BUSINESS_SETTINGS, LEDGER_VIEW, TEAM_MANAGE, label_for
+from .permissions import (
+    BUSINESS_SETTINGS,
+    INVOICE_VIEW,
+    LEDGER_VIEW,
+    TEAM_MANAGE,
+    TRADE_CONFIRM,
+    TRADE_PROPOSE,
+    label_for,
+)
 from .services import BusinessServiceError, complete_onboarding, update_business_profile
 
 logger = logging.getLogger(__name__)
@@ -183,23 +191,69 @@ def colleague_detail(request: HttpRequest, business_id) -> HttpResponse:
         return redirect("businesses:no_business")
 
     colleague = get_colleague(request.business, business_id)
+    colleague_is_current = colleague is not None
+    if colleague is None:
+        from apps.accounting.selectors import accounting_counterparty
+
+        colleague = accounting_counterparty(request.business, business_id)
     if colleague is None:
         messages.error(request, "این همکار در دسترس نیست.")
         return redirect("businesses:colleagues")
 
     from apps.inventory.policy import eligible_items
 
-    items = eligible_items(
-        audience="colleague",
-        viewer_business=request.business,
-        seller_business=colleague,
-    )[:12]
+    items = (
+        eligible_items(
+            audience="colleague",
+            viewer_business=request.business,
+            seller_business=colleague,
+        )[:12]
+        if colleague_is_current
+        else []
+    )
+
+    can_view_ledger = request.membership.has_capability(LEDGER_VIEW)
+    can_view_invoices = request.membership.has_capability(INVOICE_VIEW)
+    balance = None
+    ledger_entries = []
+    invoices = []
+    if can_view_ledger:
+        from apps.accounting.selectors import counterparty_statement, current_balance, describe_balance
+
+        balance = describe_balance(current_balance(request.business, colleague))
+        ledger_entries = counterparty_statement(request.business, colleague).order_by("-created_at")[:8]
+    if can_view_invoices:
+        from apps.invoicing.selectors import invoices_between
+
+        invoices = invoices_between(request.business, colleague)[:8]
+
+    can_view_trades = request.membership.has_capability(
+        TRADE_PROPOSE
+    ) or request.membership.has_capability(TRADE_CONFIRM)
+    if can_view_trades:
+        from apps.trading.selectors import proposals_between, trades_between
+
+        proposals = proposals_between(request.business, colleague)[:8]
+        trades = trades_between(request.business, colleague)[:8]
+    else:
+        proposals = []
+        trades = []
 
     context = {
         "colleague": colleague,
         "representative": representative_of(colleague),
         "items": items,
-        "can_view_ledger": request.membership.has_capability(LEDGER_VIEW),
+        "can_view_ledger": can_view_ledger,
+        "can_view_invoices": can_view_invoices,
+        "balance": balance,
+        "ledger_entries": ledger_entries,
+        "invoices": invoices,
+        "proposals": proposals,
+        "trades": trades,
+        "can_view_trades": can_view_trades,
+        "can_propose": colleague_is_current
+        and request.membership.has_capability(TRADE_PROPOSE),
+        "colleague_is_current": colleague_is_current,
         "colleague_entitlements": entitlements_for(colleague),
     }
     return render(request, "businesses/colleague_detail.html", context)

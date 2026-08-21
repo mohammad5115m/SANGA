@@ -17,6 +17,9 @@
       {% if 'invoice.manage' in capabilities %}
         <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
       {% endif %}
+      {% if 'trade.propose' in capabilities %}
+        <a class="btn btn-secondary" href="{% url 'trading:proposal_create' %}">ثبت توافق معامله</a>
+      {% endif %}
     </div>
   </div>
 
@@ -32,10 +35,10 @@
         <div class="metric-label">قیمت نیازمند بررسی</div>
         <div class="metric-value">{{ lot_totals.stale_price }}</div>
       </a>
-      {% if 'purchase.request' in capabilities %}
-        <a class="metric metric-link" href="{% url 'trading:received_list' %}?status=open">
-          <div class="metric-label">درخواست خرید باز</div>
-          <div class="metric-value">{{ open_request_count }}</div>
+      {% if 'trade.confirm' in capabilities %}
+        <a class="metric metric-link" href="{% url 'trading:proposal_list' %}?tab=action">
+          <div class="metric-label">توافق نیازمند تأیید من</div>
+          <div class="metric-value">{{ pending_confirmation_count }}</div>
         </a>
       {% endif %}
       {% if 'leads.view' in capabilities %}
@@ -46,12 +49,6 @@
       {% endif %}
     </div>
 
-    {% if awaiting_finalize_count %}
-      <div class="alert alert-warn">
-        {{ awaiting_finalize_count }} درخواست توافق شده اما فروش آن نهایی نشده است.
-        <a href="{% url 'trading:received_list' %}?status=accepted">مشاهده</a>
-      </div>
-    {% endif %}
   </section>
 
   {# --- products needing action --- #}
@@ -77,21 +74,21 @@
     </section>
   {% endif %}
 
-  {# --- open purchase requests --- #}
-  {% if open_requests %}
+  {# --- agreements waiting for this business --- #}
+  {% if pending_confirmations %}
     <section class="stack-md">
       <div class="toolbar">
-        <h2 class="section-title">درخواست‌های خرید</h2>
-        <a class="btn btn-ghost btn-sm" href="{% url 'trading:received_list' %}">همه</a>
+        <h2 class="section-title">توافق‌های نیازمند تأیید</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'trading:proposal_list' %}?tab=action">همه</a>
       </div>
       <div class="list-stack">
-        {% for pr in open_requests %}
-          <a class="list-item" href="{% url 'trading:received_detail' pr.id %}">
+        {% for proposal in pending_confirmations %}
+          <a class="list-item" href="{% url 'trading:proposal_detail' proposal.id %}">
             <div>
-              <div class="list-title">{{ pr.item.product.commercial_name }}</div>
-              <div class="muted">{{ pr.buyer_business.name }} · {{ pr.agreed_qty_sqm }} m²</div>
+              <div class="list-title">{{ proposal.seller_business.name }} ← {{ proposal.buyer_business.name }}</div>
+              <div class="muted">{{ proposal.items.all|length }} قلم · {{ proposal.initiated_by_business.name }}</div>
             </div>
-            {% include "trading/_status_badge.html" %}
+            <strong dir="ltr">{{ proposal.total_amount|rial }}</strong>
           </a>
         {% endfor %}
       </div>
@@ -181,18 +178,18 @@
       <h2 class="section-title">فعالیت اخیر</h2>
       <div class="two-col">
         <div class="stack-sm">
-          <h3 class="section-subtitle">آخرین فروش‌ها</h3>
+          <h3 class="section-subtitle">آخرین معاملات</h3>
           <div class="list-stack">
             {% for trade in recent_trades %}
               <a class="list-item" href="{% url 'trading:trade_detail' trade.id %}">
                 <div>
                   <div class="list-title">{{ trade.summary_label }}</div>
-                  <div class="muted">{{ trade.counterparty_label }}</div>
+                  <div class="muted">{{ trade.seller_business.name }} ← {{ trade.counterparty_label }}</div>
                 </div>
                 <strong dir="ltr">{{ trade.total_amount|rial }}</strong>
               </a>
             {% empty %}
-              <div class="empty-state">هنوز فروشی ثبت نشده است.</div>
+              <div class="empty-state">هنوز معامله‌ای ثبت نشده است.</div>
             {% endfor %}
           </div>
         </div>

@@ -30,8 +30,14 @@ PRICES_VIEW: Final = "prices.view"
 PRICES_EDIT: Final = "prices.edit"
 
 # --- buying and selling -------------------------------------------------------
-PURCHASE_REQUEST: Final = "purchase.request"
-SALE_FINALIZE: Final = "sale.finalize"
+TRADE_PROPOSE: Final = "trade.propose"
+TRADE_CONFIRM: Final = "trade.confirm"
+
+# Compatibility aliases for historical services and migrations. New UI and
+# authorization code use the trade vocabulary above: purchase requests are now
+# read-only history, and no colleague sale finalizes without the other party.
+PURCHASE_REQUEST: Final = TRADE_PROPOSE
+SALE_FINALIZE: Final = TRADE_CONFIRM
 
 # --- invoicing ----------------------------------------------------------------
 INVOICE_VIEW: Final = "invoice.view"
@@ -60,8 +66,8 @@ ALL_CAPABILITIES: Final[tuple[str, ...]] = (
     INVENTORY_CONFIRM,
     PRICES_VIEW,
     PRICES_EDIT,
-    PURCHASE_REQUEST,
-    SALE_FINALIZE,
+    TRADE_PROPOSE,
+    TRADE_CONFIRM,
     INVOICE_VIEW,
     INVOICE_MANAGE,
     LEDGER_VIEW,
@@ -85,8 +91,8 @@ CAPABILITY_LABELS: Final[dict[str, str]] = {
     INVENTORY_CONFIRM: "تأیید موجودی",
     PRICES_VIEW: "دیدن قیمت‌ها",
     PRICES_EDIT: "تغییر قیمت‌ها",
-    PURCHASE_REQUEST: "ارسال درخواست خرید",
-    SALE_FINALIZE: "نهایی کردن فروش",
+    TRADE_PROPOSE: "ثبت توافق معامله",
+    TRADE_CONFIRM: "تأیید معامله",
     INVOICE_VIEW: "دیدن فاکتورها",
     INVOICE_MANAGE: "صدور و مدیریت فاکتور",
     LEDGER_VIEW: "دیدن دفتر حساب",
@@ -112,8 +118,8 @@ ROLE_DEFAULTS: Final[dict[str, tuple[str, ...]]] = {
         INVENTORY_PUBLISH,
         INVENTORY_CONFIRM,
         PRICES_VIEW,
-        PURCHASE_REQUEST,
-        SALE_FINALIZE,
+        TRADE_PROPOSE,
+        TRADE_CONFIRM,
         INVOICE_VIEW,
         LEADS_VIEW,
         LEADS_MANAGE,
@@ -139,6 +145,8 @@ CAPABILITY_MIGRATION_MAP: Final[dict[str, str | None]] = {
     "customers.manage": LEADS_MANAGE,
     "analytics.view": None,
     "audit.view": None,
+    "purchase.request": TRADE_PROPOSE,
+    "sale.finalize": TRADE_CONFIRM,
 }
 
 
