@@ -377,7 +377,9 @@ def confirm_trade_proposal(*, proposal: TradeProposal, membership: BusinessMembe
     """Atomically confirm once, then create the Trade, books and issued invoice."""
     _require(membership, TRADE_CONFIRM)
     locked = (
-        TradeProposal.objects.select_for_update()
+        # Lock only the proposal row. ``trade`` is nullable until confirmation,
+        # so a bare FOR UPDATE across its LEFT JOIN is rejected by PostgreSQL.
+        TradeProposal.objects.select_for_update(of=("self",))
         .select_related("seller_business", "buyer_business", "initiated_by_business", "trade")
         .prefetch_related("items")
         .get(pk=proposal.pk)
