@@ -380,7 +380,10 @@ def confirm_trade_proposal(*, proposal: TradeProposal, membership: BusinessMembe
         # Lock only the proposal row. ``trade`` is nullable until confirmation,
         # so a bare FOR UPDATE across its LEFT JOIN is rejected by PostgreSQL.
         TradeProposal.objects.select_for_update(of=("self",))
-        .select_related("seller_business", "buyer_business", "initiated_by_business", "trade")
+        # Do not join/cache the nullable trade here. A concurrent confirmer may
+        # populate trade_id while this statement waits for the proposal lock;
+        # resolving ``locked.trade`` afterwards must observe that committed row.
+        .select_related("seller_business", "buyer_business", "initiated_by_business")
         .prefetch_related("items")
         .get(pk=proposal.pk)
     )
