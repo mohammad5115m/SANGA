@@ -7,7 +7,7 @@
 <section class="stack-lg">
   <div class="toolbar">
     <div><h1 class="page-title">موجودی من</h1><p class="page-lead">مدیریت محصول و ساخت کاتالوگ از همین فهرست</p></div>
-    <a class="btn btn-primary" href="{% url 'inventory:product_create' %}">افزودن محصول</a>
+    {% if can_add_products %}<a class="btn btn-primary" href="{% url 'inventory:product_create' %}">افزودن محصول</a>{% endif %}
   </div>
 
   {% include "inventory/_filter_bar.html" %}
@@ -16,7 +16,7 @@
     {% csrf_token %}
     <input type="hidden" name="filter_query" value="{{ request.GET.urlencode }}">
 
-    <section class="panel stack-sm">
+    {% if can_manage_catalogs %}<section class="panel stack-sm">
       <div class="toolbar">
         <div>
           <strong>ساخت یا تکمیل کاتالوگ</strong>
@@ -31,14 +31,14 @@
         <button class="btn btn-secondary" type="submit" name="selection_scope" value="selected">استفاده از انتخاب‌شده‌ها</button>
         <button class="btn btn-ghost" type="submit" name="selection_scope" value="filter">استفاده از همه نتایج فیلتر</button>
       </div>
-    </section>
+    </section>{% endif %}
 
     <div class="list-stack">
       {% for row in rows %}
         <div class="lot-card">
-          <label class="chip chip-choice" aria-label="انتخاب {{ row.lot.product.commercial_name }}">
+          {% if can_manage_catalogs %}<label class="chip chip-choice" aria-label="انتخاب {{ row.lot.product.commercial_name }}">
             <input type="checkbox" name="lot_ids" value="{{ row.lot.id }}">
-          </label>
+          </label>{% endif %}
           <a class="lot-card-link" href="{% url 'inventory:lot_detail' row.lot.id %}">
             <div class="lot-thumb">
               {% if row.primary_media and row.primary_media.kind == 'image' %}
@@ -65,7 +65,7 @@
           </a>
         </div>
       {% empty %}
-        <div class="empty-state stack-md"><div>محصولی پیدا نشد.</div><a class="btn btn-primary" href="{% url 'inventory:product_create' %}">ثبت محصول</a></div>
+        <div class="empty-state stack-md"><div>محصولی پیدا نشد.</div>{% if can_add_products %}<a class="btn btn-primary" href="{% url 'inventory:product_create' %}">ثبت محصول</a>{% endif %}</div>
       {% endfor %}
     </div>
   </form>

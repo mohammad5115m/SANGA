@@ -28,6 +28,25 @@ def lots_for_business(business: Business) -> QuerySet[InventoryLot]:
     return owned_items(business)
 
 
+def search_lot_options(qs: QuerySet[InventoryLot], *, q: str = "", limit: int = 20) -> list[dict]:
+    """Small, tenant-scoped payload for asynchronous product pickers."""
+    filtered = ItemFilterSpec(q=q[:100]).apply_non_price(qs)
+    lots = (
+        filtered.prefetch_related(None)
+        .select_related("product", "product__stone")
+        .order_by("-updated_at")[:limit]
+    )
+    return [
+        {
+            "id": str(lot.id),
+            "label": str(lot),
+            "name": lot.product.commercial_name,
+            "stone": lot.product.stone.name,
+        }
+        for lot in lots
+    ]
+
+
 def get_business_lot(business: Business, lot_id) -> InventoryLot | None:
     return lots_for_business(business).filter(pk=lot_id).first()
 

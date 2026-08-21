@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 from django.db.models import F, Max, Min, Q, QuerySet
 from django.utils import timezone
 
-from apps.core.persian import normalize_persian_text
+from apps.core.persian import normalize_persian_text, persian_search_variants
 from apps.pricing.queries import effective_amount_subquery
 
 from .models import InventoryLot
@@ -43,11 +43,13 @@ class ItemFilterSpec:
     stone: str = ""
     processing_type: str = ""
     applications: list[str] = field(default_factory=list)
+    application_match: str = "any"
     availability: str = ""
     price_min: Decimal | None = None
     price_max: Decimal | None = None
     min_qty_sqm: Decimal | None = None
     sort: str = "recent"
+    price_tier: str = ""
 
     @classmethod
     def from_dict(cls, data: dict | None) -> ItemFilterSpec:
@@ -68,12 +70,17 @@ class ItemFilterSpec:
             if isinstance(raw, str):
                 raw = [raw]
             clean["applications"] = [str(item) for item in raw if item]
+        if "application_match" in data:
+            clean["application_match"] = "all" if data.get("application_match") == "all" else "any"
         if "availability" in data:
             value = str(data.get("availability") or "")
             clean["availability"] = value if value in InventoryLot.Availability.values else ""
         if "sort" in data:
             value = str(data.get("sort") or "recent")
             clean["sort"] = value if value in dict(SORT_CHOICES) else "recent"
+        if "price_tier" in data:
+            value = str(data.get("price_tier") or "")
+            clean["price_tier"] = value if value in {"b2b", "b2c"} else ""
         return cls(**{key: value for key, value in clean.items() if key in known})
 
     def to_dict(self) -> dict:
@@ -90,14 +97,17 @@ class ItemFilterSpec:
 
     def apply_non_price(self, qs: QuerySet[InventoryLot]) -> QuerySet[InventoryLot]:
         if self.q:
-            qs = qs.filter(
-                Q(product__commercial_name__icontains=self.q)
-                | Q(product__name_suffix__icontains=self.q)
-                | Q(product__stone__name__icontains=self.q)
-                | Q(product__pattern__icontains=self.q)
-                | Q(lot_code__icontains=self.q)
-                | Q(processing_type__icontains=self.q)
-            )
+            query = Q()
+            for term in persian_search_variants(self.q):
+                query |= (
+                    Q(product__commercial_name__icontains=term)
+                    | Q(product__name_suffix__icontains=term)
+                    | Q(product__stone__name__icontains=term)
+                    | Q(product__pattern__icontains=term)
+                    | Q(lot_code__icontains=term)
+                    | Q(processing_type__icontains=term)
+                )
+            qs = qs.filter(query)
         if self.stone:
             try:
                 stone_id = int(self.stone)
@@ -108,7 +118,12 @@ class ItemFilterSpec:
         if self.processing_type:
             qs = qs.filter(processing_type__icontains=self.processing_type)
         if self.applications:
-            qs = qs.filter(product__applications__code__in=self.applications).distinct()
+            if self.application_match == "all":
+                for code in self.applications:
+                    qs = qs.filter(product__applications__code=code)
+            else:
+                qs = qs.filter(product__applications__code__in=self.applications)
+            qs = qs.distinct()
         if self.availability:
             qs = qs.filter(availability_status=self.availability)
         if self.min_qty_sqm is not None:
@@ -126,7 +141,7 @@ class ItemFilterSpec:
     def _apply_price(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
         if self.price_min is None and self.price_max is None:
             return qs
-        tier = _FILTER_TIER.get(audience, "b2c")
+        tier = self._price_tier(audience)
         qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
         if self.price_min is not None:
             qs = qs.filter(_effective_price__gte=self.price_min)
@@ -138,12 +153,17 @@ class ItemFilterSpec:
         if self.sort == "confirmed":
             return qs.order_by("-stock_confirmed_at", "-updated_at")
         if self.sort in ("price_asc", "price_desc"):
-            tier = _FILTER_TIER.get(audience, "b2c")
+            tier = self._price_tier(audience)
             qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
             if self.sort == "price_asc":
                 return qs.order_by(F("_effective_price").asc(nulls_last=True), "-updated_at")
             return qs.order_by(F("_effective_price").desc(nulls_last=True), "-updated_at")
         return qs.order_by("-updated_at")
+
+    def _price_tier(self, audience: Audience) -> str:
+        if audience == "owner" and self.price_tier in {"b2b", "b2c"}:
+            return self.price_tier
+        return _FILTER_TIER.get(audience, "b2c")
 
 
 def effective_price_bounds(
@@ -151,7 +171,7 @@ def effective_price_bounds(
 ) -> tuple[Decimal | None, Decimal | None]:
     """Bounds after non-price filters, using exactly the price this audience sees."""
 
-    tier = _FILTER_TIER.get(audience, "b2c")
+    tier = spec._price_tier(audience)
     values = spec.apply_non_price(qs).annotate(_effective_price=effective_amount_subquery(tier)).aggregate(
         minimum=Min("_effective_price"), maximum=Max("_effective_price")
     )

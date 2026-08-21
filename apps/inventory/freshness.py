@@ -15,6 +15,8 @@ from enum import StrEnum
 
 from django.utils import timezone
 
+from apps.core.formatting import format_decimal
+
 from .models import InventoryLot
 
 
@@ -70,7 +72,7 @@ def stock_view(lot: InventoryLot) -> StockView:
     if lot.available_sqm is not None and lot.is_stock_fresh:
         return StockView(
             display=StockDisplay.EXACT,
-            label=f"{lot.available_sqm:,.0f} متر مربع",
+            label=f"{format_decimal(lot.available_sqm, grouped=True)} متر مربع",
             quantity_sqm=lot.available_sqm,
             confirmed_at=confirmed_at,
             human_confirmed=human,

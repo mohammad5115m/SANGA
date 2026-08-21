@@ -5,6 +5,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -228,6 +229,7 @@ class InventoryLot(models.Model):
         default=generate_public_token,
         editable=False,
     )
+    creation_token = models.UUIDField(null=True, blank=True, editable=False)
 
     stock_confirmed_at = models.DateTimeField(null=True, blank=True)
     stock_valid_for_days = models.PositiveSmallIntegerField("اعتبار موجودی (روز)", default=7)
@@ -273,6 +275,39 @@ class InventoryLot(models.Model):
                 condition=models.Q(available_sqm__isnull=True) | models.Q(available_sqm__gte=0),
                 name="lot_available_sqm_nonnegative",
             ),
+            models.CheckConstraint(
+                condition=models.Q(length_cm__isnull=True) | models.Q(length_cm__gt=0),
+                name="lot_length_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(width_cm__isnull=True) | models.Q(width_cm__gt=0),
+                name="lot_width_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(thickness_mm__isnull=True) | models.Q(thickness_mm__gt=0),
+                name="lot_thickness_positive",
+            ),
+            models.CheckConstraint(condition=models.Q(min_sale_qty__gte=0), name="lot_min_sale_nonnegative"),
+            models.CheckConstraint(
+                condition=models.Q(stock_valid_for_days__gte=1, stock_valid_for_days__lte=365),
+                name="lot_stock_valid_days_range",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(available_sqm__isnull=True)
+                    | models.Q(min_sale_qty__lte=models.F("available_sqm"))
+                ),
+                name="lot_min_sale_within_stock",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(availability_status="available", available_sqm=0),
+                name="lot_zero_stock_not_available",
+            ),
+            models.UniqueConstraint(
+                fields=["business", "creation_token"],
+                condition=models.Q(creation_token__isnull=False),
+                name="uniq_lot_creation_token",
+            ),
         ]
         indexes = [
             models.Index(fields=["business", "status"]),
@@ -282,6 +317,10 @@ class InventoryLot(models.Model):
                 fields=["is_visible", "availability_status", "deleted_at"],
                 name="inventory_i_elig_idx",
             ),
+            models.Index(
+                fields=["business", "is_visible", "availability_status", "status", "deleted_at"],
+                name="inventory_lot_sell_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -289,9 +328,16 @@ class InventoryLot(models.Model):
 
     def save(self, *args, **kwargs):
         if self.pk and hasattr(self, "_original_lot_code") and self.lot_code != self._original_lot_code:
-            from django.core.exceptions import ValidationError
-
             raise ValidationError({"lot_code": "کد محصول پس از ایجاد قابل تغییر نیست."})
+        if self.product_id and self.business_id:
+            cached_product = self._state.fields_cache.get("product")
+            product_business_id = (
+                cached_product.business_id
+                if cached_product is not None
+                else Product.objects.only("business_id").get(pk=self.product_id).business_id
+            )
+            if product_business_id != self.business_id:
+                raise ValidationError({"product": "محصول و موجودی باید متعلق به یک کسب‌وکار باشند."})
         expires_at = self.compute_stock_expiry()
         if expires_at != self.stock_expires_at:
             self.stock_expires_at = expires_at

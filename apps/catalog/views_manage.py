@@ -7,7 +7,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import CATALOG_MANAGE
-from apps.inventory.catalog_selection import get_selection, resolve_selection
+from apps.inventory.catalog_selection import MAX_CATALOG_ITEMS, get_selection, resolve_selection
 
 from .forms import CustomCatalogForm
 from .models import CustomCatalog
@@ -36,10 +36,16 @@ def catalog_create(request: HttpRequest) -> HttpResponse:
         # Re-resolve on submit: a filter selection means "all matching now", and
         # ownership/deletion may have changed since the confirmation page loaded.
         selected_ids = list(
-            resolve_selection(business=request.business, record=selection).values_list("pk", flat=True)
+            resolve_selection(business=request.business, record=selection)
+            .values_list("pk", flat=True)[: MAX_CATALOG_ITEMS + 1]
         )
         if not selected_ids:
             form.add_error(None, "هیچ محصول معتبری برای ساخت کاتالوگ باقی نمانده است.")
+        elif len(selected_ids) > MAX_CATALOG_ITEMS:
+            form.add_error(
+                None,
+                f"هر کاتالوگ حداکثر {MAX_CATALOG_ITEMS} محصول دارد؛ فیلتر را محدودتر کنید.",
+            )
         else:
             try:
                 catalog = create_custom_catalog(

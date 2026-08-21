@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from django import forms
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from apps.businesses.models import Business
+from apps.core.forms import PersianNumericFormMixin
 from apps.inventory.models import InventoryLot
 
 _TEXT = {"class": "field-input"}
 
 
-class PurchaseRequestForm(forms.Form):
+class PurchaseRequestForm(PersianNumericFormMixin, forms.Form):
     """What a buyer fills in on a product page."""
+
+    numeric_fields = ("requested_qty_sqm", "proposed_unit_price")
 
     requested_qty_sqm = forms.DecimalField(
         label="متراژ مورد نیاز (m²)",
-        min_value=0,
+        min_value=Decimal("0.001"),
         decimal_places=3,
         max_digits=12,
         widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001", "inputmode": "decimal"}),
@@ -23,7 +28,7 @@ class PurchaseRequestForm(forms.Form):
     proposed_unit_price = forms.DecimalField(
         label="قیمت پیشنهادی شما (ریال، اختیاری)",
         required=False,
-        min_value=0,
+        min_value=1,
         decimal_places=0,
         max_digits=14,
         widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
@@ -35,13 +40,15 @@ class PurchaseRequestForm(forms.Form):
     )
 
 
-class PurchaseRequestResponseForm(forms.Form):
+class PurchaseRequestResponseForm(PersianNumericFormMixin, forms.Form):
     """The seller's reply. Accepting here is agreement, not a sale."""
+
+    numeric_fields = ("final_qty_sqm", "final_unit_price")
 
     final_qty_sqm = forms.DecimalField(
         label="متراژ نهایی (m²)",
         required=False,
-        min_value=0,
+        min_value=Decimal("0.001"),
         decimal_places=3,
         max_digits=12,
         widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001", "inputmode": "decimal"}),
@@ -49,7 +56,7 @@ class PurchaseRequestResponseForm(forms.Form):
     final_unit_price = forms.DecimalField(
         label="قیمت نهایی (ریال)",
         required=False,
-        min_value=0,
+        min_value=1,
         decimal_places=0,
         max_digits=14,
         widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
@@ -134,7 +141,7 @@ class DirectSaleForm(forms.Form):
         return cleaned
 
 
-class DirectSaleLineForm(forms.Form):
+class DirectSaleLineForm(PersianNumericFormMixin, forms.Form):
     """One product row of a direct sale.
 
     A stone seller sells travertine, marble and crystal to one colleague in one
@@ -143,12 +150,12 @@ class DirectSaleLineForm(forms.Form):
     the sale is a formset of them.
     """
 
+    numeric_fields = ("quantity", "unit_price")
     item = forms.ModelChoiceField(
         label="محصول",
         queryset=InventoryLot.objects.none(),
         required=False,
-        empty_label="— خارج از فهرست محصولات —",
-        widget=forms.Select(attrs=_TEXT),
+        widget=forms.HiddenInput,
     )
     product_name = forms.CharField(
         label="نام محصول (اگر خارج از فهرست است)",
@@ -159,7 +166,7 @@ class DirectSaleLineForm(forms.Form):
     quantity = forms.DecimalField(
         label="متراژ (m²)",
         required=False,
-        min_value=0,
+        min_value=Decimal("0.001"),
         decimal_places=3,
         max_digits=12,
         widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001", "inputmode": "decimal"}),
@@ -167,7 +174,7 @@ class DirectSaleLineForm(forms.Form):
     unit_price = forms.DecimalField(
         label="قیمت واحد (ریال)",
         required=False,
-        min_value=0,
+        min_value=1,
         decimal_places=0,
         max_digits=14,
         widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
@@ -175,10 +182,18 @@ class DirectSaleLineForm(forms.Form):
 
     def __init__(self, *args, business=None, **kwargs):
         super().__init__(*args, **kwargs)
+        item_qs = InventoryLot.objects.none()
         if business is not None:
             from apps.inventory.selectors import lots_for_business
 
-            self.fields["item"].queryset = lots_for_business(business)
+            item_qs = lots_for_business(business)
+        self.fields["item"].queryset = item_qs
+        raw_item = self.initial.get("item") or self.data.get(self.add_prefix("item"))
+        try:
+            selected = item_qs.filter(pk=raw_item).first() if raw_item else None
+        except (DjangoValidationError, TypeError, ValueError):
+            selected = None
+        self.item_label = str(selected) if selected else ""
 
     @property
     def is_blank(self) -> bool:
@@ -292,13 +307,13 @@ class TradeProposalForm(forms.Form):
         return cleaned
 
 
-class TradeProposalLineForm(forms.Form):
+class TradeProposalLineForm(PersianNumericFormMixin, forms.Form):
+    numeric_fields = ("quantity", "unit_price")
     item = forms.ModelChoiceField(
         label="محصول ثبت‌شده",
         queryset=InventoryLot.objects.none(),
         required=False,
-        empty_label="— محصول متفرقه —",
-        widget=forms.Select(attrs=_TEXT),
+        widget=forms.HiddenInput,
     )
     product_name = forms.CharField(
         label="نام محصول متفرقه",
@@ -309,7 +324,7 @@ class TradeProposalLineForm(forms.Form):
     quantity = forms.DecimalField(
         label="متراژ (m²)",
         required=False,
-        min_value=0,
+        min_value=Decimal("0.001"),
         decimal_places=3,
         max_digits=12,
         widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001", "inputmode": "decimal"}),
@@ -317,7 +332,7 @@ class TradeProposalLineForm(forms.Form):
     unit_price = forms.DecimalField(
         label="قیمت توافقی هر متر (ریال)",
         required=False,
-        min_value=0,
+        min_value=1,
         decimal_places=0,
         max_digits=14,
         widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
@@ -327,6 +342,13 @@ class TradeProposalLineForm(forms.Form):
         super().__init__(*args, **kwargs)
         if item_queryset is not None:
             self.fields["item"].queryset = item_queryset
+        item_qs = self.fields["item"].queryset
+        raw_item = self.initial.get("item") or self.data.get(self.add_prefix("item"))
+        try:
+            selected = item_qs.filter(pk=raw_item).first() if raw_item else None
+        except (DjangoValidationError, TypeError, ValueError):
+            selected = None
+        self.item_label = str(selected) if selected else ""
 
     @property
     def is_blank(self) -> bool:

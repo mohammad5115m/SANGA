@@ -11,8 +11,12 @@
       <p class="page-lead" dir="ltr">{{ lot.lot_code }}</p>
     </div>
     <div class="btn-row">
+      {% if 'inventory.edit' in capabilities %}
       <a class="btn btn-secondary" href="{% url 'inventory:lot_edit' lot.id %}">ویرایش</a>
+      {% endif %}
+      {% if 'inventory.media' in capabilities %}
       <a class="btn btn-ghost" href="{% url 'inventory:lot_media' lot.id %}">عکس و ویدیو</a>
+      {% endif %}
     </div>
   </div>
 
@@ -37,24 +41,25 @@
     <div class="kv"><span>آخرین تأیید موجودی</span><strong>{{ stock.human_confirmed }}</strong></div>
 
     <div class="btn-row">
-      {% if stock.needs_confirmation %}
+      {% if 'inventory.confirm' in capabilities and stock.needs_confirmation %}
       <form method="post" action="{% url 'inventory:lot_confirm_stock' lot.id %}">
         {% csrf_token %}<input type="hidden" name="action" value="reconfirm">
         <button class="btn btn-primary" type="submit">تأیید مجدد با یک کلیک</button>
       </form>
       {% endif %}
-      <a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' lot.id %}">
+      {% if 'inventory.confirm' in capabilities %}<a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' lot.id %}">
         تأیید / بروزرسانی موجودی
-      </a>
+      </a>{% endif %}
 
+      {% if 'inventory.publish' in capabilities %}
       <form method="post" action="{% url 'inventory:lot_set_availability' lot.id %}">
         {% csrf_token %}
         {% if lot.is_unavailable %}
           <input type="hidden" name="available" value="1">
-          <button class="btn btn-secondary" type="submit">موجود کردن</button>
+          <button class="btn btn-secondary" type="submit" data-confirm="محصول دوباره موجود شود؟">موجود کردن</button>
         {% else %}
           <input type="hidden" name="available" value="0">
-          <button class="btn btn-ghost" type="submit">ناموجود کردن</button>
+          <button class="btn btn-ghost" type="submit" data-confirm="محصول از تمام صفحات خریداران پنهان شود؟">ناموجود کردن</button>
         {% endif %}
       </form>
 
@@ -62,20 +67,25 @@
         {% csrf_token %}
         {% if lot.is_visible %}
           <input type="hidden" name="visible" value="0">
-          <button class="btn btn-ghost" type="submit">توقف انتشار</button>
+          <button class="btn btn-ghost" type="submit" data-confirm="انتشار عمومی و همکاری متوقف شود؟">توقف انتشار</button>
         {% else %}
           <input type="hidden" name="visible" value="1">
           <button class="btn btn-primary" type="submit">انتشار</button>
         {% endif %}
       </form>
+      {% endif %}
     </div>
   </section>
 
   <section class="panel stack-md">
     <h2 class="section-title">اشتراک‌گذاری</h2>
+    {% if is_publicly_shareable %}
     <p class="muted">این لینک اطلاعات مشتری‌پسند را نشان می‌دهد و قیمت همکار در آن دیده نمی‌شود.</p>
     <div class="field"><input class="field-input" dir="ltr" readonly value="{{ share_url }}"></div>
     {% with product=lot.product %}{% include "catalog/_share_actions.html" %}{% endwith %}
+    {% else %}
+      <div class="alert-warn">این محصول اکنون عمومی نیست. برای فعال‌شدن لینک، محصول باید فعال، موجود و منتشرشده باشد و کسب‌وکار امکان فروش داشته باشد.</div>
+    {% endif %}
   </section>
 
   <section class="panel stack-sm">
@@ -111,7 +121,7 @@
         {% elif prices.b2b %}استعلام قیمت{% else %}—{% endif %}
       </strong>
     </div>
-    {% if prices.b2b.expired %}<p class="muted">قیمت همکار منقضی شده و به مشتری نمایش داده نمی‌شود.</p>{% endif %}
+    {% if prices.b2b.expired %}<p class="muted">قیمت همکار منقضی شده و به همکاران نمایش داده نمی‌شود.</p>{% endif %}
     <div class="kv">
       <span>قیمت مشتری</span>
       <strong dir="ltr">
@@ -120,17 +130,21 @@
       </strong>
     </div>
     {% if prices.b2c.expired %}<p class="muted">قیمت مشتری منقضی شده و به مشتری نمایش داده نمی‌شود.</p>{% endif %}
-    {% if can_edit_prices %}
+    {% if can_edit_prices and 'inventory.edit' in capabilities %}
       <a class="btn btn-secondary btn-sm" href="{% url 'inventory:lot_edit' lot.id %}">بروزرسانی قیمت</a>
     {% endif %}
   </section>
   {% endif %}
 
   <div class="btn-row">
+    {% if can_add_products %}
     <form method="post" action="{% url 'inventory:lot_duplicate' lot.id %}">
       {% csrf_token %}<button class="btn btn-ghost" type="submit">کپی</button>
     </form>
+    {% endif %}
+    {% if 'inventory.edit' in capabilities %}
     <a class="btn btn-danger" href="{% url 'inventory:lot_delete' lot.id %}">حذف محصول</a>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

@@ -35,9 +35,9 @@
       {% csrf_token %}
       <input type="hidden" name="action" value="reorder">
       <h2 class="section-title">ترتیب نمایش</h2>
-      <div class="media-grid">
+      <div class="media-grid" data-media-order>
         {% for media in media_items %}
-          <div class="media-tile">
+          <div class="media-tile" data-media-tile>
             {% if media.kind == 'image' %}
               <img src="{{ media.file.url }}" alt="{{ media.caption }}" loading="lazy">
             {% else %}
@@ -45,13 +45,20 @@
             {% endif %}
             {% if media.is_primary %}<span class="badge badge-accent">تصویر اصلی</span>{% endif %}
             <input type="hidden" name="order" value="{{ media.id }}">
+            <div class="media-order-actions" aria-label="تغییر ترتیب {{ media.caption|default:'رسانه' }}">
+              <button class="btn btn-ghost btn-sm" type="button" data-media-move="up">بالاتر</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-media-move="down">پایین‌تر</button>
+            </div>
             <div class="media-tile-actions">
+              {% if media.kind == 'image' and not media.is_primary %}
               <button class="btn btn-ghost btn-sm" type="submit"
                       form="media-{{ media.id }}" name="action" value="primary">
                 تصویر اصلی
               </button>
+              {% endif %}
               <button class="btn btn-danger btn-sm" type="submit"
-                      form="media-{{ media.id }}" name="action" value="delete">
+                      form="media-{{ media.id }}" name="action" value="delete"
+                      data-confirm="این رسانه حذف شود؟">
                 حذف
               </button>
             </div>

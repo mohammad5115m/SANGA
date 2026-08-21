@@ -75,20 +75,20 @@ def invoice_print(request: HttpRequest, invoice_id) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def invoice_create(request: HttpRequest) -> HttpResponse:
     form = ManualInvoiceForm(request.POST or None, business=request.business)
-    formset = InvoiceLineFormSet(request.POST or None, prefix="lines")
+    formset = InvoiceLineFormSet(request.POST or None, prefix="lines", business=request.business)
 
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         lines = [
             {
-                "product_name": line.get("product_name"),
+                "product_name": line.get("product_name") or "",
                 "stone_type": line.get("stone_type", ""),
                 "grade": line.get("grade", ""),
                 "quantity": line.get("quantity"),
                 "unit_price": line.get("unit_price"),
-                "item": None,
+                "item": line.get("item"),
             }
             for line in formset.cleaned_data
-            if line and not line.get("DELETE") and line.get("product_name")
+            if line and not line.get("DELETE") and (line.get("item") or line.get("product_name"))
         ]
         try:
             invoice = create_manual_invoice(

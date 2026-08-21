@@ -42,9 +42,23 @@ def _business_or_404(slug: str):
     return business
 
 
-def _compare_ids(request: HttpRequest) -> list[str]:
-    raw = request.session.get(COMPARE_SESSION_KEY, [])
-    return [str(x) for x in raw][:4]
+def _compare_map(request: HttpRequest) -> dict[str, list[str]]:
+    raw = request.session.get(COMPARE_SESSION_KEY, {})
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(key): [str(item) for item in value][:4]
+        for key, value in raw.items()
+        if isinstance(value, list)
+    }
+
+
+def _compare_ids(request: HttpRequest, business) -> list[str]:
+    return _compare_map(request).get(str(business.id), [])
+
+
+def _all_compare_ids(request: HttpRequest) -> list[str]:
+    return [item for values in _compare_map(request).values() for item in values]
 
 
 @require_http_methods(["GET"])
@@ -67,7 +81,7 @@ def public_search(request: HttpRequest) -> HttpResponse:
             "filter_form": form,
             "cards": cards,
             "page": page,
-            "compare_ids": _compare_ids(request),
+            "compare_ids": _all_compare_ids(request),
             "selection_count": cart.count(request),
             "price_bounds": {"minimum": minimum, "maximum": maximum},
         },
@@ -95,7 +109,7 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
             "filter_form": form,
             "cards": cards,
             "page": page,
-            "compare_ids": _compare_ids(request),
+            "compare_ids": _compare_ids(request, business),
             "selection_count": cart.count(request),
             "price_bounds": {"minimum": minimum, "maximum": maximum},
         },
@@ -123,7 +137,7 @@ def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse
             "media_items": list(lot.media.all()),
             "related_cards": [public_lot_card(item) for item in related_public_lots(lot)],
             "is_selected": cart.contains(request, lot.pk),
-            "compare_ids": _compare_ids(request),
+            "compare_ids": _compare_ids(request, business),
             "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
         },
     )
@@ -204,13 +218,16 @@ def compare_toggle(request: HttpRequest, business_slug: str, lot_id) -> HttpResp
     lot = get_public_lot(business, lot_id)
     if lot is None:
         return redirect("catalog:storefront", business_slug=business_slug)
-    ids = _compare_ids(request)
+    compare_map = _compare_map(request)
+    key = str(business.id)
+    ids = compare_map.get(key, [])
     lid = str(lot.id)
     if lid in ids:
         ids = [x for x in ids if x != lid]
     elif len(ids) < 4:
         ids.append(lid)
-    request.session[COMPARE_SESSION_KEY] = ids
+    compare_map[key] = ids
+    request.session[COMPARE_SESSION_KEY] = compare_map
     request.session.modified = True
     next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
     # Only follow same-host redirects; anything else could be an open redirect.
@@ -224,7 +241,7 @@ def compare_toggle(request: HttpRequest, business_slug: str, lot_id) -> HttpResp
 @require_http_methods(["GET"])
 def compare_view(request: HttpRequest, business_slug: str) -> HttpResponse:
     business = _business_or_404(business_slug)
-    ids = _compare_ids(request)
+    ids = _compare_ids(request, business)
     lots = list(public_catalog_lots(business).filter(id__in=ids))
     order = {lid: idx for idx, lid in enumerate(ids)}
     lots.sort(key=lambda lot: order.get(str(lot.id), 99))

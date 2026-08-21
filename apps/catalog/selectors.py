@@ -132,4 +132,4 @@ def catalog_notes(catalog: CustomCatalog) -> dict:
 
 
 def catalogs_for_business(business: Business) -> QuerySet[CustomCatalog]:
-    return CustomCatalog.objects.filter(business=business).prefetch_related("items__lot__product")
+    return CustomCatalog.objects.filter(business=business).only("id", "title").order_by("title")

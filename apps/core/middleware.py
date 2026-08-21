@@ -5,8 +5,8 @@ ones here are the content-level ones it does not: a Content-Security-Policy, and
 a Permissions-Policy for device APIs SANGA never uses.
 
 The policy is deliberately narrow enough to be worth having. `script-src 'self'`
-is the load-bearing clause and it only became possible once Alpine and HTMX were
-self-hosted and the last inline script moved into ``static/js/app.js`` — a policy
+is the load-bearing clause and it only became possible once HTMX was self-hosted
+and the last inline script moved into ``static/js/app.js`` — a policy
 with `unsafe-inline` in it is close to no policy at all.
 """
 
@@ -27,8 +27,8 @@ _FONT_FILES = "https://fonts.gstatic.com"
 DEFAULT_CSP: dict[str, tuple[str, ...]] = {
     "default-src": ("'self'",),
     "script-src": ("'self'",),
-    # Alpine writes inline styles for x-show/x-cloak, and Google Fonts serves a
-    # stylesheet. Neither can execute code.
+    # Components use native hidden/details state. Google Fonts serves the only
+    # external stylesheet; styles cannot execute code.
     "style-src": ("'self'", "'unsafe-inline'", _FONT_CSS),
     "font-src": ("'self'", _FONT_FILES, "data:"),
     # Product media may be served from object storage, so the image and media

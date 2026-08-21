@@ -272,7 +272,7 @@ def create_manual_invoice(
         raise InvoiceError("نام خریدار را وارد کنید.")
     buyer_name = customer_name
 
-    cleaned = [_clean_line(line) for line in (lines or []) if line]
+    cleaned = [_clean_line(line, seller_business=business) for line in (lines or []) if line]
     if not cleaned:
         raise InvoiceError("حداقل یک ردیف به فاکتور اضافه کنید.")
 
@@ -311,8 +311,10 @@ def create_manual_invoice(
     return invoice
 
 
-def _clean_line(line: dict) -> dict:
+def _clean_line(line: dict, *, seller_business: Business) -> dict:
     item = line.get("item")
+    if item is not None and item.business_id != seller_business.id:
+        raise InvoiceError("محصول انتخاب‌شده متعلق به این کسب‌وکار نیست.")
     name = (line.get("product_name") or "").strip()
     if not name and item is not None:
         name = item.product.commercial_name
@@ -323,8 +325,8 @@ def _clean_line(line: dict) -> dict:
     if quantity <= 0:
         raise InvoiceError("مقدار هر ردیف باید بزرگ‌تر از صفر باشد.")
     unit_price = _quantize(line.get("unit_price"))
-    if unit_price < 0:
-        raise InvoiceError("قیمت نمی‌تواند منفی باشد.")
+    if unit_price <= 0:
+        raise InvoiceError("قیمت باید بزرگ‌تر از صفر باشد.")
 
     return {
         "item": item,

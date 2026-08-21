@@ -10,6 +10,7 @@ from .selectors import filter_owned_lots, lots_for_business
 
 SESSION_KEY = "inventory_catalog_selections"
 MAX_SELECTIONS = 5
+MAX_CATALOG_ITEMS = 500
 SELECTION_TTL = timedelta(hours=1)
 
 

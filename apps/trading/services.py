@@ -96,8 +96,8 @@ def _clean_line(line: dict, *, seller_business: Business) -> dict:
     if quantity <= 0:
         raise TradingError("متراژ هر ردیف باید بزرگ‌تر از صفر باشد.")
     unit_price = _quantize(line.get("unit_price"), "0.01")
-    if unit_price < 0:
-        raise TradingError("قیمت نمی‌تواند منفی باشد.")
+    if unit_price <= 0:
+        raise TradingError("قیمت باید بزرگ‌تر از صفر باشد.")
 
     return {
         "item": item,
@@ -541,8 +541,8 @@ def create_purchase_request(
     price = None
     if proposed_unit_price not in (None, ""):
         price = _quantize(proposed_unit_price, "0.01")
-        if price < 0:
-            raise TradingError("قیمت پیشنهادی نمی‌تواند منفی باشد.")
+        if price <= 0:
+            raise TradingError("قیمت پیشنهادی باید بزرگ‌تر از صفر باشد.")
 
     request = PurchaseRequest.objects.create(
         item=visible,
@@ -640,8 +640,8 @@ def respond_to_purchase_request(
         locked.final_qty_sqm = qty
     if final_unit_price not in (None, ""):
         price = _quantize(final_unit_price, "0.01")
-        if price < 0:
-            raise TradingError("قیمت نهایی نمی‌تواند منفی باشد.")
+        if price <= 0:
+            raise TradingError("قیمت نهایی باید بزرگ‌تر از صفر باشد.")
         locked.final_unit_price = price
 
     if locked.agreed_unit_price is None:

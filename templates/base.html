@@ -12,14 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
-  {% comment %}
-  Self-hosted and version-pinned, not loaded from a CDN. A CDN script tag is a
-  standing grant of arbitrary code execution on every SANGA page to whoever
-  controls that origin, including any future owner of the package name. Serving
-  the bytes ourselves also means the Content-Security-Policy can be
-  `script-src 'self'` with nothing to carve out. Upgrading is a commit.
-  {% endcomment %}
-  <script defer src="{% static 'vendor/alpine-3.14.1.min.js' %}"></script>
+  {# Interactive controls use the CSP-safe code in static/js/app.js. #}
   <script src="{% static 'vendor/htmx-2.0.2.min.js' %}"></script>
   {% block extra_head %}{% endblock %}
 </head>

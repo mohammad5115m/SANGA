@@ -10,6 +10,7 @@ urlpatterns = [
     path("", views.lot_list, name="lot_list"),
     path("new/", views.product_create, name="product_create"),
     path("quick-add/", views.product_create, name="quick_add_start"),
+    path("product-options/", views.product_options, name="product_options"),
     path("catalog-selection/", views.catalog_selection_start, name="catalog_selection_start"),
     path("items/<uuid:lot_id>/", views.lot_detail, name="lot_detail"),
     path("items/<uuid:lot_id>/edit/", views.lot_edit, name="lot_edit"),

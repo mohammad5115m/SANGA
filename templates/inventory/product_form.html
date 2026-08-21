@@ -14,6 +14,7 @@
 
   <form method="post" class="stack-lg" novalidate>
     {% csrf_token %}
+    {{ form.submission_id }}
     {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
 
     <section class="panel stack-md">
@@ -33,7 +34,7 @@
     <section class="panel stack-md">
       <h2 class="section-title">مشخصات و موجودی</h2>
       {% for field in form %}
-        {% if field.name == 'processing_type' or field.name == 'length_cm' or field.name == 'width_cm' or field.name == 'thickness_cm' or field.name == 'available_sqm' or field.name == 'stock_valid_for_days' or field.name == 'min_sale_qty' %}
+        {% if field.name == 'processing_type' or field.name == 'dimension_mode' or field.name == 'length_cm' or field.name == 'width_cm' or field.name == 'thickness_cm' or field.name == 'available_sqm' or field.name == 'stock_valid_for_days' or field.name == 'min_sale_qty' %}
           <label class="field">
             <span class="field-label">{{ field.label }}</span>{{ field }}
             {% if field.help_text %}<span class="field-help">{{ field.help_text }}</span>{% endif %}
@@ -46,7 +47,7 @@
     <section class="panel stack-md">
       <h2 class="section-title">توضیحات و انتشار</h2>
       {% for field in form %}
-        {% if field.name == 'description_public' or field.name == 'description_professional' or field.name == 'defect_notes' or field.name == 'availability_status' or field.name == 'is_visible' or field.name == 'is_urgent_sale' %}
+        {% if field.name == 'description_public' or field.name == 'description_professional' or field.name == 'defect_notes' or field.name == 'availability_status' or field.name == 'is_urgent_sale' or field.name == 'is_visible' and can_publish %}
           <label class="field{% if field.name == 'is_visible' or field.name == 'is_urgent_sale' %} checkbox-field{% endif %}">
             <span class="field-label">{{ field.label }}</span>{{ field }}
             {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}

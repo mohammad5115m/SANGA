@@ -3,16 +3,17 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from django.contrib import messages
-from django.http import HttpRequest, HttpResponse
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import SALE_FINALIZE, TRADE_CONFIRM, TRADE_PROPOSE
 from apps.core.pagination import ROW_PAGE_SIZE, paginate
 from apps.inventory.policy import eligible_items, get_eligible_item
-from apps.inventory.selectors import lots_for_business
+from apps.inventory.selectors import lots_for_business, search_lot_options
 from apps.invoicing.services import InvoiceError, create_invoice_for_trade
 
 from .forms import TradeProposalForm, TradeProposalLineFormSet
@@ -60,6 +61,31 @@ def _proposal_form_context(*, form, lines, proposal=None):
         "proposal": proposal,
         "page_title": "ویرایش پیش‌نویس توافق" if proposal else "ثبت توافق معامله",
     }
+
+
+@business_login_required
+@require_capability(TRADE_PROPOSE)
+@require_GET
+def proposal_product_options(request: HttpRequest) -> JsonResponse:
+    """Return only products the selected proposal seller may expose."""
+    direction = request.GET.get("direction")
+    seller = request.business
+    if direction == TradeProposalForm.Direction.BUY:
+        from apps.businesses.directory import colleague_businesses
+
+        try:
+            seller = colleague_businesses(request.business).filter(
+                pk=request.GET.get("counterparty")
+            ).first()
+        except (DjangoValidationError, TypeError, ValueError):
+            seller = None
+        if seller is None:
+            return JsonResponse({"items": []})
+    items = search_lot_options(
+        _proposal_item_queryset(seller=seller, viewer=request.business),
+        q=request.GET.get("q", ""),
+    )
+    return JsonResponse({"items": items})
 
 
 def _trade_view_allowed(request) -> bool:

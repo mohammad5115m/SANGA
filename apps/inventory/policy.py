@@ -101,6 +101,7 @@ def eligible_items(
 
     qs = InventoryLot.objects.filter(
         can_sell_q("business"),
+        product__is_active=True,
         deleted_at__isnull=True,
         is_visible=True,
         availability_status=InventoryLot.Availability.AVAILABLE,

@@ -9,6 +9,7 @@ app_name = "trading"
 urlpatterns = [
     path("agreements/", views.proposal_list, name="proposal_list"),
     path("agreements/new/", views.proposal_create, name="proposal_create"),
+    path("agreements/product-options/", views.proposal_product_options, name="proposal_product_options"),
     path("agreements/<uuid:proposal_id>/", views.proposal_detail, name="proposal_detail"),
     path("agreements/<uuid:proposal_id>/edit/", views.proposal_edit, name="proposal_edit"),
     path("agreements/<uuid:proposal_id>/submit/", views.proposal_submit, name="proposal_submit"),

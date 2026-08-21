@@ -34,7 +34,19 @@
       {% for line in lines %}
         <fieldset class="panel stack-sm">
           <legend class="section-subtitle">ردیف {{ forloop.counter }}</legend>
-          {% for hidden in line.hidden_fields %}{{ hidden }}{% endfor %}
+          {% for hidden in line.hidden_fields %}{% if hidden.name != "item" %}{{ hidden }}{% endif %}{% endfor %}
+          <div class="field">
+            <span class="field-label">{{ line.item.label }}</span>
+            <div class="product-picker" data-product-picker data-product-url="{% url 'trading:proposal_product_options' %}" data-trade-product-picker data-autofill-name>
+              {{ line.item }}
+              <div class="product-picker-input-row">
+                <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول فروشنده را جست‌وجو کنید" autocomplete="off" data-product-query aria-label="جست‌وجوی محصول فروشنده">
+                <button class="btn btn-ghost btn-sm" type="button" data-product-clear>پاک کردن</button>
+              </div>
+              <div class="product-picker-results" data-product-results role="listbox" hidden></div>
+            </div>
+            {% if line.item.errors %}<span class="field-error">{{ line.item.errors|striptags }}</span>{% endif %}
+          </div>
           {% for field in line.visible_fields %}
             <label class="field {% if field.name == 'DELETE' %}checkbox-field{% endif %}">
               {% if field.name == 'DELETE' %}

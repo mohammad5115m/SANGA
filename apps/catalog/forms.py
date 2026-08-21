@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django import forms
+from django.utils import timezone
 
 from .models import CustomCatalog
 
@@ -70,6 +71,23 @@ class CustomCatalogForm(forms.ModelForm):
             "title": forms.TextInput(attrs={"class": "field-input"}),
             "customer_name": forms.TextInput(attrs={"class": "field-input"}),
             "custom_message": forms.Textarea(attrs={"class": "field-input", "rows": 3}),
-            "expires_at": forms.DateTimeInput(attrs={"class": "field-input", "type": "datetime-local"}),
+            "expires_at": forms.DateTimeInput(
+                attrs={"class": "field-input", "type": "datetime-local"},
+                format="%Y-%m-%dT%H:%M",
+            ),
             "is_active": forms.CheckboxInput(attrs={"class": "field-checkbox"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["expires_at"].input_formats = [
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+        ]
+
+    def clean_expires_at(self):
+        value = self.cleaned_data.get("expires_at")
+        if value is not None and value <= timezone.now():
+            raise forms.ValidationError("تاریخ انقضا باید در آینده باشد.")
+        return value

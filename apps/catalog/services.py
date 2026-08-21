@@ -10,6 +10,7 @@ from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.entitlements import MANAGE_CATALOGS, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import CATALOG_MANAGE
+from apps.core.formatting import format_rial
 from apps.inventory.freshness import stock_view
 from apps.inventory.models import InventoryLot
 from apps.pricing.services import resolve_visible_prices
@@ -56,7 +57,7 @@ def b2c_price_context(lot: InventoryLot) -> dict:
         "has_price": True,
         "amount": b2c.amount,
         "currency": b2c.currency,
-        "label": f"{b2c.amount:,.0f} {b2c.currency}",
+        "label": format_rial(b2c.amount),
         "is_special": b2c.is_special,
         "special_until": b2c.special_until,
     }

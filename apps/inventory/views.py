@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from decimal import Decimal
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.http import HttpRequest, HttpResponse, QueryDict
+from django.http import HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import (
@@ -16,19 +17,23 @@ from apps.businesses.permissions import (
     INVENTORY_CONFIRM,
     INVENTORY_CREATE,
     INVENTORY_EDIT,
+    INVENTORY_MEDIA,
     INVENTORY_PUBLISH,
     INVENTORY_VIEW,
+    INVOICE_MANAGE,
     PRICES_EDIT,
     PRICES_VIEW,
+    TRADE_CONFIRM,
 )
 from apps.core.pagination import paginate
 from apps.pricing.services import resolve_visible_prices
 
-from .catalog_selection import create_selection, resolve_selection
+from .catalog_selection import MAX_CATALOG_ITEMS, create_selection, resolve_selection
 from .filters import effective_price_bounds
 from .forms import ItemMediaForm, ItemStockForm, OwnerItemFilterForm, ProductItemForm, TierPriceForm
 from .freshness import stock_view
-from .selectors import filter_owned_lots, get_business_lot, lots_for_business
+from .policy import eligible_items
+from .selectors import filter_owned_lots, get_business_lot, lots_for_business, search_lot_options
 from .services import (
     InventoryError,
     add_lot_media,
@@ -46,6 +51,23 @@ from .services import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@business_login_required
+@require_GET
+def product_options(request: HttpRequest) -> JsonResponse:
+    """Search only the caller's own products for invoice and sale pickers."""
+    allowed = any(
+        request.membership.has_capability(capability)
+        for capability in (INVENTORY_VIEW, INVOICE_MANAGE, TRADE_CONFIRM)
+    )
+    if not allowed:
+        return JsonResponse({"error": "دسترسی لازم را ندارید."}, status=403)
+    items = search_lot_options(
+        lots_for_business(request.business),
+        q=request.GET.get("q", ""),
+    )
+    return JsonResponse({"items": items})
 
 
 def _price_spec(form: TierPriceForm) -> dict:
@@ -164,6 +186,9 @@ def lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             "can_view_prices": can_view_prices,
             "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
             "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
+            "is_publicly_shareable": eligible_items(
+                audience="public", seller_business=request.business
+            ).filter(pk=lot.pk).exists(),
             "has_history": item_has_commercial_history(lot),
         },
     )
@@ -177,6 +202,7 @@ def _product_initial(lot) -> dict:
         "pattern": lot.product.pattern,
         "processing_type": lot.processing_type,
         "length_cm": lot.length_cm,
+        "dimension_mode": "free" if lot.length_cm is None else "fixed",
         "width_cm": lot.width_cm,
         "thickness_cm": lot.thickness_mm / Decimal("10") if lot.thickness_mm is not None else None,
         "available_sqm": lot.available_sqm,
@@ -209,7 +235,10 @@ def _product_form_context(request, *, form, b2b_form, b2c_form, lot=None):
 @require_http_methods(["GET", "POST"])
 def product_create(request: HttpRequest) -> HttpResponse:
     can_price = request.membership.has_capability(PRICES_EDIT)
-    form = ProductItemForm(request.POST or None, initial={"is_visible": True})
+    form = ProductItemForm(
+        request.POST or None,
+        initial={"is_visible": True, "submission_id": uuid.uuid4()},
+    )
     b2b_form = TierPriceForm(request.POST or None, prefix="b2b", tier_label="قیمت همکار")
     b2c_form = TierPriceForm(request.POST or None, prefix="b2c", tier_label="قیمت مشتری")
     prices_ok = not can_price or (b2b_form.is_valid() and b2c_form.is_valid())
@@ -226,6 +255,7 @@ def product_create(request: HttpRequest) -> HttpResponse:
                 applications=list(form.cleaned_data.get("applications") or []),
                 b2b_price=_price_spec(b2b_form) if can_price else None,
                 b2c_price=_price_spec(b2c_form) if can_price else None,
+                submission_id=form.cleaned_data.get("submission_id"),
             )
         except InventoryError as exc:
             form.add_error(None, exc.message)
@@ -317,7 +347,7 @@ def lot_confirm_stock(request: HttpRequest, lot_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INVENTORY_EDIT)
+@require_capability(INVENTORY_PUBLISH)
 @require_POST
 def lot_set_availability(request: HttpRequest, lot_id) -> HttpResponse:
     lot = get_business_lot(request.business, lot_id)
@@ -389,7 +419,7 @@ def lot_duplicate(request: HttpRequest, lot_id) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INVENTORY_EDIT)
+@require_capability(INVENTORY_MEDIA)
 @require_http_methods(["GET", "POST"])
 def lot_media(request: HttpRequest, lot_id) -> HttpResponse:
     lot = get_business_lot(request.business, lot_id)
@@ -461,10 +491,17 @@ def catalog_selection_start(request: HttpRequest) -> HttpResponse:
         "state": state,
     }
     resolved_ids = list(
-        resolve_selection(business=request.business, record=record).values_list("pk", flat=True)
+        resolve_selection(business=request.business, record=record)
+        .values_list("pk", flat=True)[: MAX_CATALOG_ITEMS + 1]
     )
     if not resolved_ids:
         messages.error(request, "هیچ محصولی در این انتخاب باقی نمانده است.")
+        return redirect("inventory:lot_list")
+    if len(resolved_ids) > MAX_CATALOG_ITEMS:
+        messages.error(
+            request,
+            f"هر کاتالوگ حداکثر {MAX_CATALOG_ITEMS} محصول دارد؛ فیلتر را محدودتر کنید.",
+        )
         return redirect("inventory:lot_list")
     catalog_id = request.POST.get("catalog_id")
     if catalog_id:

@@ -5,6 +5,8 @@ from decimal import Decimal
 from django import forms
 from django.utils import timezone
 
+from apps.core.forms import PersianNumericFormMixin
+from apps.core.persian import normalize_persian_text
 from apps.pricing.models import LotPrice
 
 from .filters import SORT_CHOICES, ItemFilterSpec
@@ -26,8 +28,19 @@ def active_stones():
     ).order_by("sort_order", "name")
 
 
-class ProductItemForm(forms.Form):
+class ProductItemForm(PersianNumericFormMixin, forms.Form):
     """The single product form used for both creation and editing."""
+
+    numeric_fields = (
+        "length_cm",
+        "width_cm",
+        "thickness_cm",
+        "available_sqm",
+        "stock_valid_for_days",
+        "min_sale_qty",
+    )
+
+    submission_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
 
     stone = forms.ModelChoiceField(
         label="نوع سنگ",
@@ -58,6 +71,13 @@ class ProductItemForm(forms.Form):
         widget=forms.TextInput(
             attrs={**_TEXT, "placeholder": "ساب خورده", "list": "seller-processing-suggestions"}
         ),
+    )
+    dimension_mode = forms.ChoiceField(
+        label="نوع ابعاد",
+        choices=(("fixed", "ابعاد ثابت"), ("free", "طول آزاد")),
+        initial="fixed",
+        required=False,
+        widget=forms.Select(attrs=_TEXT),
     )
     length_cm = forms.DecimalField(
         label="طول (سانتی‌متر)",
@@ -137,10 +157,34 @@ class ProductItemForm(forms.Form):
         self.fields["applications"].queryset = active_applications()
 
     def clean_name_suffix(self):
-        return " ".join((self.cleaned_data["name_suffix"] or "").split())
+        return normalize_persian_text(self.cleaned_data["name_suffix"] or "")
 
     def clean_processing_type(self):
-        return " ".join((self.cleaned_data["processing_type"] or "ساب خورده").split())
+        return normalize_persian_text(self.cleaned_data["processing_type"] or "ساب خورده")
+
+    def clean_pattern(self):
+        return normalize_persian_text(self.cleaned_data.get("pattern") or "")
+
+    def clean(self):
+        cleaned = super().clean()
+        dimension_mode = cleaned.get("dimension_mode")
+        length = cleaned.get("length_cm")
+        width = cleaned.get("width_cm")
+        quantity = cleaned.get("available_sqm")
+        minimum = cleaned.get("min_sale_qty") or Decimal("0")
+        availability = cleaned.get("availability_status")
+
+        if dimension_mode == "fixed" and length is None:
+            self.add_error("length_cm", "برای ابعاد ثابت، طول را وارد کنید.")
+        elif dimension_mode == "free":
+            cleaned["length_cm"] = None
+        if dimension_mode and width is None:
+            self.add_error("width_cm", "عرض محصول را وارد کنید.")
+        if quantity == 0 and availability == InventoryLot.Availability.AVAILABLE:
+            self.add_error("available_sqm", "محصول با موجودی صفر باید «ناموجود» باشد.")
+        if quantity is not None and minimum > quantity:
+            self.add_error("min_sale_qty", "حداقل فروش نمی‌تواند از موجودی بیشتر باشد.")
+        return cleaned
 
     @property
     def thickness_mm(self):
@@ -148,7 +192,8 @@ class ProductItemForm(forms.Form):
         return value * Decimal("10") if value is not None else None
 
 
-class ItemStockForm(forms.Form):
+class ItemStockForm(PersianNumericFormMixin, forms.Form):
+    numeric_fields = ("available_sqm", "stock_valid_for_days")
     available_sqm = forms.DecimalField(
         label="متراژ موجود (متر مربع)",
         required=False,
@@ -164,7 +209,8 @@ class ItemStockForm(forms.Form):
     )
 
 
-class TierPriceForm(forms.Form):
+class TierPriceForm(PersianNumericFormMixin, forms.Form):
+    numeric_fields = ("amount", "valid_for_days", "special_amount")
     mode = forms.ChoiceField(
         label="نوع قیمت", choices=LotPrice.Mode.choices, initial=LotPrice.Mode.FIXED,
         widget=forms.Select(attrs=_TEXT),
@@ -220,7 +266,8 @@ class ItemMediaForm(forms.Form):
     )
 
 
-class ItemFilterForm(forms.Form):
+class ItemFilterForm(PersianNumericFormMixin, forms.Form):
+    numeric_fields = ("price_min", "price_max", "min_qty_sqm")
     q = forms.CharField(
         required=False, label="جستجو",
         widget=forms.TextInput(attrs={**_TEXT, "placeholder": "نام، کد یا فرآوری..."}),
@@ -233,6 +280,13 @@ class ItemFilterForm(forms.Form):
     applications = forms.ModelMultipleChoiceField(
         label="کاربرد", queryset=Application.objects.none(), required=False,
         widget=forms.CheckboxSelectMultiple(attrs=_CHECK),
+    )
+    application_match = forms.ChoiceField(
+        required=False,
+        label="تطبیق کاربردها",
+        choices=(("any", "حداقل یکی"), ("all", "همه کاربردهای انتخاب‌شده")),
+        initial="any",
+        widget=forms.Select(attrs=_TEXT),
     )
     availability = forms.ChoiceField(
         required=False, label="موجود بودن",
@@ -262,8 +316,12 @@ class ItemFilterForm(forms.Form):
         return cleaned
 
     def to_spec(self) -> ItemFilterSpec:
-        if not self.is_valid():
+        # ``cleaned_data`` still contains every valid field when one other field
+        # is invalid. Preserve those filters and show the bad field's error;
+        # silently returning the whole inventory is the unsafe alternative.
+        if not self.is_bound:
             return ItemFilterSpec()
+        self.is_valid()
         data = dict(self.cleaned_data)
         stone = data.get("stone")
         data["stone"] = str(stone.pk) if stone else ""
@@ -276,8 +334,73 @@ class ItemFilterForm(forms.Form):
         data["applications"] = [app.code for app in data.get("applications") or []]
         return ItemFilterSpec.from_dict(data)
 
+    @property
+    def advanced_scalar_fields(self):
+        names = [
+            "stone",
+            "processing_type",
+            "availability",
+            "price_min",
+            "price_max",
+            "sort",
+            "application_match",
+        ]
+        return [self[name] for name in names]
+
+    @property
+    def has_advanced_values(self) -> bool:
+        keys = {
+            "stone",
+            "processing_type",
+            "applications",
+            "availability",
+            "price_min",
+            "price_max",
+            "sort",
+            "state",
+            "price_tier",
+            "application_match",
+        }
+        return any(
+            self.data.getlist(key) if hasattr(self.data, "getlist") else self.data.get(key)
+            for key in keys
+        )
+
+    @property
+    def active_filter_count(self) -> int:
+        if not self.is_bound:
+            return 0
+        self.is_valid()
+        data = self.cleaned_data
+        count = sum(
+            bool(data.get(key))
+            for key in (
+                "q",
+                "stone",
+                "processing_type",
+                "applications",
+                "availability",
+                "price_min",
+                "price_max",
+                "state",
+                "price_tier",
+            )
+        )
+        if data.get("sort") not in (None, "", "recent"):
+            count += 1
+        if data.get("application_match") == "all":
+            count += 1
+        return count
+
 
 class OwnerItemFilterForm(ItemFilterForm):
+    price_tier = forms.ChoiceField(
+        required=False,
+        label="کانال قیمت",
+        choices=(("b2c", "قیمت مشتری"), ("b2b", "قیمت همکار")),
+        initial="b2c",
+        widget=forms.Select(attrs=_TEXT),
+    )
     state = forms.ChoiceField(
         required=False, label="وضعیت", choices=OWNER_STATE_CHOICES, widget=forms.Select(attrs=_TEXT)
     )
@@ -285,3 +408,18 @@ class OwnerItemFilterForm(ItemFilterForm):
     @property
     def state_value(self) -> str:
         return self.cleaned_data.get("state", "") if self.is_valid() else ""
+
+    @property
+    def advanced_scalar_fields(self):
+        names = [
+            "state",
+            "stone",
+            "processing_type",
+            "availability",
+            "price_tier",
+            "price_min",
+            "price_max",
+            "sort",
+            "application_match",
+        ]
+        return [self[name] for name in names]

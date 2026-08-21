@@ -114,6 +114,10 @@ class LotPrice(models.Model):
                 ),
                 name="price_special_below_amount",
             ),
+            models.CheckConstraint(
+                condition=models.Q(price_valid_for_days__gte=1, price_valid_for_days__lte=365),
+                name="price_valid_days_range",
+            ),
         ]
 
     def __str__(self) -> str:
