@@ -29,6 +29,16 @@ def _restore_demo_business(*, phone: str, full_name: str, name: str, city: str, 
         phone=phone,
         defaults={"full_name": full_name, "is_active": True},
     )
+    user_updates: list[str] = []
+    if not user.is_active:
+        user.is_active = True
+        user_updates.append("is_active")
+    if user.full_name != full_name:
+        user.full_name = full_name
+        user_updates.append("full_name")
+    if user_updates:
+        user.save(update_fields=user_updates)
+
     membership = BusinessMembership.objects.filter(
         user=user,
         role=BusinessMembership.Role.OWNER,
