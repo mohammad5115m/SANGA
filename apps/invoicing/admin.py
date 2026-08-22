@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from apps.core.admin import HistoricalRecordAdmin
 
-from .models import SalesInvoice, SalesInvoiceItem
+from .models import BusinessInvoiceSettings, InvoiceTemplate, SalesInvoice, SalesInvoiceItem
 
 
 class SalesInvoiceItemInline(admin.TabularInline):
@@ -34,3 +34,17 @@ class SalesInvoiceAdmin(HistoricalRecordAdmin):
 
     def is_final(self, obj) -> bool:
         return obj is not None and obj.status != SalesInvoice.Status.DRAFT
+
+
+@admin.register(BusinessInvoiceSettings)
+class BusinessInvoiceSettingsAdmin(admin.ModelAdmin):
+    list_display = ("business", "legal_name", "palette", "updated_at")
+    search_fields = ("business__name", "legal_name", "tax_id")
+
+
+@admin.register(InvoiceTemplate)
+class InvoiceTemplateAdmin(admin.ModelAdmin):
+    list_display = ("name", "business", "updated_at")
+    list_filter = ("business",)
+    search_fields = ("name", "business__name")
+    readonly_fields = ("created_at", "updated_at")

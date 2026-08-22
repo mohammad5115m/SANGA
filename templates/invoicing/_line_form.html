@@ -1,0 +1,34 @@
+<fieldset class="invoice-editor-line" data-invoice-line>
+  <div class="invoice-line-toolbar">
+    <strong data-line-number>ردیف {{ forloop.counter|default:"1" }}</strong>
+    <div class="btn-row">
+      <button class="btn btn-ghost btn-sm" type="button" data-line-move="up" aria-label="انتقال ردیف به بالا">↑</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-line-move="down" aria-label="انتقال ردیف به پایین">↓</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-line-remove>حذف</button>
+    </div>
+  </div>
+  {{ line.item }}{{ line.ORDER }}<span hidden>{{ line.DELETE }}</span>
+  <div class="invoice-line-grid">
+    <div class="field invoice-product-field">
+      <span class="field-label">محصول ثبت‌شده یا عنوان دستی</span>
+      <div class="product-picker" data-product-picker data-dynamic-product-picker data-product-url="{% url 'inventory:product_options' %}">
+        <div class="product-picker-input-row">
+          <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول را جست‌وجو کنید" autocomplete="off" data-product-query>
+          <button class="btn btn-ghost btn-sm" type="button" data-product-clear>پاک</button>
+        </div>
+        <div class="product-picker-results" data-product-results role="listbox" hidden></div>
+      </div>
+      {{ line.product_name }}
+      {% if line.product_name.errors %}<span class="field-error">{{ line.product_name.errors|striptags }}</span>{% endif %}
+    </div>
+    <label class="field"><span class="field-label">نوع سنگ</span>{{ line.stone_type }}</label>
+    <label class="field"><span class="field-label">سورت</span>{{ line.grade }}</label>
+    <label class="field"><span class="field-label">توضیح</span>{{ line.description }}</label>
+    <label class="field"><span class="field-label">مقدار</span>{{ line.quantity }}{% if line.quantity.errors %}<span class="field-error">{{ line.quantity.errors|striptags }}</span>{% endif %}</label>
+    <label class="field"><span class="field-label">واحد</span>{{ line.unit }}</label>
+    <label class="field"><span class="field-label">قیمت واحد</span>{{ line.unit_price }}{% if line.unit_price.errors %}<span class="field-error">{{ line.unit_price.errors|striptags }}</span>{% endif %}</label>
+    <label class="field"><span class="field-label">نوع تخفیف</span>{{ line.discount_type }}</label>
+    <label class="field"><span class="field-label">مقدار تخفیف</span>{{ line.discount_value }}{% if line.discount_value.errors %}<span class="field-error">{{ line.discount_value.errors|striptags }}</span>{% endif %}</label>
+    <div class="invoice-line-total"><span>جمع ردیف</span><strong data-line-total>۰</strong></div>
+  </div>
+</fieldset>

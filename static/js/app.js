@@ -96,7 +96,7 @@
     });
   });
 
-  document.querySelectorAll("[data-product-picker]").forEach(function (picker) {
+  document.querySelectorAll("[data-product-picker]:not([data-dynamic-product-picker])").forEach(function (picker) {
     var query = picker.querySelector("[data-product-query]");
     var itemId = picker.querySelector('input[type="hidden"]');
     var results = picker.querySelector("[data-product-results]");

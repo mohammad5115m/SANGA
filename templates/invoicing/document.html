@@ -1,0 +1,145 @@
+{% load static %}<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root { --invoice-primary: {{ document.theme.primary_color }}; --ink: #17211c; --muted: #56635c; --line: #d9dfdc; }
+    * { box-sizing: border-box; }
+    @page {
+      size: A4;
+      margin: 14mm 12mm 16mm;
+      @bottom-center { content: "صفحه " counter(page) " از " counter(pages); font-size: 8pt; color: #66736c; }
+    }
+    html, body { margin: 0; background: #fff; color: var(--ink); font-family: Vazirmatn, "DejaVu Sans", sans-serif; font-size: 10pt; line-height: 1.65; }
+    body { direction: rtl; }
+    .invoice-document { min-height: 260mm; border-top: 5px solid var(--invoice-primary); padding-top: 5mm; }
+    .doc-header { display: grid; grid-template-columns: 1fr auto; gap: 8mm; align-items: start; padding-bottom: 5mm; border-bottom: 1px solid var(--line); }
+    .doc-header.modern { border-bottom: 3px solid var(--invoice-primary); }
+    .doc-header.minimal { border: 0; }
+    .brand-area { display: flex; gap: 5mm; align-items: center; }
+    .brand-logo { object-fit: contain; width: 26mm; height: 20mm; }
+    .logo-small { width: 18mm; height: 14mm; } .logo-large { width: 36mm; height: 27mm; }
+    .seller-name { font-size: 16pt; font-weight: 800; color: var(--invoice-primary); }
+    .doc-title { text-align: left; }
+    .doc-title h1 { font-size: 17pt; margin: 0; color: var(--invoice-primary); }
+    .doc-number { font-size: 10pt; direction: ltr; unicode-bidi: isolate; }
+    .doc-status { display: inline-block; margin-top: 2mm; padding: 1mm 3mm; border: 1px solid var(--invoice-primary); border-radius: 99px; color: var(--invoice-primary); font-size: 8pt; }
+    .party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin: 6mm 0; }
+    .party { padding: 4mm; border: 1px solid var(--line); border-radius: 3mm; break-inside: avoid; }
+    .party-label { color: var(--muted); font-size: 8pt; margin-bottom: 1mm; }
+    .party strong { font-size: 11pt; }
+    .muted { color: var(--muted); }
+    .ltr { direction: ltr; unicode-bidi: isolate; display: inline-block; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    th, td { border: 1px solid var(--line); padding: 2.2mm 2mm; text-align: right; vertical-align: top; overflow-wrap: anywhere; }
+    thead th { background: var(--invoice-primary); color: #fff; font-weight: 700; }
+    .col-index { width: 7%; } .col-qty { width: 11%; } .col-unit { width: 11%; } .col-money { width: 17%; }
+    .num { direction: ltr; unicode-bidi: isolate; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .line-meta { font-size: 8pt; color: var(--muted); }
+    .summary { width: 48%; margin: 5mm 0 0 auto; break-inside: avoid; }
+    .summary-row { display: flex; justify-content: space-between; gap: 5mm; padding: 1.4mm 0; border-bottom: 1px dashed var(--line); }
+    .summary-row strong { direction: ltr; unicode-bidi: isolate; }
+    .summary-total { border: 0; background: #f0f5f2; color: var(--invoice-primary); padding: 2.5mm; margin-top: 1mm; font-size: 11pt; }
+    .amount-words { margin-top: 3mm; padding: 3mm; border-right: 3px solid var(--invoice-primary); background: #f6f8f7; break-inside: avoid; }
+    .section { margin-top: 5mm; break-inside: avoid; }
+    .section-title { font-weight: 700; color: var(--invoice-primary); margin-bottom: 1mm; }
+    .balance-note { color: #5b3b00; background: #fff9e9; padding: 2.5mm; border: 1px solid #ead69a; border-radius: 2mm; }
+    .signature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8mm; margin-top: 12mm; break-inside: avoid; }
+    .signature-box { min-height: 30mm; text-align: center; border-top: 1px solid var(--line); padding-top: 2mm; }
+    .signature-image { display: block; margin: 2mm auto 0; max-width: 35mm; max-height: 23mm; object-fit: contain; }
+    .stamp-image { position: absolute; max-width: 32mm; max-height: 32mm; object-fit: contain; opacity: .88; transform: rotate(-4deg); }
+    .seller-signature { position: relative; }
+    .void-mark { position: fixed; inset: 42% 18%; border: 3px solid #a51e2d; color: #a51e2d; font-size: 34pt; font-weight: 800; text-align: center; transform: rotate(-17deg); opacity: .18; z-index: 5; }
+    .print-toolbar { width: min(210mm, 100%); margin: 0 auto 10px; display: flex; justify-content: flex-end; }
+    .print-button { border: 0; border-radius: 8px; padding: 10px 18px; background: var(--invoice-primary); color: #fff; font: inherit; cursor: pointer; }
+    @media screen {
+      body { background: #edf1ef; padding: 20px; }
+      .invoice-document { width: min(210mm, 100%); min-height: 297mm; margin: 0 auto; padding: 14mm 12mm; background: #fff; box-shadow: 0 8px 36px rgba(18, 30, 24, .12); }
+    }
+    @media print {
+      html, body { background: #fff; }
+      body { padding: 0; }
+      .invoice-document { width: auto; min-height: auto; margin: 0; box-shadow: none; padding: 0; }
+      .print-toolbar { display: none; }
+      * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  {% if document_mode == 'print' %}<div class="print-toolbar"><button class="print-button" type="button" data-print-invoice>چاپ فاکتور</button></div>{% endif %}
+  <article class="invoice-document">
+    {% if document.status == 'cancelled' %}<div class="void-mark">باطل‌شده</div>{% endif %}
+    <header class="doc-header {{ document.theme.header_style }}">
+      <div class="brand-area">
+        {% if document.theme.logo %}<img class="brand-logo logo-{{ document.theme.logo_size }}" src="{{ document.theme.logo }}" alt="لوگوی فروشنده">{% endif %}
+        <div>
+          <div class="seller-name">{{ document.seller.name }}</div>
+          {% if document.seller.tax_id %}<div class="muted">شناسه: <span class="ltr">{{ document.seller.tax_id }}</span></div>{% endif %}
+        </div>
+      </div>
+      <div class="doc-title">
+        <h1>فاکتور فروش</h1>
+        <div class="doc-number">شماره: {{ document.number }}</div>
+        <div>تاریخ: {{ document.issue_date }}</div>
+        <span class="doc-status">{{ document.status_label }} · {{ document.payment_status_label }}</span>
+      </div>
+    </header>
+
+    <section class="party-grid">
+      <div class="party">
+        <div class="party-label">فروشنده</div><strong>{{ document.seller.name }}</strong>
+        {% if document.seller.phone %}<div class="ltr">{{ document.seller.phone }}</div>{% endif %}
+        {% if document.seller.address %}<div>{{ document.seller.address }}</div>{% endif %}
+      </div>
+      <div class="party">
+        <div class="party-label">خریدار</div><strong>{{ document.buyer.name }}</strong>
+        {% if document.buyer.phone %}<div class="ltr">{{ document.buyer.phone }}</div>{% endif %}
+        {% if document.buyer.address %}<div>{{ document.buyer.address }}</div>{% endif %}
+      </div>
+    </section>
+
+    <table aria-label="اقلام فاکتور">
+      <thead><tr>
+        <th class="col-index">ردیف</th><th>شرح</th><th class="col-qty">مقدار</th>
+        <th class="col-unit">واحد</th><th class="col-money">قیمت واحد</th><th class="col-money">مبلغ نهایی</th>
+      </tr></thead>
+      <tbody>
+      {% for line in document.lines %}
+        <tr>
+          <td class="num">{{ line.index }}</td>
+          <td>{{ line.product_name }}{% if line.stone_type or line.grade %}<div class="line-meta">{{ line.stone_type }}{% if line.grade %} · {{ line.grade }}{% endif %}</div>{% endif %}{% if line.description %}<div class="line-meta">{{ line.description }}</div>{% endif %}</td>
+          <td class="num">{{ line.quantity }}</td><td>{{ line.unit }}</td>
+          <td class="num">{{ line.unit_price }}</td><td class="num">{{ line.line_total }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <section class="summary">
+      <div class="summary-row"><span>جمع ناخالص اقلام</span><strong>{{ document.gross_subtotal }}</strong></div>
+      {% if document.has_line_discounts %}<div class="summary-row"><span>تخفیف ردیف‌ها</span><strong>− {{ document.line_discount_total }}</strong></div>{% endif %}
+      {% if document.has_invoice_discount %}<div class="summary-row"><span>تخفیف کلی</span><strong>− {{ document.invoice_discount_amount }}</strong></div>{% endif %}
+      {% if document.has_tax %}<div class="summary-row"><span>مالیات</span><strong>+ {{ document.tax_amount }}</strong></div>{% endif %}
+      {% if document.has_shipping %}<div class="summary-row"><span>هزینه ارسال</span><strong>+ {{ document.shipping_amount }}</strong></div>{% endif %}
+      {% if document.has_adjustment %}<div class="summary-row"><span>تعدیل</span><strong>+ {{ document.adjustment_amount }}</strong></div>{% endif %}
+      <div class="summary-row"><span>مبلغ نهایی</span><strong>{{ document.total_amount }}</strong></div>
+      {% if document.has_paid %}<div class="summary-row"><span>پرداخت‌شده</span><strong>− {{ document.paid_amount }}</strong></div>{% endif %}
+      {% if document.has_previous_balance and document.previous_balance_included %}<div class="summary-row"><span>بدهی قبلی</span><strong>+ {{ document.previous_balance }}</strong></div>{% endif %}
+      <div class="summary-row summary-total"><span>قابل پرداخت ({{ document.unit_label }})</span><strong>{{ document.amount_due }}</strong></div>
+    </section>
+    <div class="amount-words">به حروف: {{ document.amount_due_words }} {{ document.unit_label }}</div>
+    {% if document.has_previous_balance %}<div class="section balance-note">مانده پیشین: {{ document.previous_balance }} {{ document.previous_balance_unit_label }} ({{ document.previous_balance_state }}) — {% if document.previous_balance_included %}در مبلغ قابل پرداخت لحاظ شده است.{% else %}صرفاً اطلاع‌رسانی است و در مبلغ قابل پرداخت لحاظ نشده است.{% endif %}</div>{% endif %}
+    {% if document.notes %}<section class="section"><div class="section-title">توضیحات</div><div>{{ document.notes|linebreaksbr }}</div></section>{% endif %}
+    {% if document.payment_terms %}<section class="section"><div class="section-title">شرایط پرداخت</div><div>{{ document.payment_terms|linebreaksbr }}</div></section>{% endif %}
+    {% if document.theme.show_bank_information and document.seller.bank_information %}<section class="section"><div class="section-title">اطلاعات بانکی</div><div>{{ document.seller.bank_information|linebreaksbr }}</div></section>{% endif %}
+    <section class="signature-grid">
+      <div class="signature-box seller-signature">مهر و امضای فروشنده{% if document.theme.show_signature and document.theme.signature %}<img class="signature-image" src="{{ document.theme.signature }}" alt="امضای فروشنده">{% endif %}{% if document.theme.show_stamp and document.theme.stamp %}<img class="stamp-image" src="{{ document.theme.stamp }}" alt="مهر فروشنده">{% endif %}</div>
+      <div class="signature-box">امضای خریدار{% if document.buyer_signature %}<img class="signature-image" src="{{ document.buyer_signature }}" alt="امضای خریدار">{% endif %}</div>
+    </section>
+  </article>
+  {% if document_mode == 'print' %}<script src="{% static 'js/invoice_print.js' %}"></script>{% endif %}
+</body>
+</html>

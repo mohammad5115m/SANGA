@@ -1,0 +1,48 @@
+{% extends "layouts/app_shell.html" %}
+{% load static %}
+{% block title %}تنظیمات فاکتور | سنگا{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div>
+  <form method="post" enctype="multipart/form-data" class="stack-lg" novalidate data-invoice-settings>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    <section class="panel stack-md">
+      <h2 class="section-title">اطلاعات فروشنده</h2>
+      <div class="form-grid">
+        {% for field in form %}
+          {% if field.name in 'legal_name tax_id bank_information payment_terms default_currency default_display_unit' %}
+          <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+    <section class="panel stack-md">
+      <h2 class="section-title">لوگو، مهر و امضا</h2>
+      <p class="muted">PNG، WebP یا JPEG تا ۵ مگابایت. فایل پس از بررسی محتوای واقعی، پاک‌سازی و به PNG امن تبدیل می‌شود.</p>
+      <div class="invoice-settings-assets">
+        <label class="field" data-asset-field><span class="field-label">لوگو</span><img class="invoice-asset-preview" data-asset-preview {% if settings_row.logo %}src="{% url 'invoicing:asset' 'logo' %}"{% else %}hidden{% endif %} alt="پیش‌نمایش لوگو">{{ form.logo }}<span>{{ form.remove_logo }} {{ form.remove_logo.label }}</span>{% if form.logo.errors %}<span class="field-error">{{ form.logo.errors|striptags }}</span>{% endif %}</label>
+        <label class="field" data-asset-field><span class="field-label">مهر</span><img class="invoice-asset-preview" data-asset-preview {% if settings_row.stamp %}src="{% url 'invoicing:asset' 'stamp' %}"{% else %}hidden{% endif %} alt="پیش‌نمایش مهر">{{ form.stamp }}<span>{{ form.remove_stamp }} {{ form.remove_stamp.label }}</span>{% if form.stamp.errors %}<span class="field-error">{{ form.stamp.errors|striptags }}</span>{% endif %}</label>
+        <label class="field" data-asset-field><span class="field-label">امضا</span><img class="invoice-asset-preview" data-asset-preview {% if settings_row.signature %}src="{% url 'invoicing:asset' 'signature' %}"{% else %}hidden{% endif %} alt="پیش‌نمایش امضا">{{ form.signature }}<span>{{ form.remove_signature }} {{ form.remove_signature.label }}</span>{% if form.signature.errors %}<span class="field-error">{{ form.signature.errors|striptags }}</span>{% endif %}</label>
+      </div>
+    </section>
+    <section class="panel stack-md">
+      <h2 class="section-title">ظاهر پیش‌فرض</h2>
+      <div class="form-grid form-grid-compact">
+        {% for field in form %}
+          {% if field.name in 'palette primary_color header_style logo_size show_bank_information show_stamp show_signature' %}
+          <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+    <button class="btn btn-primary" type="submit">ذخیره تنظیمات</button>
+  </form>
+  <section class="panel stack-md">
+    <h2 class="section-title">قالب‌های پرکاربرد</h2>
+    {% for saved in templates %}<div class="list-item"><a href="{% url 'invoicing:create' %}?template={{ saved.id }}"><strong>{{ saved.name }}</strong></a><form method="post" action="{% url 'invoicing:template_delete' saved.id %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit" data-confirm="این قالب حذف شود؟">حذف</button></form></div>{% empty %}<div class="empty-state">هنوز قالبی ذخیره نشده است.</div>{% endfor %}
+  </section>
+</section>
+{% endblock %}
+{% block extra_js %}<script src="{% static 'js/invoice_settings.js' %}"></script>{% endblock %}

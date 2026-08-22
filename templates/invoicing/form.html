@@ -1,72 +1,95 @@
 {% extends "layouts/app_shell.html" %}
+{% load static %}
 
-{% block title %}فاکتور جدید | سنگا{% endblock %}
+{% block title %}{% if invoice %}ویرایش پیش‌نویس{% else %}فاکتور جدید{% endif %} | سنگا{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <div>
-    <h1 class="page-title">فاکتور جدید</h1>
-    <p class="page-lead">برای یک مشتری عادی</p>
+<section class="stack-lg invoice-editor" data-invoice-editor>
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">{% if invoice %}ویرایش پیش‌نویس{% else %}ساخت فاکتور{% endif %}</h1>
+      <p class="page-lead">اطلاعات را وارد کنید؛ پیش‌نمایش نهایی هم‌زمان به‌روز می‌شود.</p>
+    </div>
+    <a class="btn btn-ghost" href="{% url 'invoicing:settings' %}">لوگو، مهر و قالب</a>
   </div>
 
-  <div class="alert alert-info">
-    برای فروش به همکار از
-    <a href="{% url 'trading:proposal_create' %}">«توافق معامله دوطرفه»</a>
-    استفاده کنید تا پس از تأیید همکار، دفتر حساب هر دو طرف به‌روز شود.
+  {% if templates %}
+  <div class="invoice-template-strip" aria-label="قالب‌های پرکاربرد">
+    <span class="muted">شروع از قالب:</span>
+    {% for saved in templates %}<a class="chip" href="?template={{ saved.id }}">{{ saved.name }}</a>{% endfor %}
   </div>
+  {% endif %}
 
-  <form method="post" class="stack-lg" novalidate>
-    {% csrf_token %}
+  <div class="alert alert-info">فروش به همکار فقط از <a href="{% url 'trading:proposal_create' %}">توافق دوطرفه</a> انجام می‌شود تا دقیقاً یک معامله، دو سند دفتر حساب و یک فاکتور ایجاد شود.</div>
 
-    <section class="panel stack-md">
-      <h2 class="section-title">خریدار</h2>
-      {% if form.non_field_errors %}
-        <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
-      {% endif %}
-      {% for field in form %}
-        <label class="field">
-          <span class="field-label">{{ field.label }}</span>
-          {{ field }}
-          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-        </label>
-      {% endfor %}
-      <p class="muted">مشتری عادی حساب کاربری سنگا ندارد و برای او حسابی ساخته نمی‌شود.</p>
-    </section>
+  <div class="invoice-editor-layout">
+    <form method="post" enctype="multipart/form-data" class="invoice-form" novalidate data-invoice-form data-preview-url="{% url 'invoicing:preview' %}">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+      {% if formset.non_form_errors %}<div class="alert alert-error">{{ formset.non_form_errors|striptags }}</div>{% endif %}
 
-    <section class="panel stack-md">
-      <h2 class="section-title">ردیف‌های فاکتور</h2>
-      {{ formset.management_form }}
-      {% for line in formset %}
-        <fieldset class="invoice-line-fields">
-          <legend class="field-label">ردیف {{ forloop.counter }}</legend>
-          {% for field in line %}
-            {% if field.name == "item" %}
-              <div class="field">
-                <span class="field-label">{{ field.label }}</span>
-                <div class="product-picker" data-product-picker data-product-url="{% url 'inventory:product_options' %}" data-autofill-name data-autofill-stone>
-                  {{ field }}
-                  <div class="product-picker-input-row">
-                    <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول را جست‌وجو کنید" autocomplete="off" data-product-query aria-label="جست‌وجوی محصول ثبت‌شده">
-                    <button class="btn btn-ghost btn-sm" type="button" data-product-clear>پاک کردن</button>
-                  </div>
-                  <div class="product-picker-results" data-product-results role="listbox" hidden></div>
-                </div>
-                {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-              </div>
-            {% else %}
-              <label class="field">
-                <span class="field-label">{{ field.label }}</span>
-                {{ field }}
-                {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-              </label>
+      <nav class="invoice-stepper" aria-label="مراحل ساخت فاکتور">
+        <button type="button" class="is-active" data-step-target="1"><span>۱</span> طرف حساب</button>
+        <button type="button" data-step-target="2"><span>۲</span> اقلام و مبالغ</button>
+        <button type="button" data-step-target="3"><span>۳</span> ظاهر و خروجی</button>
+      </nav>
+
+      <section class="panel stack-md invoice-step" data-step="1">
+        <h2 class="section-title">اطلاعات فاکتور و خریدار</h2>
+        <div class="form-grid">
+          {% for field in form %}
+            {% if field.name in 'customer_name customer_phone buyer_address issue_date currency display_unit payment_terms notes' %}
+            <label class="field field-{{ field.name }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
             {% endif %}
           {% endfor %}
-        </fieldset>
-      {% endfor %}
-      <p class="muted">ردیف‌های خالی نادیده گرفته می‌شوند.</p>
-    </section>
+        </div>
+        <div class="step-actions"><button class="btn btn-primary" type="button" data-step-next>مرحله بعد</button></div>
+      </section>
 
-    <button class="btn btn-primary btn-block" type="submit">صدور فاکتور</button>
-  </form>
+      <section class="panel stack-md invoice-step" data-step="2">
+        <div class="toolbar"><h2 class="section-title">اقلام فاکتور</h2><button class="btn btn-secondary" type="button" data-line-add>افزودن ردیف</button></div>
+        {{ formset.management_form }}
+        <div class="invoice-lines" data-invoice-lines>
+          {% for line in formset %}{% include "invoicing/_line_form.html" with line=line %}{% endfor %}
+        </div>
+        <template data-empty-line>{% include "invoicing/_line_form.html" with line=formset.empty_form %}</template>
+        <h3 class="section-subtitle">تخفیف‌ها و پرداخت‌ها</h3>
+        <div class="form-grid form-grid-compact">
+          {% for field in form %}
+            {% if field.name in 'invoice_discount_type invoice_discount_value tax_amount shipping_amount adjustment_amount paid_amount' %}
+            <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="invoice-live-total"><span>برآورد قابل پرداخت</span><strong data-invoice-total>۰</strong></div>
+        <div class="step-actions"><button class="btn btn-ghost" type="button" data-step-prev>قبلی</button><button class="btn btn-primary" type="button" data-step-next>مرحله بعد</button></div>
+      </section>
+
+      <section class="panel stack-md invoice-step" data-step="3">
+        <h2 class="section-title">ظاهر و ذخیره</h2>
+        <div class="form-grid form-grid-compact">
+          {% for field in form %}
+            {% if field.name in 'palette primary_color header_style logo_size show_bank_information show_stamp show_signature buyer_signature remove_buyer_signature' %}
+            <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <p class="muted">محاسبات مرورگر فقط برای بازخورد سریع است؛ هنگام ذخیره همه مبالغ دوباره در سرور محاسبه می‌شوند.</p>
+        <div class="invoice-submit-row">
+          <button class="btn btn-secondary" name="action" value="draft" type="submit">ذخیره پیش‌نویس</button>
+          <button class="btn btn-primary" name="action" value="issue" type="submit" data-confirm="پس از صدور، اقلام و مبالغ تغییرناپذیر می‌شوند. ادامه می‌دهید؟">صدور فاکتور</button>
+        </div>
+        <div class="step-actions"><button class="btn btn-ghost" type="button" data-step-prev>قبلی</button></div>
+      </section>
+    </form>
+
+    <aside class="invoice-preview-panel" aria-live="polite">
+      <div class="invoice-preview-head"><strong>پیش‌نمایش نهایی</strong><span data-preview-status>در انتظار اطلاعات کامل</span></div>
+      <iframe title="پیش‌نمایش زنده فاکتور" data-invoice-preview sandbox="allow-same-origin"></iframe>
+    </aside>
+  </div>
 </section>
 {% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}"></script><script src="{% static 'js/invoice_editor.js' %}"></script>{% endblock %}

@@ -11,7 +11,7 @@
       <p class="page-lead">فاکتورهای صادرشده و دریافتی</p>
     </div>
     {% if can_manage %}
-      <a class="btn btn-primary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
+      <div class="btn-row"><a class="btn btn-ghost" href="{% url 'invoicing:settings' %}">تنظیمات</a><a class="btn btn-primary" href="{% url 'invoicing:create' %}">فاکتور جدید</a></div>
     {% endif %}
   </div>
 
@@ -36,11 +36,11 @@
     {% for invoice in invoices %}
       <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
         <div>
-          <div class="list-title" dir="ltr">{{ invoice.number }}</div>
+          <div class="list-title" dir="ltr">{{ invoice.display_number }}</div>
           <div class="muted">{{ invoice.buyer_name }} · {{ invoice.issue_date }}</div>
         </div>
         <div class="ledger-amounts">
-          <strong dir="ltr">{{ invoice.total_amount|rial }} ریال</strong>
+          <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>
           <span class="badge">{{ invoice.get_status_display }}</span>
         </div>
       </a>

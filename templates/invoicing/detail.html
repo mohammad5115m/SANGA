@@ -1,44 +1,44 @@
 {% extends "layouts/app_shell.html" %}
-
-{% block title %}فاکتور {{ invoice.number }} | سنگا{% endblock %}
-
+{% load static %}
+{% block title %}فاکتور {{ invoice.display_number }} | سنگا{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar">
-    <div>
-      <h1 class="page-title">فاکتور {{ invoice.number }}</h1>
-      <p class="page-lead">{{ invoice.buyer_name }}</p>
+    <div><h1 class="page-title">فاکتور {{ invoice.display_number }}</h1><p class="page-lead">{{ invoice.buyer_name }} · {{ invoice.get_status_display }}</p></div>
+    <div class="invoice-action-grid">
+      {% if is_seller and can_manage and invoice.status == 'draft' %}<a class="btn btn-primary" href="{% url 'invoicing:edit' invoice.id %}">ادامه ویرایش</a>{% endif %}
+      <a class="btn btn-secondary" href="{% url 'invoicing:print' invoice.id %}" target="_blank" rel="noopener">نسخه چاپ</a>
+      <a class="btn btn-secondary" href="{% url 'invoicing:pdf' invoice.id %}">PDF</a>
+      <a class="btn btn-secondary" href="{% url 'invoicing:image' invoice.id %}">تصویر</a>
     </div>
-    <div class="btn-row">
-      <a class="btn btn-secondary" href="{% url 'invoicing:print' invoice.id %}" target="_blank" rel="noopener">
-        چاپ
-      </a>
-      {% if is_seller and can_manage %}
-        {% if invoice.status == 'draft' %}
-          <form method="post" action="{% url 'invoicing:issue' invoice.id %}">
-            {% csrf_token %}<button class="btn btn-primary" type="submit">صدور فاکتور</button>
-          </form>
-        {% elif invoice.status == 'issued' %}
-          <form method="post" action="{% url 'invoicing:cancel' invoice.id %}">
-            {% csrf_token %}<button class="btn btn-ghost" type="submit">ابطال</button>
-          </form>
-        {% endif %}
+  </div>
+  <div class="invoice-detail-facts" aria-label="خلاصه فاکتور">
+    <div><span class="muted">مبلغ نهایی</span><strong>{{ document.total_amount }} {{ document.unit_label }}</strong></div>
+    <div><span class="muted">قابل پرداخت</span><strong>{{ document.amount_due }} {{ document.unit_label }}</strong></div>
+    <div><span class="muted">اقلام</span><strong>{% for line in document.lines %}{{ line.product_name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong></div>
+  </div>
+  <iframe class="invoice-document-frame" title="نسخه نهایی فاکتور" src="{% url 'invoicing:print' invoice.id %}?embedded=1"></iframe>
+
+  {% if is_seller and can_manage %}
+  <section class="panel stack-md">
+    <h2 class="section-title">اقدامات فاکتور</h2>
+    <div class="invoice-action-grid">
+      {% if invoice.status == 'draft' %}
+      <form method="post" action="{% url 'invoicing:issue' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="پس از صدور، اقلام و مبالغ تغییرناپذیر می‌شوند. ادامه می‌دهید؟">صدور نهایی</button></form>
+      {% elif invoice.status == 'issued' %}
+      <form method="post" action="{% url 'invoicing:cancel' invoice.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit" data-confirm="فاکتور باطل شود؟ مانده دفتر حساب تغییر نمی‌کند.">ابطال سند</button></form>
       {% endif %}
+      {% if invoice.counterparty_type == 'customer' %}<form method="post" action="{% url 'invoicing:duplicate' invoice.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">تکثیر به پیش‌نویس جدید</button></form>{% endif %}
     </div>
-  </div>
-
-  <div class="panel invoice-sheet">
-    {% include "invoicing/_invoice_body.html" %}
-  </div>
-
-  {# Both of these are consequences the seller might otherwise assume. #}
-  <p class="muted">
-    صدور یا ابطال فاکتور، مانده حساب را تغییر نمی‌دهد. مانده حساب هنگام نهایی شدن فروش
-    ثبت شده است؛ برای اصلاح آن از «برگشت سند» در دفتر حساب استفاده کنید.
-  </p>
-
-  {% if invoice.trade %}
-    <a class="btn btn-ghost" href="{% url 'trading:trade_detail' invoice.trade.id %}">مشاهده معامله</a>
+    {% if invoice.counterparty_type == 'customer' %}
+    <form class="invoice-template-form" method="post" action="{% url 'invoicing:save_template' invoice.id %}">
+      {% csrf_token %}<label class="field"><span class="field-label">ذخیره به‌عنوان قالب پرکاربرد</span>{{ template_form.name }}</label><button class="btn btn-secondary" type="submit">ذخیره قالب</button>
+    </form>
+    {% endif %}
+  </section>
   {% endif %}
+  <p class="muted">صدور، خروجی‌گرفتن یا ابطال فاکتور ledger entry جدید ایجاد نمی‌کند. اصلاح مانده فقط از workflow دفتر حساب انجام می‌شود.</p>
+  {% if invoice.trade %}<a class="btn btn-ghost" href="{% url 'trading:trade_detail' invoice.trade.id %}">مشاهده معامله</a>{% endif %}
 </section>
 {% endblock %}
