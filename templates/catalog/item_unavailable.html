@@ -3,8 +3,8 @@
 {% block title %}محصول در دسترس نیست | سنگا{% endblock %}
 
 {% block content %}
-{# Hidden, unavailable and deleted all render this same page. Telling a stranger
-   which of the three applies would leak which products a seller has withdrawn. #}
+{% comment %}Hidden, unavailable and deleted all render this same page. Telling a stranger
+which of the three applies would leak which products a seller has withdrawn.{% endcomment %}
 <section class="stack-lg">
   <div class="empty-state empty-state-lg">
     <h1 class="page-title">این محصول در حال حاضر موجود نیست</h1>

@@ -5,9 +5,9 @@
 {% block shell %}
 <div class="storefront-shell">
   <header class="storefront-top">
-    {# `business` is absent on the cross-seller search and on the unavailable
-       page, so the header falls back to SANGA's own branding rather than
-       reversing a storefront URL with an empty slug. #}
+    {% comment %}`business` is absent on the cross-seller search and on the unavailable
+    page, so the header falls back to SANGA's own branding rather than
+    reversing a storefront URL with an empty slug.{% endcomment %}
     {% if business %}
       <a class="brand-lockup" href="{% url 'catalog:storefront' business.slug %}">
         {% if business.logo %}

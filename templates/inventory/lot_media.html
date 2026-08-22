@@ -29,8 +29,8 @@
   </section>
 
   {% if media_items %}
-    {# Ordering is submitted as a list of ids: the seller renumbers the boxes and
-       saves once, rather than nudging items one position at a time. #}
+    {% comment %}Ordering is submitted as a list of ids: the seller renumbers the boxes and
+    saves once, rather than nudging items one position at a time.{% endcomment %}
     <form method="post" class="panel stack-md">
       {% csrf_token %}
       <input type="hidden" name="action" value="reorder">

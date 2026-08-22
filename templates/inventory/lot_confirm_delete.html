@@ -14,8 +14,8 @@
     <p>پس از حذف، این محصول از موجودی شما، بازار همکاران، جست‌وجوی عمومی و همه کاتالوگ‌ها حذف می‌شود.</p>
 
     {% if has_history %}
-      {# Deliberately not phrased as "soft delete": the seller does not need to
-         know the mechanism, only that their invoices stay correct. #}
+      {% comment %}Deliberately not phrased as "soft delete": the seller does not need to
+      know the mechanism, only that their invoices stay correct.{% endcomment %}
       <p class="muted">
         این محصول در سوابق مالی شما (فاکتور یا معامله) استفاده شده است. فاکتورهای
         گذشته بدون تغییر باقی می‌مانند.

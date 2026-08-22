@@ -21,6 +21,23 @@ def test_templates_do_not_use_inline_event_handlers():
     assert offenders == [], f"CSP-blocked inline handlers: {offenders}"
 
 
+def test_templates_do_not_use_multiline_short_comments():
+    """Django's ``{# ... #}`` comments end at the first newline.
+
+    A multiline short comment is emitted as visible page text, which can expose
+    implementation notes on both authenticated and public surfaces. Use the
+    ``{% comment %}`` block tag for comments that span lines.
+    """
+    multiline_short_comment = re.compile(r"\{#(?:(?!#\})[^\n])*\n")
+    offenders = [
+        str(path.relative_to(TEMPLATE_ROOT))
+        for path in _templates()
+        if multiline_short_comment.search(path.read_text())
+    ]
+
+    assert offenders == [], f"multiline Django short comments: {offenders}"
+
+
 def test_every_table_header_has_an_explicit_scope():
     unscoped_header = re.compile(r"<th(?!ead\b)(?![^>]*\bscope=)[^>]*>", re.IGNORECASE)
     offenders = [

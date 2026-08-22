@@ -227,6 +227,21 @@ The table below records the complete local validation of the UI/UX implementatio
 
 No unresolved critical or high-severity UI issue identified by this audit remains in the implementation.
 
+### Follow-up rendered-response verification
+
+A final server-rendered response review found that 17 templates used Django's
+single-line `{# ... #}` syntax across multiple lines. Django emitted the text
+after the first newline into the page, exposing internal implementation notes
+on authenticated and public surfaces. Every affected block now uses
+`{% comment %}...{% endcomment %}`, and a repository-wide contract test prevents
+the pattern from returning.
+
+After the fix, public search, storefront, and shared-catalog responses were
+rendered from seeded data and checked for comment delimiters, implementation
+notes, and B2B-only seeded values; none were present. The complete suite still
+passes: 804 passed and 22 PostgreSQL-only tests skipped, for 826 collected tests
+and 0 failures.
+
 ## 7. Git summary
 
 Remote implementation commit:

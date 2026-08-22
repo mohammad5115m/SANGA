@@ -22,8 +22,8 @@
     <button class="btn btn-primary btn-block" type="submit">تأیید موجودی</button>
   </form>
 
-  {# The honest alternative when the answer is "we have none": this leaves the
-     product intact and simply takes it off buyer-facing surfaces. #}
+  {% comment %}The honest alternative when the answer is "we have none": this leaves the
+  product intact and simply takes it off buyer-facing surfaces.{% endcomment %}
   <section class="panel stack-md">
     <p class="muted">اگر این محصول دیگر موجود نیست، به‌جای وارد کردن عدد آن را ناموجود کنید.</p>
     <form method="post" action="{% url 'inventory:lot_set_availability' lot.id %}">

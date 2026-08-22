@@ -17,8 +17,8 @@
       {% for group in groups %}
         <section class="panel stack-md">
           {% if groups|length > 1 %}
-            {# One inquiry per seller: a seller must never see what the customer
-               asked another seller. #}
+            {% comment %}One inquiry per seller: a seller must never see what the customer
+            asked another seller.{% endcomment %}
             <h2 class="section-title">{{ group.business.name }}</h2>
           {% endif %}
 

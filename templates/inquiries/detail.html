@@ -34,8 +34,8 @@
       {% for line in inquiry.items.all %}
         <div class="list-item">
           <div>
-            {# The snapshot name, so the request still reads correctly after the
-               product is renamed or withdrawn. #}
+            {% comment %}The snapshot name, so the request still reads correctly after the
+            product is renamed or withdrawn.{% endcomment %}
             <div class="list-title">{{ line.product_name }}</div>
             {% if line.requested_qty_sqm %}
               <div class="muted">{{ line.requested_qty_sqm }} متر مربع</div>

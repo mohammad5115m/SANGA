@@ -4,9 +4,9 @@
 
 {% block content %}
 <section class="stack-lg">
-  {# The request is already saved on the server. Sharing is offered afterwards
-     and never instead: a seller must not depend on a message the customer may
-     not have sent. #}
+  {% comment %}The request is already saved on the server. Sharing is offered afterwards
+  and never instead: a seller must not depend on a message the customer may
+  not have sent.{% endcomment %}
   <div class="empty-state empty-state-lg">
     <h1 class="page-title">درخواست شما ثبت شد</h1>
     <p class="page-lead">فروشنده درخواست شما را دریافت کرد و با شما تماس می‌گیرد.</p>

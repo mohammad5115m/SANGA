@@ -20,8 +20,8 @@
     {% endfor %}
   </div>
 
-  {# Date filtering applies to the sales and invoice reports. Debtors, aging and
-     the freshness lists describe the present, so a window would be misleading. #}
+  {% comment %}Date filtering applies to the sales and invoice reports. Debtors, aging and
+  the freshness lists describe the present, so a window would be misleading.{% endcomment %}
   <form method="get" class="panel filter-bar">
     <label class="field">
       <span class="field-label">از تاریخ</span>

@@ -7,8 +7,8 @@
 {% endblock %}
 
 {% block content %}
-{# The per-product share link. Resolved through the public audience even for a
-   logged-in colleague, so a B2B price can never appear on this page. #}
+{% comment %}The per-product share link. Resolved through the public audience even for a
+logged-in colleague, so a B2B price can never appear on this page.{% endcomment %}
 <section class="stack-lg">
   {% include "inventory/_gallery.html" %}
 

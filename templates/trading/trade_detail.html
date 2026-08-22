@@ -10,8 +10,8 @@
     <p class="page-lead">{{ trade.finalized_at|date:"Y/m/d H:i" }}</p>
   </div>
 
-  {# Every value here is the snapshot taken at finalization, not a live lookup:
-     renaming or deleting the product must not rewrite what was sold. #}
+  {% comment %}Every value here is the snapshot taken at finalization, not a live lookup:
+  renaming or deleting the product must not rewrite what was sold.{% endcomment %}
   <section class="panel stack-sm">
     <div class="kv"><span>فروشنده</span><strong>{{ trade.seller_business.name }}</strong></div>
     <div class="kv"><span>خریدار</span><strong>{{ trade.counterparty_label }}</strong></div>
@@ -71,8 +71,8 @@
       </div>
       <div class="kv"><span>وضعیت</span><strong>{{ invoice.get_status_display }}</strong></div>
     {% elif can_create_invoice %}
-      {# A finalized sale should already have one. This is the way back when the
-         automatic creation could not run — a lapsed plan, a transient error. #}
+      {% comment %}A finalized sale should already have one. This is the way back when the
+      automatic creation could not run — a lapsed plan, a transient error.{% endcomment %}
       <p class="muted">برای این فروش هنوز فاکتوری ساخته نشده است.</p>
       <form method="post" action="{% url 'trading:trade_create_invoice' trade.id %}">
         {% csrf_token %}
@@ -83,9 +83,9 @@
     {% endif %}
   </section>
 
-  {# One link per sold line, not one for the trade: a multi-line sale leaves
-     trade.item blank on purpose, and keying off it meant a seller who sold three
-     stones was offered no way to update any of them. #}
+  {% comment %}One link per sold line, not one for the trade: a multi-line sale leaves
+  trade.item blank on purpose, and keying off it meant a seller who sold three
+  stones was offered no way to update any of them.{% endcomment %}
   {% if is_seller %}
     <section class="panel stack-md">
       <h2 class="section-title">موجودی محصولات</h2>

@@ -26,8 +26,8 @@
     {% endfor %}
   </div>
 
-  {# A catalog inquiry with no products and no quantities told the seller almost
-     nothing. Selecting first is what makes the request answerable. #}
+  {% comment %}A catalog inquiry with no products and no quantities told the seller almost
+  nothing. Selecting first is what makes the request answerable.{% endcomment %}
   <section class="panel stack-sm">
     <h2 class="section-title">استعلام از این کاتالوگ</h2>
     {% if selection_count %}
