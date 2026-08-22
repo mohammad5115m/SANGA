@@ -15,6 +15,7 @@ from decimal import Decimal
 
 import pytest
 from django.contrib.admin.sites import site
+from django.utils import timezone
 
 from apps.businesses.models import Business
 from apps.core.testing import make_business, make_item, make_product, owner_membership
@@ -103,9 +104,12 @@ def test_an_issued_invoice_is_read_only(records):
 @pytest.mark.django_db
 def test_a_draft_invoice_stays_editable(records):
     """The lock is on documents that have been sent, not on ones being written."""
-    invoice = records["invoice"]
-    invoice.status = SalesInvoice.Status.DRAFT
-    invoice.save(update_fields=["status"])
+    invoice = SalesInvoice.objects.create(
+        seller_business=records["seller"],
+        buyer_business=records["buyer"],
+        buyer_name=records["buyer"].name,
+        issue_date=timezone.localdate(),
+    )
 
     readonly = set(_admin(SalesInvoice).get_readonly_fields(_Request(), invoice))
     assert "notes" not in readonly
