@@ -261,24 +261,6 @@ class SalesInvoice(models.Model):
     def __str__(self) -> str:
         return f"{self.number or 'پیش‌نویس'} — {self.buyer_name}"
 
-    @property
-    def is_editable(self) -> bool:
-        return self.status == self.Status.DRAFT
-
-    @property
-    def display_number(self) -> str:
-        return self.number or "پیش‌نویس"
-
-    @property
-    def display_total_amount(self) -> Decimal:
-        from .calculations import to_display_amount
-
-        return to_display_amount(
-            self.total_amount,
-            currency=self.currency,
-            display_unit=self.display_unit,
-        )
-
     def save(self, *args, **kwargs):
         if self.pk and not self._state.adding:
             original = SalesInvoice.objects.filter(pk=self.pk).first()
@@ -327,6 +309,24 @@ class SalesInvoice(models.Model):
         if self.status != self.Status.DRAFT:
             raise ValidationError("فاکتور صادرشده قابل حذف نیست؛ آن را باطل کنید.")
         return super().delete(*args, **kwargs)
+
+    @property
+    def is_editable(self) -> bool:
+        return self.status == self.Status.DRAFT
+
+    @property
+    def display_number(self) -> str:
+        return self.number or "پیش‌نویس"
+
+    @property
+    def display_total_amount(self) -> Decimal:
+        from .calculations import to_display_amount
+
+        return to_display_amount(
+            self.total_amount,
+            currency=self.currency,
+            display_unit=self.display_unit,
+        )
 
 
 class SalesInvoiceItem(models.Model):
