@@ -373,7 +373,7 @@ def test_export_endpoint_is_rate_limited(client, seller, monkeypatch):
     assert second.status_code == 429
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_brand_asset_endpoint_is_tenant_scoped(client, seller, tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path):
         source = BytesIO()
