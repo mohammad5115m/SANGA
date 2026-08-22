@@ -269,7 +269,7 @@ class ItemMediaForm(forms.Form):
 class ItemFilterForm(PersianNumericFormMixin, forms.Form):
     numeric_fields = ("price_min", "price_max", "min_qty_sqm")
     q = forms.CharField(
-        required=False, label="جستجو",
+        required=False, label="جست‌وجو",
         widget=forms.TextInput(attrs={**_TEXT, "placeholder": "نام، کد یا فرآوری..."}),
     )
     stone = forms.ModelChoiceField(

@@ -13,7 +13,9 @@
       <p class="page-lead">{{ current_business.name }}</p>
     </div>
     <div class="btn-row">
-      <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
+      {% if can_add_products %}
+        <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
+      {% endif %}
       {% if 'invoice.manage' in capabilities %}
         <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
       {% endif %}
@@ -31,9 +33,9 @@
         <div class="metric-label">نیازمند تأیید موجودی</div>
         <div class="metric-value">{{ lot_totals.needs_confirmation }}</div>
       </a>
-      <a class="metric metric-link" href="{% url 'inventory:lot_list' %}">
+      <a class="metric metric-link" href="{% url 'inventory:lot_list' %}?state=needs_price">
         <div class="metric-label">قیمت نیازمند بررسی</div>
-        <div class="metric-value">{{ lot_totals.stale_price }}</div>
+        <div class="metric-value">{{ lot_totals.stale_price|add:lot_totals.no_price }}</div>
       </a>
       {% if 'trade.confirm' in capabilities %}
         <a class="metric metric-link" href="{% url 'trading:proposal_list' %}?tab=action">
@@ -239,10 +241,14 @@
     </section>
   {% endif %}
 
-  {% if lot_totals.active == 0 %}
+  {% if lot_totals.active == 0 and can_add_products %}
     <div class="empty-state stack-md">
       <p>هنوز محصولی ثبت نکرده‌اید. با «افزودن محصول» شروع کنید.</p>
       <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
+    </div>
+  {% elif lot_totals.active == 0 %}
+    <div class="empty-state">
+      هنوز محصول فعالی ثبت نشده است. برای ثبت محصول با مدیر کسب‌وکار هماهنگ کنید.
     </div>
   {% endif %}
 </section>

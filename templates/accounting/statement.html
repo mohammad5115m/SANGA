@@ -61,13 +61,13 @@
     <table class="ledger-table">
       <thead>
         <tr>
-          <th>تاریخ</th>
-          <th>شرح</th>
-          <th>مرجع</th>
-          <th>بدهکار</th>
-          <th>بستانکار</th>
-          <th>مانده</th>
-          {% if can_manage %}<th>عملیات</th>{% endif %}
+          <th scope="col">تاریخ</th>
+          <th scope="col">شرح</th>
+          <th scope="col">مرجع</th>
+          <th scope="col">بدهکار</th>
+          <th scope="col">بستانکار</th>
+          <th scope="col">مانده</th>
+          {% if can_manage %}<th scope="col">عملیات</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -110,20 +110,20 @@
       {% if totals.row_count %}
         <tfoot>
           <tr>
-            <th colspan="3">مانده ابتدای دوره</th>
+            <th scope="row" colspan="3">مانده ابتدای دوره</th>
             <td class="num" colspan="{% if can_manage %}4{% else %}3{% endif %}">
               {{ totals.opening_balance.amount|rial }} ریال · {{ totals.opening_balance.label }}
             </td>
           </tr>
           <tr>
-            <th colspan="3">جمع گردش نمایش‌داده‌شده</th>
+            <th scope="row" colspan="3">جمع گردش نمایش‌داده‌شده</th>
             <td class="num">{{ totals.debit|rial }}</td>
             <td class="num">{{ totals.credit|rial }}</td>
             <td class="num">—</td>
             {% if can_manage %}<td></td>{% endif %}
           </tr>
           <tr>
-            <th colspan="3">مانده پایان دوره</th>
+            <th scope="row" colspan="3">مانده پایان دوره</th>
             <td class="num" colspan="{% if can_manage %}4{% else %}3{% endif %}">
               {{ totals.closing_balance.amount|rial }} ریال · {{ totals.closing_balance.label }}
             </td>

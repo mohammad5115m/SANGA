@@ -5,7 +5,7 @@
 {% block shell %}
 <div class="auth-shell">
   <div class="auth-hero" aria-hidden="true"></div>
-  <div class="auth-panel">
+  <main class="auth-panel" id="main-content" tabindex="-1">
     <div class="brand-lockup brand-lockup-lg">
       <span class="brand-mark" aria-hidden="true"></span>
       <div>
@@ -14,6 +14,6 @@
       </div>
     </div>
     {% block content %}{% endblock %}
-  </div>
+  </main>
 </div>
 {% endblock %}

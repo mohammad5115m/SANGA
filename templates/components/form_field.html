@@ -1,0 +1,28 @@
+{% comment %}
+Accessible, reusable field treatment for operational forms.
+
+Expects: field (a Django BoundField). Optional: show_requirement=False.
+{% endcomment %}
+<div class="field{% if field.field.widget.input_type == 'checkbox' %} checkbox-field{% endif %}">
+  {% if field.field.widget.input_type == 'checkbox' %}
+    {{ field }}
+    <div class="field-copy">
+      <div class="field-heading">
+        <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {% if show_requirement != False %}<span class="field-requirement">اختیاری</span>{% endif %}
+      </div>
+      {% if field.help_text %}<div class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</div>{% endif %}
+      {% if field.errors %}<div class="field-error" id="{{ field.auto_id }}_error">{{ field.errors|striptags }}</div>{% endif %}
+    </div>
+  {% else %}
+    <div class="field-heading">
+      <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {% if show_requirement != False %}
+        <span class="field-requirement">{% if field.field.required %}ضروری{% else %}اختیاری{% endif %}</span>
+      {% endif %}
+    </div>
+    {% if field.help_text %}<div class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</div>{% endif %}
+    {{ field }}
+    {% if field.errors %}<div class="field-error" id="{{ field.auto_id }}_error">{{ field.errors|striptags }}</div>{% endif %}
+  {% endif %}
+</div>

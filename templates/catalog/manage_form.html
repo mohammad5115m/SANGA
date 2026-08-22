@@ -12,7 +12,7 @@
     {% endif %}
   </div>
 
-  <form method="post" class="stack-lg" novalidate>
+  <form method="post" class="stack-lg" novalidate data-unsaved-warning>
     {% csrf_token %}
     {% if selection %}<input type="hidden" name="selection" value="{{ selection }}">{% endif %}
     <section class="panel stack-md">

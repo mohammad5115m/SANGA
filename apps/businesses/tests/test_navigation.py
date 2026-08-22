@@ -105,6 +105,23 @@ def test_the_hub_hides_what_the_member_cannot_reach(client, shop):
 
 
 @pytest.mark.django_db
+def test_dashboard_does_not_offer_product_creation_to_a_viewer(client, shop):
+    viewer = BusinessMembership.objects.create(
+        user=make_user("09241118888"),
+        business=shop,
+        role=BusinessMembership.Role.VIEWER,
+        status=BusinessMembership.Status.ACTIVE,
+    )
+    _login(client, shop, viewer)
+
+    body = client.get(reverse("businesses:dashboard")).content.decode()
+
+    assert "افزودن محصول" not in body
+    assert reverse("inventory:quick_add_start") not in body
+    assert "برای ثبت محصول با مدیر کسب‌وکار هماهنگ کنید" not in body, "shop already has active inventory"
+
+
+@pytest.mark.django_db
 def test_the_dashboard_leads_with_what_needs_doing(client, shop):
     _login(client, shop)
     body = client.get(reverse("businesses:dashboard")).content.decode()

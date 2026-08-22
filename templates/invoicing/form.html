@@ -24,7 +24,7 @@
   <div class="alert alert-info">فروش به همکار فقط از <a href="{% url 'trading:proposal_create' %}">توافق دوطرفه</a> انجام می‌شود تا دقیقاً یک معامله، دو سند دفتر حساب و یک فاکتور ایجاد شود.</div>
 
   <div class="invoice-editor-layout">
-    <form method="post" enctype="multipart/form-data" class="invoice-form" novalidate data-invoice-form data-preview-url="{% url 'invoicing:preview' %}">
+    <form method="post" enctype="multipart/form-data" class="invoice-form" novalidate data-invoice-form data-unsaved-warning data-preview-url="{% url 'invoicing:preview' %}">
       {% csrf_token %}
       {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
       {% if formset.non_form_errors %}<div class="alert alert-error">{{ formset.non_form_errors|striptags }}</div>{% endif %}

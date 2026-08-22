@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from django.db.models import QuerySet
+from django.db.models import Exists, OuterRef, Q, QuerySet
 
 from apps.businesses.models import Business
+from apps.pricing.models import LotPrice
 
 from .filters import ItemFilterSpec
 from .models import InventoryLot, Product
@@ -61,6 +62,7 @@ OWNER_STATE_CHOICES: tuple[tuple[str, str], ...] = (
     ("hidden", "منتشر نشده"),
     ("draft", "پیش‌نویس"),
     ("needs_stock", "نیازمند تأیید موجودی"),
+    ("needs_price", "نیازمند بررسی قیمت"),
 )
 
 
@@ -84,6 +86,13 @@ def filter_owned_lots(
         qs = qs.filter(status=InventoryLot.Status.DRAFT)
     elif state == "needs_stock":
         qs = filter_needs_stock_confirmation(qs)
+    elif state == "needs_price":
+        prices = LotPrice.objects.filter(lot=OuterRef("pk"))
+        stale_prices = prices.filter(LotPrice.needs_confirmation_q())
+        qs = qs.annotate(
+            has_price=Exists(prices),
+            has_stale_price=Exists(stale_prices),
+        ).filter(Q(has_price=False) | Q(has_stale_price=True))
     return qs
 
 

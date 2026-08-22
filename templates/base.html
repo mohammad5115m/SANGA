@@ -17,6 +17,9 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body class="app-body {% block body_class %}{% endblock %}" hx-boost="true">
+  <a class="skip-link" href="#main-content">پرش به محتوای اصلی</a>
+  <div class="route-progress" aria-hidden="true"></div>
+  <div class="visually-hidden" id="async-status" role="status" aria-live="polite"></div>
   {% if messages %}
   <div class="toast-region" aria-live="polite">
     {% for message in messages %}

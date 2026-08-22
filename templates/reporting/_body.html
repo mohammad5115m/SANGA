@@ -43,10 +43,10 @@ prices the view populated.
   <table class="table">
     <thead>
       <tr>
-        <th>{% if active == 'by_colleague' %}همکار / مشتری{% elif active == 'by_stone_type' %}نوع سنگ{% else %}محصول{% endif %}</th>
-        <th class="num">متراژ</th>
-        <th class="num">تعداد معامله</th>
-        <th class="num">جمع (ریال)</th>
+        <th scope="col">{% if active == 'by_colleague' %}همکار / مشتری{% elif active == 'by_stone_type' %}نوع سنگ{% else %}محصول{% endif %}</th>
+        <th scope="col" class="num">متراژ</th>
+        <th scope="col" class="num">تعداد معامله</th>
+        <th scope="col" class="num">جمع (ریال)</th>
       </tr>
     </thead>
     <tbody>
@@ -63,10 +63,10 @@ prices the view populated.
     </tbody>
     <tfoot>
       <tr>
-        <th>جمع کل</th>
-        <th class="num">{{ summary.quantity_sqm|sqm }}</th>
-        <th class="num">{{ summary.trade_count }}</th>
-        <th class="num">{{ summary.total|rial }}</th>
+        <th scope="row">جمع کل</th>
+        <td class="num">{{ summary.quantity_sqm|sqm }}</td>
+        <td class="num">{{ summary.trade_count }}</td>
+        <td class="num">{{ summary.total|rial }}</td>
       </tr>
     </tfoot>
   </table>
@@ -74,7 +74,7 @@ prices the view populated.
 {% elif active == 'debtors' or active == 'creditors' %}
   <table class="table">
     <thead>
-      <tr><th>همکار</th><th>وضعیت</th><th class="num">مبلغ (ریال)</th></tr>
+      <tr><th scope="col">همکار</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ (ریال)</th></tr>
     </thead>
     <tbody>
       {% for row in balances %}
@@ -106,7 +106,7 @@ prices the view populated.
   </div>
   <table class="table">
     <thead>
-      <tr><th>شماره</th><th>تاریخ</th><th>خریدار</th><th>وضعیت</th><th class="num">مبلغ (ریال)</th></tr>
+      <tr><th scope="col">شماره</th><th scope="col">تاریخ</th><th scope="col">خریدار</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ (ریال)</th></tr>
     </thead>
     <tbody>
       {% for invoice in invoices %}
@@ -127,9 +127,9 @@ prices the view populated.
   <table class="table">
     <thead>
       <tr>
-        <th>همکار</th>
-        {% for bucket in aging.total.rows %}<th class="num">{{ bucket.label }}</th>{% endfor %}
-        <th class="num">جمع</th>
+        <th scope="col">همکار</th>
+        {% for bucket in aging.total.rows %}<th scope="col" class="num">{{ bucket.label }}</th>{% endfor %}
+        <th scope="col" class="num">جمع</th>
       </tr>
     </thead>
     <tbody>
@@ -145,9 +145,9 @@ prices the view populated.
     </tbody>
     <tfoot>
       <tr>
-        <th>جمع کل</th>
-        {% for bucket in aging.total.rows %}<th class="num">{{ bucket.amount|rial }}</th>{% endfor %}
-        <th class="num">{{ aging.total.total|rial }}</th>
+        <th scope="row">جمع کل</th>
+        {% for bucket in aging.total.rows %}<td class="num">{{ bucket.amount|rial }}</td>{% endfor %}
+        <td class="num">{{ aging.total.total|rial }}</td>
       </tr>
     </tfoot>
   </table>
@@ -156,7 +156,7 @@ prices the view populated.
   {# Deliberately not filtered by date: staleness is about now, not a window. #}
   <table class="table">
     <thead>
-      <tr><th>محصول</th><th>کد</th><th class="num">متراژ ثبت‌شده</th><th>آخرین تأیید</th></tr>
+      <tr><th scope="col">محصول</th><th scope="col">کد</th><th scope="col" class="num">متراژ ثبت‌شده</th><th scope="col">آخرین تأیید</th></tr>
     </thead>
     <tbody>
       {% for item in items %}
@@ -175,7 +175,7 @@ prices the view populated.
 {% elif active == 'price_check' %}
   <table class="table">
     <thead>
-      <tr><th>محصول</th><th>کانال</th><th class="num">مبلغ (ریال)</th><th>انقضا</th></tr>
+      <tr><th scope="col">محصول</th><th scope="col">کانال</th><th scope="col" class="num">مبلغ (ریال)</th><th scope="col">انقضا</th></tr>
     </thead>
     <tbody>
       {% for price in prices %}

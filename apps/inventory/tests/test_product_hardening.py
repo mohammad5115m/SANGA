@@ -7,11 +7,11 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 
-from apps.core.testing import make_business, make_item, make_user, owner_membership
+from apps.core.testing import expire_price, make_business, make_item, make_user, owner_membership
 from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.forms import ItemFilterForm, ProductItemForm
 from apps.inventory.models import InventoryLot, VocabularyTerm
-from apps.inventory.selectors import lots_for_business
+from apps.inventory.selectors import filter_owned_lots, lots_for_business
 from apps.inventory.services import InventoryError, create_product_item, set_item_availability
 
 
@@ -21,6 +21,20 @@ def _login(client, business):
     session = client.session
     session["current_business_id"] = str(business.id)
     session.save()
+
+
+@pytest.mark.django_db
+def test_price_attention_filter_returns_missing_and_expired_prices_only():
+    business = make_business(name="فروشنده", owner_phone="09120000091")
+    fresh = make_item(business, lot_code="FRESH", b2c="100000")
+    expired = make_item(business, lot_code="EXPIRED", b2c="200000")
+    missing = make_item(business, lot_code="MISSING")
+    expire_price(expired)
+
+    result = set(filter_owned_lots(lots_for_business(business), state="needs_price"))
+
+    assert result == {expired, missing}
+    assert fresh not in result
 
 
 @pytest.mark.django_db

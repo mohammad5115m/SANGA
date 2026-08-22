@@ -26,7 +26,7 @@
     <div class="kv"><span>کد محصول</span><strong dir="ltr">{{ lot.lot_code }}</strong></div>
     <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone.name|default:"—" }}</strong></div>
     <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
-    {% if lot.thickness_mm %}<div class="kv"><span>ضخامت</span><strong>{{ lot.thickness_mm }} mm</strong></div>{% endif %}
+    {% if lot.thickness_cm %}<div class="kv"><span>ضخامت</span><strong>{{ lot.thickness_cm }} سانتی‌متر</strong></div>{% endif %}
     {# City only: the exact address is the seller's private information. #}
     {% if product.applications.all %}
       <div class="kv">

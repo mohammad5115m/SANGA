@@ -34,9 +34,9 @@
     <table class="ledger-table">
       <thead>
         <tr>
-          <th>همکار</th>
-          {% for bucket in report.total.rows %}<th>{{ bucket.label }}</th>{% endfor %}
-          <th>جمع</th>
+          <th scope="col">همکار</th>
+          {% for bucket in report.total.rows %}<th scope="col">{{ bucket.label }}</th>{% endfor %}
+          <th scope="col">جمع</th>
         </tr>
       </thead>
       <tbody>
@@ -57,7 +57,7 @@
       {% if report.rows %}
         <tfoot>
           <tr>
-            <th>جمع کل</th>
+            <th scope="row">جمع کل</th>
             {% for bucket in report.total.rows %}<td class="num">{{ bucket.amount|rial }}</td>{% endfor %}
             <td class="num"><strong>{{ report.total.total|rial }}</strong></td>
           </tr>

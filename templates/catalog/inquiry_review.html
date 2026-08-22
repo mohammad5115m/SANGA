@@ -11,7 +11,7 @@
   </div>
 
   {% if rows %}
-    <form method="post" class="stack-lg">
+    <form method="post" class="stack-lg" data-unsaved-warning>
       {% csrf_token %}
 
       {% for group in groups %}
@@ -35,13 +35,9 @@
                 <input class="field-input" type="number" step="0.001" inputmode="decimal"
                        name="qty-{{ row.item.id }}" value="{{ row.quantity|default_if_none:'' }}">
               </label>
-              <a class="btn btn-ghost btn-sm"
-                 href="{% url 'catalog:selection_remove' row.item.id %}"
-                 onclick="event.preventDefault(); this.nextElementSibling.submit();">حذف</a>
-              <form method="post" action="{% url 'catalog:selection_remove' row.item.id %}" class="hidden-form">
-                {% csrf_token %}
-                <input type="hidden" name="next" value="{% url 'catalog:inquiry_review' %}">
-              </form>
+              <button class="btn btn-ghost btn-sm" type="submit"
+                      formaction="{% url 'catalog:selection_remove' row.item.id %}"
+                      name="next" value="{% url 'catalog:inquiry_review' %}">حذف</button>
             </div>
           {% endfor %}
         </section>
@@ -53,7 +49,7 @@
   {% else %}
     <div class="empty-state stack-md">
       <p>هنوز محصولی انتخاب نکرده‌اید.</p>
-      <a class="btn btn-primary" href="{% url 'catalog:public_search' %}">جستجوی محصولات</a>
+      <a class="btn btn-primary" href="{% url 'catalog:public_search' %}">جست‌وجوی محصولات</a>
     </div>
   {% endif %}
 </section>

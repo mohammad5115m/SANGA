@@ -21,7 +21,6 @@
     {% for card in cards %}
       {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
       {% include "inventory/_product_card.html" with show_select=True %}
-      {% if card.note %}<div class="muted card-note">{{ card.note }}</div>{% endif %}
     {% empty %}
       <div class="empty-state">موردی برای نمایش نیست.</div>
     {% endfor %}

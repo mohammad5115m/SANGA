@@ -27,7 +27,7 @@
       {% if invoice.status == 'draft' %}
       <form method="post" action="{% url 'invoicing:issue' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="پس از صدور، اقلام و مبالغ تغییرناپذیر می‌شوند. ادامه می‌دهید؟">صدور نهایی</button></form>
       {% elif invoice.status == 'issued' %}
-      <form method="post" action="{% url 'invoicing:cancel' invoice.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit" data-confirm="فاکتور باطل شود؟ مانده دفتر حساب تغییر نمی‌کند.">ابطال سند</button></form>
+      <form method="post" action="{% url 'invoicing:cancel' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="فاکتور باطل شود؟ مانده دفتر حساب تغییر نمی‌کند.">ابطال سند</button></form>
       {% endif %}
       {% if invoice.counterparty_type == 'customer' %}<form method="post" action="{% url 'invoicing:duplicate' invoice.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">تکثیر به پیش‌نویس جدید</button></form>{% endif %}
     </div>

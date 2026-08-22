@@ -27,11 +27,11 @@
       <table class="table">
         <thead>
           <tr>
-            <th>#</th>
-            <th>محصول</th>
-            <th>متراژ</th>
-            <th>قیمت واحد</th>
-            <th>جمع</th>
+            <th scope="col">#</th>
+            <th scope="col">محصول</th>
+            <th scope="col">متراژ</th>
+            <th scope="col">قیمت واحد</th>
+            <th scope="col">جمع</th>
           </tr>
         </thead>
         <tbody>
@@ -54,8 +54,8 @@
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="4">مبلغ کل</th>
-            <th class="num" dir="ltr">{{ trade.total_amount|rial }} {{ trade.currency }}</th>
+            <th scope="row" colspan="4">مبلغ کل</th>
+            <td class="num" dir="ltr">{{ trade.total_amount|rial }} {{ trade.currency }}</td>
           </tr>
         </tfoot>
       </table>

@@ -11,8 +11,8 @@
         <div class="list-title">{{ card.product.commercial_name }}</div>
         <div class="catalog-price">{{ card.price.label }}</div>
         <div class="kv"><span>نوع</span><strong>{{ card.product.stone.name|default:"—" }}</strong></div>
-        <div class="kv"><span>متراژ</span><strong>{{ card.lot.available_sqm }}</strong></div>
-        <div class="kv"><span>ضخامت</span><strong>{{ card.lot.thickness_mm|default:"—" }}</strong></div>
+        <div class="kv"><span>وضعیت موجودی</span><strong>{{ card.stock.label }}</strong></div>
+        <div class="kv"><span>ضخامت</span><strong>{% if card.lot.thickness_cm %}{{ card.lot.thickness_cm }} سانتی‌متر{% else %}—{% endif %}</strong></div>
         <a class="btn btn-secondary btn-block" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">مشاهده</a>
       </article>
     {% endfor %}

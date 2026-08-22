@@ -7,10 +7,8 @@ Expects: price_form (a TierPriceForm bound with its own prefix)
 {% if price_form.non_field_errors %}
   <div class="alert alert-error">{{ price_form.non_field_errors|striptags }}</div>
 {% endif %}
-{% for field in price_form %}
-  <label class="field">
-    <span class="field-label">{{ field.label }}</span>
-    {{ field }}
-    {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-  </label>
-{% endfor %}
+<div class="form-grid">
+  {% for field in price_form %}
+    {% include "components/form_field.html" %}
+  {% endfor %}
+</div>
