@@ -1,53 +1,201 @@
 from __future__ import annotations
 
+import re
+from decimal import Decimal
+
 from django import forms
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 
+from apps.core.forms import PersianNumericFormMixin
+from apps.inventory.models import InventoryLot
+
+from .calculations import DISCOUNT_AMOUNT, to_display_amount, validate_display_unit
+from .models import BusinessInvoiceSettings, SalesInvoice
+from .uploads import sanitize_invoice_image
+
 _TEXT = {"class": "field-input"}
+_MONEY = {**_TEXT, "inputmode": "decimal", "min": "0", "step": "0.01"}
+UNIT_CHOICES = [
+    ("متر مربع", "متر مربع"),
+    ("عدد", "عدد"),
+    ("متر", "متر"),
+    ("تن", "تن"),
+    ("کیلوگرم", "کیلوگرم"),
+    ("پالت", "پالت"),
+]
 
 
-class ManualInvoiceForm(forms.Form):
-    """Header of a hand-typed invoice for a walk-in customer.
-
-    A walk-in never becomes a platform User. There is deliberately no colleague
-    option: a sale to another Business moves that colleague's account, and the
-    only thing allowed to move an account is a finalized Trade — so colleague
-    sales are recorded through «ثبت فروش مستقیم» instead.
-    """
-
+class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
+    numeric_fields = (
+        "invoice_discount_value",
+        "tax_amount",
+        "shipping_amount",
+        "adjustment_amount",
+        "paid_amount",
+    )
     customer_name = forms.CharField(
-        label="نام مشتری",
-        max_length=150,
-        widget=forms.TextInput(attrs=_TEXT),
+        label="نام مشتری", max_length=150, widget=forms.TextInput(attrs=_TEXT)
     )
     customer_phone = forms.CharField(
-        label="موبایل مشتری",
+        label="شماره تماس",
         required=False,
         max_length=20,
         widget=forms.TextInput(attrs={**_TEXT, "dir": "ltr", "inputmode": "tel"}),
+    )
+    buyer_address = forms.CharField(
+        label="آدرس خریدار", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 2})
     )
     issue_date = forms.DateField(
         label="تاریخ صدور",
         initial=timezone.localdate,
         widget=forms.DateInput(attrs={**_TEXT, "type": "date"}, format="%Y-%m-%d"),
     )
+    currency = forms.ChoiceField(
+        label="ارز مبنا", choices=SalesInvoice.Currency.choices, initial=SalesInvoice.Currency.IRR,
+        widget=forms.Select(attrs=_TEXT),
+    )
+    display_unit = forms.ChoiceField(
+        label="واحد نمایش", choices=SalesInvoice.DisplayUnit.choices,
+        initial=SalesInvoice.DisplayUnit.IRR, widget=forms.Select(attrs=_TEXT),
+    )
+    invoice_discount_type = forms.ChoiceField(
+        label="نوع تخفیف کلی", choices=SalesInvoice.DiscountType.choices,
+        initial=SalesInvoice.DiscountType.NONE, widget=forms.Select(attrs=_TEXT),
+    )
+    invoice_discount_value = forms.DecimalField(
+        label="مقدار تخفیف کلی", required=False, min_value=0,
+        max_digits=16, decimal_places=2, initial=0, widget=forms.NumberInput(attrs=_MONEY),
+    )
+    tax_amount = forms.DecimalField(
+        label="مالیات", required=False, min_value=0, max_digits=16,
+        decimal_places=2, initial=0, widget=forms.NumberInput(attrs=_MONEY),
+    )
+    shipping_amount = forms.DecimalField(
+        label="هزینه ارسال", required=False, min_value=0, max_digits=16,
+        decimal_places=2, initial=0, widget=forms.NumberInput(attrs=_MONEY),
+    )
+    adjustment_amount = forms.DecimalField(
+        label="تعدیل/گردکردن", required=False, min_value=0, max_digits=16,
+        decimal_places=2, initial=0, widget=forms.NumberInput(attrs=_MONEY),
+    )
+    paid_amount = forms.DecimalField(
+        label="بیعانه یا مبلغ پرداخت‌شده", required=False, min_value=0,
+        max_digits=16, decimal_places=2, initial=0, widget=forms.NumberInput(attrs=_MONEY),
+    )
     notes = forms.CharField(
-        label="توضیحات",
+        label="توضیحات", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 3})
+    )
+    payment_terms = forms.CharField(
+        label="شرایط پرداخت", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 2})
+    )
+    buyer_signature = forms.ImageField(
+        label="امضای خریدار",
         required=False,
-        widget=forms.Textarea(attrs={**_TEXT, "rows": 2}),
+        help_text="اختیاری؛ PNG، WebP یا JPEG تا ۵ مگابایت.",
+    )
+    remove_buyer_signature = forms.BooleanField(
+        label="حذف امضای خریدار فعلی", required=False
+    )
+    palette = forms.ChoiceField(
+        label="پالت رنگ", choices=BusinessInvoiceSettings.Palette.choices,
+        initial=BusinessInvoiceSettings.Palette.FOREST,
+        widget=forms.Select(attrs=_TEXT),
+    )
+    primary_color = forms.CharField(
+        label="رنگ اصلی", max_length=7, initial="#1f513c",
+        widget=forms.TextInput(attrs={**_TEXT, "type": "color"}),
+    )
+    header_style = forms.ChoiceField(
+        label="سبک سربرگ", choices=BusinessInvoiceSettings.HeaderStyle.choices,
+        initial=BusinessInvoiceSettings.HeaderStyle.MODERN,
+        widget=forms.Select(attrs=_TEXT),
+    )
+    logo_size = forms.ChoiceField(
+        label="اندازه لوگو",
+        choices=BusinessInvoiceSettings.LogoSize.choices,
+        initial=BusinessInvoiceSettings.LogoSize.MEDIUM,
+        widget=forms.Select(attrs=_TEXT),
+    )
+    show_bank_information = forms.BooleanField(
+        label="نمایش اطلاعات بانکی", required=False, initial=True
+    )
+    show_stamp = forms.BooleanField(label="نمایش مهر", required=False, initial=True)
+    show_signature = forms.BooleanField(
+        label="نمایش امضای فروشنده", required=False, initial=True
     )
 
     def __init__(self, *args, business=None, **kwargs):
+        self.business = business
         super().__init__(*args, **kwargs)
         self.fields["issue_date"].input_formats = ["%Y-%m-%d"]
+        if not self.is_bound and business is not None:
+            try:
+                settings_row = business.invoice_settings
+            except BusinessInvoiceSettings.DoesNotExist:
+                settings_row = None
+            if settings_row:
+                self.initial.setdefault("currency", settings_row.default_currency)
+                self.initial.setdefault("display_unit", settings_row.default_display_unit)
+                self.initial.setdefault("payment_terms", settings_row.payment_terms)
+                self.initial.setdefault("palette", settings_row.palette)
+                self.initial.setdefault("primary_color", settings_row.primary_color)
+                self.initial.setdefault("header_style", settings_row.header_style)
+                self.initial.setdefault("logo_size", settings_row.logo_size)
+                self.initial.setdefault(
+                    "show_bank_information", settings_row.show_bank_information
+                )
+                self.initial.setdefault("show_stamp", settings_row.show_stamp)
+                self.initial.setdefault("show_signature", settings_row.show_signature)
+
+    def clean_buyer_signature(self):
+        upload = self.cleaned_data.get("buyer_signature")
+        if not upload:
+            return None
+        return sanitize_invoice_image(upload, stem="buyer-signature")
+
+    def clean(self):
+        cleaned = super().clean()
+        currency = cleaned.get("currency")
+        display = cleaned.get("display_unit")
+        if currency and display:
+            try:
+                validate_display_unit(currency, display)
+            except ValueError as exc:
+                self.add_error("display_unit", str(exc))
+        if cleaned.get("invoice_discount_type") == SalesInvoice.DiscountType.PERCENT:
+            value = cleaned.get("invoice_discount_value") or 0
+            if value > 100:
+                self.add_error("invoice_discount_value", "درصد تخفیف نمی‌تواند بیشتر از ۱۰۰ باشد.")
+        color = cleaned.get("primary_color", "")
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            self.add_error("primary_color", "رنگ معتبر انتخاب کنید.")
+        elif contrast_ratio(color, "#ffffff") < Decimal("4.5"):
+            self.add_error(
+                "primary_color", "رنگ اصلی باید برای متن سفید کنتراست حداقل ۴٫۵ به ۱ داشته باشد."
+            )
+        return cleaned
+
+    def appearance(self) -> dict:
+        return {
+            "palette": self.cleaned_data["palette"],
+            "primary_color": self.cleaned_data["primary_color"],
+            "header_style": self.cleaned_data["header_style"],
+            "logo_size": self.cleaned_data["logo_size"],
+            "show_bank_information": self.cleaned_data["show_bank_information"],
+            "show_stamp": self.cleaned_data["show_stamp"],
+            "show_signature": self.cleaned_data["show_signature"],
+        }
 
 
-class InvoiceLineForm(forms.Form):
+class InvoiceLineForm(PersianNumericFormMixin, forms.Form):
+    numeric_fields = ("quantity", "unit_price", "discount_value")
+    item = forms.ModelChoiceField(
+        label="محصول ثبت‌شده", queryset=InventoryLot.objects.none(),
+        required=False, widget=forms.HiddenInput,
+    )
     product_name = forms.CharField(
-        label="نام محصول",
-        required=False,
-        max_length=200,
-        widget=forms.TextInput(attrs=_TEXT),
+        label="نام محصول", required=False, max_length=200, widget=forms.TextInput(attrs=_TEXT)
     )
     stone_type = forms.CharField(
         label="نوع سنگ", required=False, max_length=100, widget=forms.TextInput(attrs=_TEXT)
@@ -55,37 +203,224 @@ class InvoiceLineForm(forms.Form):
     grade = forms.CharField(
         label="سورت", required=False, max_length=50, widget=forms.TextInput(attrs=_TEXT)
     )
+    description = forms.CharField(
+        label="توضیح ردیف", required=False, max_length=255, widget=forms.TextInput(attrs=_TEXT)
+    )
     quantity = forms.DecimalField(
-        label="مقدار (m²)",
-        required=False,
-        min_value=0,
-        decimal_places=3,
-        max_digits=12,
-        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001"}),
+        label="مقدار", required=False, min_value=Decimal("0.001"), decimal_places=3,
+        max_digits=12, widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001"}),
     )
+    unit = forms.ChoiceField(label="واحد", choices=UNIT_CHOICES, widget=forms.Select(attrs=_TEXT))
     unit_price = forms.DecimalField(
-        label="قیمت واحد (ریال)",
-        required=False,
-        min_value=0,
-        decimal_places=0,
-        max_digits=14,
-        widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
+        label="قیمت واحد", required=False, min_value=Decimal("0.01"),
+        decimal_places=2, max_digits=14, widget=forms.NumberInput(attrs=_MONEY),
     )
+    discount_type = forms.ChoiceField(
+        label="نوع تخفیف", choices=SalesInvoice.DiscountType.choices,
+        initial=SalesInvoice.DiscountType.NONE, widget=forms.Select(attrs=_TEXT),
+    )
+    discount_value = forms.DecimalField(
+        label="تخفیف", required=False, min_value=0, decimal_places=2,
+        max_digits=16, initial=0, widget=forms.NumberInput(attrs=_MONEY),
+    )
+
+    def __init__(self, *args, business=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        item_qs = InventoryLot.objects.none()
+        if business is not None:
+            from apps.inventory.selectors import lots_for_business
+
+            item_qs = lots_for_business(business)
+        self.fields["item"].queryset = item_qs
+        raw_item = self.initial.get("item") or self.data.get(self.add_prefix("item"))
+        try:
+            selected = item_qs.filter(pk=raw_item).first() if raw_item else None
+        except (DjangoValidationError, TypeError, ValueError):
+            selected = None
+        self.item_label = str(selected) if selected else ""
 
     def clean(self):
         cleaned = super().clean()
-        # A completely empty row is a spare line the user did not fill in, not an
-        # error. A partly-filled one is a mistake worth reporting.
-        filled = any(cleaned.get(key) not in (None, "") for key in ("product_name", "quantity", "unit_price"))
+        filled = any(
+            cleaned.get(key) not in (None, "")
+            for key in ("item", "product_name", "quantity", "unit_price")
+        )
         if not filled:
             return cleaned
-        if not (cleaned.get("product_name") or "").strip():
-            self.add_error("product_name", "نام محصول را وارد کنید.")
+        if not cleaned.get("item") and not (cleaned.get("product_name") or "").strip():
+            self.add_error("product_name", "محصول را انتخاب کنید یا نام آن را وارد کنید.")
         if cleaned.get("quantity") in (None, ""):
             self.add_error("quantity", "مقدار را وارد کنید.")
         if cleaned.get("unit_price") in (None, ""):
             self.add_error("unit_price", "قیمت را وارد کنید.")
+        if cleaned.get("discount_type") == SalesInvoice.DiscountType.PERCENT:
+            if (cleaned.get("discount_value") or 0) > 100:
+                self.add_error("discount_value", "درصد تخفیف نمی‌تواند بیشتر از ۱۰۰ باشد.")
         return cleaned
 
 
-InvoiceLineFormSet = forms.formset_factory(InvoiceLineForm, extra=3, can_delete=True)
+class BaseInvoiceLineFormSet(forms.BaseFormSet):
+    def __init__(self, *args, business=None, **kwargs):
+        self.business = business
+        super().__init__(*args, **kwargs)
+
+    def get_form_kwargs(self, index):
+        return {**super().get_form_kwargs(index), "business": self.business}
+
+
+InvoiceLineFormSet = forms.formset_factory(
+    InvoiceLineForm,
+    formset=BaseInvoiceLineFormSet,
+    extra=1,
+    can_delete=True,
+    can_order=True,
+    max_num=100,
+    validate_max=True,
+)
+
+
+class BusinessInvoiceSettingsForm(forms.ModelForm):
+    remove_logo = forms.BooleanField(label="حذف لوگوی فعلی", required=False)
+    remove_stamp = forms.BooleanField(label="حذف مهر فعلی", required=False)
+    remove_signature = forms.BooleanField(label="حذف امضای فعلی", required=False)
+
+    class Meta:
+        model = BusinessInvoiceSettings
+        fields = [
+            "legal_name", "tax_id", "bank_information", "payment_terms",
+            "logo", "remove_logo", "stamp", "remove_stamp", "signature",
+            "remove_signature", "palette", "primary_color",
+            "header_style", "logo_size", "show_bank_information",
+            "show_stamp", "show_signature", "default_currency", "default_display_unit",
+        ]
+        widgets = {
+            "legal_name": forms.TextInput(attrs=_TEXT),
+            "tax_id": forms.TextInput(attrs=_TEXT),
+            "bank_information": forms.Textarea(attrs={**_TEXT, "rows": 3}),
+            "payment_terms": forms.Textarea(attrs={**_TEXT, "rows": 2}),
+            "logo": forms.FileInput(attrs={"accept": "image/png,image/webp,image/jpeg"}),
+            "stamp": forms.FileInput(attrs={"accept": "image/png,image/webp,image/jpeg"}),
+            "signature": forms.FileInput(attrs={"accept": "image/png,image/webp,image/jpeg"}),
+            "palette": forms.Select(attrs=_TEXT),
+            "primary_color": forms.TextInput(attrs={**_TEXT, "type": "color"}),
+            "header_style": forms.Select(attrs=_TEXT),
+            "logo_size": forms.Select(attrs=_TEXT),
+            "default_currency": forms.Select(attrs=_TEXT),
+            "default_display_unit": forms.Select(attrs=_TEXT),
+        }
+
+    def clean_primary_color(self):
+        color = self.cleaned_data["primary_color"]
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            raise forms.ValidationError("رنگ معتبر انتخاب کنید.")
+        if contrast_ratio(color, "#ffffff") < Decimal("4.5"):
+            raise forms.ValidationError("کنتراست رنگ با متن سفید باید حداقل ۴٫۵ به ۱ باشد.")
+        return color.lower()
+
+    def clean(self):
+        cleaned = super().clean()
+        currency = cleaned.get("default_currency")
+        display = cleaned.get("default_display_unit")
+        if currency and display:
+            try:
+                validate_display_unit(currency, display)
+            except ValueError as exc:
+                self.add_error("default_display_unit", str(exc))
+        return cleaned
+
+    def _clean_image(self, field: str):
+        upload = self.cleaned_data.get(field)
+        if self.data.get(f"remove_{field}") and not getattr(upload, "content_type", None):
+            return False
+        if upload and (
+            hasattr(upload, "temporary_file_path")
+            or getattr(upload, "content_type", None)
+        ):
+            return sanitize_invoice_image(upload, stem=field)
+        return upload
+
+    def clean_logo(self):
+        return self._clean_image("logo")
+
+    def clean_stamp(self):
+        return self._clean_image("stamp")
+
+    def clean_signature(self):
+        return self._clean_image("signature")
+
+
+class InvoiceTemplateNameForm(forms.Form):
+    name = forms.CharField(label="نام قالب", max_length=120, widget=forms.TextInput(attrs=_TEXT))
+
+
+def contrast_ratio(first: str, second: str) -> Decimal:
+    def luminance(value: str) -> Decimal:
+        channels = [int(value[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+        linear = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
+        return Decimal(str(0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]))
+
+    light, dark = sorted((luminance(first), luminance(second)), reverse=True)
+    return (light + Decimal("0.05")) / (dark + Decimal("0.05"))
+
+
+def invoice_initial(invoice: SalesInvoice) -> dict:
+    def display(value):
+        return to_display_amount(
+            value, currency=invoice.currency, display_unit=invoice.display_unit
+        )
+
+    discount_value = invoice.invoice_discount_value
+    if invoice.invoice_discount_type == DISCOUNT_AMOUNT:
+        discount_value = display(discount_value)
+    appearance = invoice.appearance_snapshot or {}
+    return {
+        "customer_name": invoice.customer_name,
+        "customer_phone": invoice.customer_phone,
+        "buyer_address": invoice.buyer_address,
+        "issue_date": invoice.issue_date,
+        "currency": invoice.currency,
+        "display_unit": invoice.display_unit,
+        "invoice_discount_type": invoice.invoice_discount_type,
+        "invoice_discount_value": discount_value,
+        "tax_amount": display(invoice.tax_amount),
+        "shipping_amount": display(invoice.shipping_amount),
+        "adjustment_amount": display(invoice.adjustment_amount),
+        "paid_amount": display(invoice.paid_amount),
+        "notes": invoice.notes,
+        "payment_terms": invoice.payment_terms,
+        "palette": appearance.get("palette", "forest"),
+        "primary_color": appearance.get("primary_color", "#1f513c"),
+        "header_style": appearance.get("header_style", "modern"),
+        "logo_size": appearance.get("logo_size", "medium"),
+        "show_bank_information": appearance.get("show_bank_information", True),
+        "show_stamp": appearance.get("show_stamp", True),
+        "show_signature": appearance.get("show_signature", True),
+    }
+
+
+def invoice_line_initials(invoice: SalesInvoice) -> list[dict]:
+    result = []
+    for line in invoice.items.all():
+        discount = line.discount_value
+        if line.discount_type == DISCOUNT_AMOUNT:
+            discount = to_display_amount(
+                discount, currency=invoice.currency, display_unit=invoice.display_unit
+            )
+        result.append(
+            {
+                "item": line.item_id,
+                "product_name": line.product_name,
+                "stone_type": line.stone_type,
+                "grade": line.grade,
+                "description": line.description,
+                "quantity": line.quantity,
+                "unit": line.unit,
+                "unit_price": to_display_amount(
+                    line.unit_price, currency=invoice.currency, display_unit=invoice.display_unit
+                ),
+                "discount_type": line.discount_type,
+                "discount_value": discount,
+                "ORDER": line.sort_order,
+            }
+        )
+    return result

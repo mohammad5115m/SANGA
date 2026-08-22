@@ -20,12 +20,23 @@ def normalize_digits(value: str) -> str:
 
 def normalize_persian_text(value: str) -> str:
     """Normalize common Persian/Arabic orthography differences for search."""
-    text = value.strip()
+    text = normalize_digits(value).strip()
     text = text.replace(_ARABIC_YE, _PERSIAN_YE).replace(_ARABIC_KE, _PERSIAN_KE)
     text = text.replace(_NBSP, " ")
     text = re.sub(rf"[{_ZWNJ}]+", _ZWNJ, text)
     text = re.sub(r"\s+", " ", text)
     return text
+
+
+def persian_search_variants(value: str) -> tuple[str, ...]:
+    """Equivalent query spellings without changing how stored names display."""
+    normalized = normalize_persian_text(value)
+    variants = {
+        normalized,
+        normalized.replace(_ZWNJ, " "),
+        normalized.replace(" ", _ZWNJ),
+    }
+    return tuple(item for item in variants if item)
 
 
 def normalize_phone(phone: str) -> str:

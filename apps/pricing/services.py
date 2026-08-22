@@ -36,7 +36,6 @@ class PriceView:
     tier_code: str
     amount: Decimal | None
     currency: str
-    unit: str
     display_as_inquiry: bool = False
     is_special: bool = False
     special_until: timezone.datetime | None = None
@@ -76,12 +75,11 @@ def price_view(price: LotPrice) -> PriceView:
     cannot be forgotten by an individual caller.
     """
     amount = price.effective_amount()
-    is_inquiry_mode = price.mode == LotPrice.Mode.INQUIRY or price.unit == LotPrice.Unit.INQUIRY_ONLY
+    is_inquiry_mode = price.mode == LotPrice.Mode.INQUIRY
     return PriceView(
         tier_code=price.tier.code,
         amount=amount,
         currency=price.currency,
-        unit=price.unit,
         display_as_inquiry=amount is None,
         is_special=price.special_is_live,
         special_until=price.special_until if price.special_is_live else None,
@@ -160,7 +158,6 @@ def set_lot_price(
     tier_code: str,
     amount: Decimal | None,
     currency: str = "IRR",
-    unit: str = LotPrice.Unit.PER_SQM,
     mode: str | None = None,
     valid_for_days: int | None = None,
     special_amount: Decimal | None = None,
@@ -177,7 +174,7 @@ def set_lot_price(
     tier = PriceTier.objects.get(code=tier_code)
 
     if mode is None:
-        mode = LotPrice.Mode.INQUIRY if amount is None or unit == LotPrice.Unit.INQUIRY_ONLY else LotPrice.Mode.FIXED
+        mode = LotPrice.Mode.INQUIRY if amount is None else LotPrice.Mode.FIXED
     if mode not in set(LotPrice.Mode.values):
         raise ValueError("نوع قیمت نامعتبر است.")
 
@@ -189,18 +186,27 @@ def set_lot_price(
         if amount is None:
             raise ValueError("مبلغ قیمت الزامی است.")
         amount = _quantize_amount(amount)
-        if amount < 0:
-            raise ValueError("مبلغ قیمت نمی‌تواند منفی باشد.")
+        if amount <= 0:
+            raise ValueError("مبلغ قیمت باید بیشتر از صفر باشد.")
         if special_amount is not None:
             special_amount = _quantize_amount(special_amount)
-            if special_amount < 0:
-                raise ValueError("مبلغ فروش ویژه نمی‌تواند منفی باشد.")
+            if special_amount <= 0:
+                raise ValueError("مبلغ فروش ویژه باید بیشتر از صفر باشد.")
+        if (special_amount is None) != (special_until is None):
+            raise ValueError("مبلغ و زمان پایان فروش ویژه باید با هم وارد شوند.")
+        if special_amount is not None:
+            if special_amount >= amount:
+                raise ValueError("قیمت فروش ویژه باید کمتر از قیمت عادی باشد.")
+            if special_until <= timezone.now():
+                raise ValueError("زمان پایان فروش ویژه باید در آینده باشد.")
+
+    if valid_for_days is not None and not 1 <= int(valid_for_days) <= 365:
+        raise ValueError("اعتبار قیمت باید بین ۱ تا ۳۶۵ روز باشد.")
 
     defaults = {
         "mode": mode,
         "amount": amount,
         "currency": currency or "IRR",
-        "unit": unit,
         "special_amount": special_amount,
         "special_until": special_until,
         # Setting a price is itself a confirmation of it.

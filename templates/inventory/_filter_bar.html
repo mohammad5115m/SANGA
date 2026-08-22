@@ -5,38 +5,32 @@ search. It renders whatever fields the passed form declares, so the owner-only
 
 Expects: filter_form
 {% endcomment %}
-<form method="get" class="panel filter-bar" x-data="{ open: false }">
+{% load money %}
+<form method="get" class="panel filter-bar" novalidate>
+  {% if filter_form.non_field_errors %}
+    <div class="field-errors" role="alert">{{ filter_form.non_field_errors }}</div>
+  {% endif %}
   <div class="filter-bar-main">
     <label class="field field-grow">
       <span class="field-label">{{ filter_form.q.label }}</span>
       {{ filter_form.q }}
     </label>
     <button class="btn btn-primary" type="submit">جستجو</button>
-    <button class="btn btn-ghost" type="button" @click="open = !open" x-text="open ? 'بستن فیلترها' : 'فیلترهای بیشتر'">
-      فیلترهای بیشتر
-    </button>
+    {% if filter_form.active_filter_count %}
+      <a class="btn btn-ghost" href="{{ request.path }}">پاک‌کردن همه ({{ filter_form.active_filter_count }})</a>
+    {% endif %}
   </div>
+  {% if filter_form.q.errors %}<div class="field-errors" role="alert">{{ filter_form.q.errors }}</div>{% endif %}
 
-  <div class="filter-bar-more" x-show="open" x-cloak>
+  <details class="filter-disclosure" {% if filter_form.has_advanced_values or filter_form.errors %}open{% endif %}>
+    <summary class="btn btn-ghost">فیلترهای بیشتر</summary>
+    <div class="filter-bar-more">
     <div class="filter-grid">
-      {% if filter_form.state %}
+      {% for field in filter_form.advanced_scalar_fields %}
         <label class="field">
-          <span class="field-label">{{ filter_form.state.label }}</span>
-          {{ filter_form.state }}
+          <span class="field-label">{{ field.label }}</span>{{ field }}{{ field.errors }}
         </label>
-      {% endif %}
-      <label class="field"><span class="field-label">{{ filter_form.stone_type.label }}</span>{{ filter_form.stone_type }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.color.label }}</span>{{ filter_form.color }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.quarry_region.label }}</span>{{ filter_form.quarry_region }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.processing_type.label }}</span>{{ filter_form.processing_type }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.grade.label }}</span>{{ filter_form.grade }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.stock_mode.label }}</span>{{ filter_form.stock_mode }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.min_qty_sqm.label }}</span>{{ filter_form.min_qty_sqm }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.thickness_min.label }}</span>{{ filter_form.thickness_min }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.thickness_max.label }}</span>{{ filter_form.thickness_max }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.price_min.label }}</span>{{ filter_form.price_min }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.price_max.label }}</span>{{ filter_form.price_max }}</label>
-      <label class="field"><span class="field-label">{{ filter_form.sort.label }}</span>{{ filter_form.sort }}</label>
+      {% endfor %}
     </div>
 
     <fieldset class="field">
@@ -46,12 +40,14 @@ Expects: filter_form
           <label class="chip chip-choice">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
         {% endfor %}
       </div>
+      {{ filter_form.applications.errors }}
     </fieldset>
 
-    <label class="field checkbox-field">
-      {{ filter_form.only_special }} <span>{{ filter_form.only_special.label }}</span>
-    </label>
+    {% if price_bounds.minimum or price_bounds.maximum %}
+      <p class="field-help">بازه قیمت فعلی این نتایج: {{ price_bounds.minimum|rial }} تا {{ price_bounds.maximum|rial }} ریال</p>
+    {% endif %}
 
     <button class="btn btn-secondary" type="submit">اعمال فیلترها</button>
-  </div>
+    </div>
+  </details>
 </form>

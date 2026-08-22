@@ -1,11 +1,8 @@
-"""Product-bound purchase requests and finalized trades.
+"""Bilateral agreements, finalized trades, and request-era history.
 
-Replaces the v1 demand board, where a buyer described what they wanted in free
-text, sellers guessed at it with private offers, and a matcher tried to pair
-them. Nothing about that produced a sale that either side could point at.
-
-In V2 a purchase request always references **one existing product**. There is
-nothing to match, because the buyer already found the thing they want.
+Current colleague commerce is recorded as a ``TradeProposal`` by either party
+and becomes a Trade only after the other party confirms. ``PurchaseRequest`` is
+kept so old records remain readable; current UI code does not create new rows.
 """
 
 from __future__ import annotations
@@ -170,6 +167,167 @@ class PurchaseRequest(models.Model):
     @property
     def is_open(self) -> bool:
         return self.status in self.OPEN_STATUSES
+
+
+class TradeProposal(models.Model):
+    """A phone/counter agreement waiting for the other Business to confirm.
+
+    A proposal is deliberately not a Trade, invoice or ledger event. The
+    initiator records the facts they already agreed outside SANGA; only the
+    counterparty's explicit confirmation turns those snapshots into immutable
+    commercial history.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "پیش‌نویس"
+        PENDING = "pending", "در انتظار تأیید"
+        CONFIRMED = "confirmed", "تأیید و نهایی شد"
+        REJECTED = "rejected", "رد شد"
+        CANCELLED = "cancelled", "لغو شد"
+
+    OPEN_STATUSES = (Status.DRAFT, Status.PENDING)
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    seller_business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.CASCADE,
+        related_name="sale_proposals",
+    )
+    buyer_business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.PROTECT,
+        related_name="purchase_proposals",
+    )
+    initiated_by_business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.PROTECT,
+        related_name="initiated_trade_proposals",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trade_proposals_created",
+    )
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trade_proposals_confirmed",
+    )
+    submission_id = models.UUIDField(null=True, blank=True, editable=False)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    total_amount = models.DecimalField(
+        "مبلغ کل",
+        max_digits=16,
+        decimal_places=2,
+        default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    currency = models.CharField(max_length=3, default="IRR")
+    note = models.TextField("توضیح", blank=True)
+    trade = models.OneToOneField(
+        "Trade",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="source_proposal",
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "توافق معامله"
+        verbose_name_plural = "توافق‌های معامله"
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(seller_business=models.F("buyer_business")),
+                name="trade_proposal_not_self",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(initiated_by_business=models.F("seller_business"))
+                    | models.Q(initiated_by_business=models.F("buyer_business"))
+                ),
+                name="trade_proposal_initiator_is_party",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(status="confirmed", trade__isnull=False)
+                    | (~models.Q(status="confirmed") & models.Q(trade__isnull=True))
+                ),
+                name="trade_proposal_trade_when_confirmed",
+            ),
+            models.UniqueConstraint(
+                fields=["initiated_by_business", "submission_id"],
+                condition=models.Q(submission_id__isnull=False),
+                name="uniq_trade_proposal_submission",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["seller_business", "status", "-created_at"]),
+            models.Index(fields=["buyer_business", "status", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.seller_business_id} → {self.buyer_business_id} ({self.status})"
+
+    def other_business(self, business):
+        if business.pk == self.seller_business_id:
+            return self.buyer_business
+        if business.pk == self.buyer_business_id:
+            return self.seller_business
+        return None
+
+
+class TradeProposalItem(models.Model):
+    """One frozen line the counterparty is being asked to confirm."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    proposal = models.ForeignKey(TradeProposal, on_delete=models.CASCADE, related_name="items")
+    item = models.ForeignKey(
+        "inventory.InventoryLot",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trade_proposal_items",
+    )
+    product_name = models.CharField("نام محصول", max_length=200)
+    stone_type = models.CharField("نوع سنگ", max_length=100, blank=True)
+    grade = models.CharField("سورت", max_length=50, blank=True)
+    quantity = models.DecimalField(
+        "متراژ",
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
+    unit = models.CharField("واحد", max_length=20, default="متر مربع")
+    unit_price = models.DecimalField(
+        "قیمت واحد",
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    line_total = models.DecimalField(
+        "جمع",
+        max_digits=16,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "ردیف توافق معامله"
+        verbose_name_plural = "ردیف‌های توافق معامله"
+        ordering = ["sort_order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.product_name} × {self.quantity}"
 
 
 class Trade(models.Model):

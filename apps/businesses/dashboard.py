@@ -22,7 +22,7 @@ from apps.inquiries.models import Inquiry
 from apps.inventory.models import InventoryLot
 from apps.marketplace.selectors import marketplace_lots_for
 from apps.pricing.models import LotPrice
-from apps.trading.models import PurchaseRequest
+from apps.trading.models import TradeProposal
 
 from .models import Business, BusinessMembership
 from .permissions import LEDGER_VIEW
@@ -71,20 +71,15 @@ def _recent_activity(business: Business) -> dict:
     Operational, not analytical: a seller opening SANGA wants to see what needs
     doing and what just happened, not a chart.
     """
-    from apps.invoicing.models import SalesInvoice
-    from apps.trading.models import Trade
+    from apps.invoicing.selectors import invoices_for
+    from apps.trading.selectors import trades_for_business
 
     return {
         "recent_trades": list(
-            Trade.objects.filter(seller_business=business)
-            .select_related("buyer_business")
-            .prefetch_related("items")
-            .order_by("-finalized_at")[:PENDING_ROWS]
+            trades_for_business(business).order_by("-finalized_at")[:PENDING_ROWS]
         ),
         "recent_invoices": list(
-            SalesInvoice.objects.filter(seller_business=business).order_by("-issue_date", "-created_at")[
-                :PENDING_ROWS
-            ]
+            invoices_for(business).order_by("-issue_date", "-created_at")[:PENDING_ROWS]
         ),
     }
 
@@ -177,31 +172,27 @@ def _pending_work(business: Business) -> dict:
     """Work waiting on **this** business.
 
     Two queues, both of which are somebody else waiting for an answer from us:
-    customer inquiries nobody has replied to, and colleague purchase requests
-    nobody has accepted or rejected.
-
-    Requests this business *sent* are not here — they are waiting on somebody
-    else, so they are not a task on this screen. Accepted requests are, though:
-    an agreement that has not been finalized is unfinished work, and forgetting
-    it is exactly the failure the accept/finalize split creates.
+    customer inquiries nobody has replied to, and bilateral trade agreements
+    initiated by the counterparty.
     """
     inquiries = (
         Inquiry.objects.filter(business=business, status__in=UNANSWERED_INQUIRY_STATUSES)
         .select_related("lot", "lot__product")
         .order_by("-created_at")
     )
-    requests = (
-        PurchaseRequest.objects.filter(
-            seller_business=business,
-            status__in=[PurchaseRequest.Status.SENT, PurchaseRequest.Status.ACCEPTED],
+    proposals = (
+        TradeProposal.objects.filter(
+            Q(seller_business=business) | Q(buyer_business=business),
+            status=TradeProposal.Status.PENDING,
         )
-        .select_related("buyer_business", "item", "item__product")
+        .exclude(initiated_by_business=business)
+        .select_related("seller_business", "buyer_business", "initiated_by_business")
+        .prefetch_related("items")
         .order_by("-created_at")
     )
     return {
         "unanswered_inquiry_count": inquiries.count(),
         "unanswered_inquiries": list(inquiries[:PENDING_ROWS]),
-        "open_request_count": requests.count(),
-        "open_requests": list(requests[:PENDING_ROWS]),
-        "awaiting_finalize_count": requests.filter(status=PurchaseRequest.Status.ACCEPTED).count(),
+        "pending_confirmation_count": proposals.count(),
+        "pending_confirmations": list(proposals[:PENDING_ROWS]),
     }

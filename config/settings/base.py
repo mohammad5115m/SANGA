@@ -144,6 +144,17 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Invoice branding and signatures are decoded and re-encoded before storage.
+# Keep both Django's request cap and the per-file validator bounded.
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DATA_UPLOAD_MAX_MEMORY_SIZE", default=8 * 1024 * 1024)
+FILE_UPLOAD_MAX_MEMORY_SIZE = env.int("FILE_UPLOAD_MAX_MEMORY_SIZE", default=5 * 1024 * 1024)
+
+# Document generation is synchronous and intentionally bounded against abuse.
+INVOICE_EXPORTS_PER_MINUTE = env.int("INVOICE_EXPORTS_PER_MINUTE", default=6)
+INVOICE_EXPORT_MAX_BYTES = env.int("INVOICE_EXPORT_MAX_BYTES", default=25 * 1024 * 1024)
+INVOICE_EXPORT_MAX_PAGES = env.int("INVOICE_EXPORT_MAX_PAGES", default=20)
+INVOICE_IMAGE_DPI = env.int("INVOICE_IMAGE_DPI", default=200)
+
 # Django 5.1 removed STATICFILES_STORAGE / DEFAULT_FILE_STORAGE; STORAGES is
 # the only supported way to configure storage backends.
 STORAGES = {

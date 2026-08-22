@@ -12,6 +12,7 @@ from .policy import owned_items
 def products_for_business(business: Business) -> QuerySet[Product]:
     return (
         Product.objects.filter(business=business, is_active=True)
+        .select_related("stone")
         .prefetch_related("applications")
         .order_by("commercial_name")
     )
@@ -25,6 +26,25 @@ def lots_for_business(business: Business) -> QuerySet[InventoryLot]:
     find an item precisely when it has dropped off the buyer-facing surfaces.
     """
     return owned_items(business)
+
+
+def search_lot_options(qs: QuerySet[InventoryLot], *, q: str = "", limit: int = 20) -> list[dict]:
+    """Small, tenant-scoped payload for asynchronous product pickers."""
+    filtered = ItemFilterSpec(q=q[:100]).apply_non_price(qs)
+    lots = (
+        filtered.prefetch_related(None)
+        .select_related("product", "product__stone")
+        .order_by("-updated_at")[:limit]
+    )
+    return [
+        {
+            "id": str(lot.id),
+            "label": str(lot),
+            "name": lot.product.commercial_name,
+            "stone": lot.product.stone.name,
+        }
+        for lot in lots
+    ]
 
 
 def get_business_lot(business: Business, lot_id) -> InventoryLot | None:

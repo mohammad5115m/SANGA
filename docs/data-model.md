@@ -10,7 +10,8 @@ convey.
 erDiagram
     Business ||--o{ BusinessMembership : "has"
     Business ||--o{ Product : "owns"
-    Product  ||--o{ InventoryLot : "has sellable items"
+    Product  ||--|| InventoryLot : "has one sellable item"
+    VocabularyTerm ||--o{ Product : "classifies stone"
     Product  }o--o{ Application : "used for"
     InventoryLot ||--o{ LotPrice : "priced per audience"
     InventoryLot ||--o{ LotMedia : "images and videos"
@@ -24,7 +25,7 @@ erDiagram
     CustomerLead ||--o{ Inquiry : "asks"
     Inquiry ||--o{ InquiryItem : "about products"
     Business ||--o{ CustomCatalog : "shares"
-    CustomCatalog ||--o{ CustomCatalogItem : "manual overrides"
+    CustomCatalog ||--o{ CustomCatalogItem : "selects"
 ```
 
 ## 2. Business
@@ -37,13 +38,14 @@ erDiagram
 | `seat_limit` | Active memberships allowed. Checked when adding a member, not at login. |
 | `active_until` | **Null means no expiry, not expired.** |
 
-`Warehouse` still exists but has no UI. `InventoryLot.warehouse` is nullable and
-no longer written; location lives on the item.
+`Warehouse` still exists for migration history but inventory no longer references
+it.
 
 ## 3. Product and InventoryLot
 
-`Product` is the stable identity of a stone. `InventoryLot` is one sellable
-instance of it — same travertine, two grades, three thicknesses.
+`Product` and `InventoryLot` separate descriptive fields from sellable state but
+are one-to-one and edited as one user object. A second inventory item receives a
+new Product row rather than sharing a reusable definition.
 
 The four lifecycle axes, which never share a field:
 
@@ -62,10 +64,12 @@ Other fields worth a note:
 
 | Field | Note |
 |-------|------|
-| `stock_mode` | `exact` / `unlimited` / `inquiry`. A quantity is meaningful only in `exact`. |
+| `stone` | FK to the admin-controlled stone vocabulary. |
+| `name_suffix` | Optional seller-entered part; `commercial_name` is derived. |
+| `lot_code` | Global, immutable stone prefix plus six random safe characters. |
+| `available_sqm` | Nullable; null means inquiry, numeric means exact confirmed stock. |
 | `stock_expires_at` | Derived **on write**, so "which items need a check?" is an indexed query. Nothing rewrites it on a timer. |
 | `public_token` | Opaque, stable share identifier. Not the primary key: share links get pasted into WhatsApp. |
-| `location_*` | Replaces the Warehouse FK. `location_address` is private and never public. |
 
 `Application` is a platform-wide controlled vocabulary. It replaced a free-text
 JSON list, because a primary search facet backed by unvalidated text cannot work.
@@ -160,11 +164,9 @@ product then changes.
 
 ## 9. Catalogs
 
-`CustomCatalog.mode` is `manual`, `rule` or `hybrid`. `rules` stores a serialized
-`ItemFilterSpec` — the same schema the search bar produces.
-
-`CustomCatalogItem.inclusion` is `include` or `exclude`. A product cannot be
-both; setting one replaces the other.
+`CustomCatalogItem` is an explicit ordered membership. Catalog creation may use
+a short-lived filter selection, but no mode, rule JSON or inclusion state is
+stored on the catalog.
 
 Resolution is live and intersected with `eligible_items()`. See
 [catalogs.md](./catalogs.md).

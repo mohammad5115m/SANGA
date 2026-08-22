@@ -22,11 +22,6 @@ class CustomCatalog(models.Model):
     > **Catalog = current. Invoice = historical.**
     """
 
-    class Mode(models.TextChoices):
-        MANUAL = "manual", "انتخاب دستی"
-        RULE = "rule", "بر اساس فیلتر"
-        HYBRID = "hybrid", "فیلتر + انتخاب دستی"
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     business = models.ForeignKey(
         "businesses.Business",
@@ -37,11 +32,6 @@ class CustomCatalog(models.Model):
     customer_name = models.CharField("نام مشتری", max_length=150, blank=True)
     custom_message = models.TextField("پیام اختصاصی", blank=True)
 
-    mode = models.CharField("نوع کاتالوگ", max_length=20, choices=Mode.choices, default=Mode.MANUAL)
-    # A serialized apps.inventory.filters.ItemFilterSpec. Storing the same schema
-    # the search bar produces is what makes a rule catalog *literally* a saved
-    # search, rather than a second filtering language to keep in step.
-    rules = models.JSONField("قوانین", default=dict, blank=True)
     share_token = models.CharField(max_length=64, unique=True, default=generate_share_token, editable=False)
     expires_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -67,25 +57,9 @@ class CustomCatalog(models.Model):
     def is_publicly_accessible(self) -> bool:
         return self.is_active and not self.is_expired
 
-    @property
-    def uses_rules(self) -> bool:
-        return self.mode in (self.Mode.RULE, self.Mode.HYBRID)
-
-    @property
-    def uses_manual(self) -> bool:
-        return self.mode in (self.Mode.MANUAL, self.Mode.HYBRID)
-
 
 class CustomCatalogItem(models.Model):
-    """A manual override on top of whatever the rules select.
-
-    Two kinds, because "add this one extra thing" and "not that one" are both
-    normal, and a rule that has to encode an exception stops being readable.
-    """
-
-    class Inclusion(models.TextChoices):
-        INCLUDE = "include", "افزودن دستی"
-        EXCLUDE = "exclude", "حذف دستی"
+    """One inventory item intentionally selected for a live catalog."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     catalog = models.ForeignKey(CustomCatalog, on_delete=models.CASCADE, related_name="items")
@@ -94,7 +68,6 @@ class CustomCatalogItem(models.Model):
         on_delete=models.CASCADE,
         related_name="custom_catalog_items",
     )
-    inclusion = models.CharField(max_length=20, choices=Inclusion.choices, default=Inclusion.INCLUDE)
     sort_order = models.PositiveIntegerField(default=0)
     note = models.CharField(max_length=255, blank=True)
 

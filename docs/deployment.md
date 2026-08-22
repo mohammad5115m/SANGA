@@ -9,7 +9,10 @@ docker compose up --build
 
 - App: http://localhost:8000/
 - Health: http://localhost:8000/health/
-- OTP codes appear in the `web` container log, because `SMS_PROVIDER=console`.
+- OTP codes appear on the verification page and in the `web` container log
+  whenever `SMS_PROVIDER=console`. This explicit no-gateway mode works even with
+  `DEBUG=false`; production refuses it unless `SMS_ALLOW_UNDELIVERED=true` was
+  deliberately configured.
 
 `docker-compose.yml` is a development file: it bind-mounts the source, publishes
 the database and Redis ports, and runs `runserver`. Do not deploy it.
@@ -109,9 +112,35 @@ Choosing it means taking on two things Django will not do for you:
 2. **Serve `/media/` from the reverse proxy**, reading that same volume. Django
    does not serve media with `DEBUG=False`, so without this every image 404s.
 
+The `/media/invoice-assets/` prefix is private and is the exception: deny it at
+the proxy and let only the authenticated `/app/invoices/settings/assets/...`
+views stream those objects. For nginx, place this before the general media
+location:
+
+```nginx
+location ^~ /media/invoice-assets/ { return 404; }
+location /media/ { alias /app/media/; }
+```
+
+When object storage is used, keep the bucket private and retain signed URL
+support. SANGA never renders a storage URL for invoice assets; it reads the
+tenant-scoped object on the server and embeds only the sanitized bytes.
+
 Serve media with `X-Content-Type-Options: nosniff`. An uploaded file offered to a
 browser as `text/html` executes in the origin it is served from; SANGA validates
 what it stores, but the header is the part that survives a validation bug.
+
+Invoice branding uploads are limited to 8 MiB per request in Django and to 5 MiB
+per decoded/re-encoded file. Apply the same outer bound at the reverse proxy so
+an oversized body is rejected before it occupies a web worker. For nginx:
+
+```nginx
+client_max_body_size 8m;
+```
+
+The application values are configurable through `DATA_UPLOAD_MAX_MEMORY_SIZE`
+and `FILE_UPLOAD_MAX_MEMORY_SIZE`; the proxy value must never be higher without
+an explicit capacity review.
 
 ## 3b. The reverse proxy and client addresses
 

@@ -21,7 +21,9 @@ a number of Rials.
 
 ## 2. Storage
 
-`LotPrice(lot, tier, mode, amount, currency, unit, …)` with unique `(lot, tier)`.
+`LotPrice(lot, tier, mode, amount, currency, …)` with unique `(lot, tier)`.
+Every numeric amount is a positive per-square-metre IRR price; the old `unit`
+switch has been removed.
 
 | Field | Meaning |
 |-------|---------|
@@ -31,10 +33,12 @@ a number of Rials.
 | `price_valid_for_days` | How long that vouching lasts |
 | `price_expires_at` | Derived on write from the two above; exists so "which prices are stale?" is an indexed query |
 | `special_amount` | فروش ویژه price for **this audience** |
-| `special_until` | Optional end of the special sale; null means open-ended |
+| `special_until` | Required future end time when `special_amount` is present |
 
-A `CheckConstraint` (`price_fixed_requires_amount`) makes a fixed price without
-an amount impossible at the database level.
+Database constraints make a fixed price without a positive amount impossible.
+Special amount and end time must appear together, and the special amount must be
+positive and lower than the normal amount. Forms and services additionally
+require the end time to be in the future.
 
 ### Why special-sale pricing lives on the tier row
 

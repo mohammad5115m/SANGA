@@ -6,9 +6,9 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">کاتالوگ‌های اختصاصی</h1>
-      <p class="page-lead">لینک قابل اشتراک، دستی یا بر اساس فیلتر</p>
+      <p class="page-lead">فهرست‌های زنده و قابل اشتراک از موجودی شما</p>
     </div>
-    <a class="btn btn-primary" href="{% url 'catalog_manage:create' %}">کاتالوگ جدید</a>
+    <a class="btn btn-primary" href="{% url 'inventory:lot_list' %}">ساخت از موجودی</a>
   </div>
 
   <div class="list-stack">
@@ -18,7 +18,7 @@
           <div class="list-title">{{ catalog.title }}</div>
           <div class="muted">
             {% if catalog.customer_name %}{{ catalog.customer_name }} · {% endif %}
-            {{ catalog.get_mode_display }} · {{ catalog.view_count }} بازدید
+            {{ catalog.items.count }} محصول · {{ catalog.view_count }} بازدید
           </div>
         </div>
         <span class="badge {% if catalog.is_active %}badge-accent{% else %}badge-muted{% endif %}">

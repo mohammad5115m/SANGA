@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -9,73 +7,68 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import CATALOG_MANAGE
-from apps.inventory.forms import ItemFilterForm
+from apps.inventory.catalog_selection import MAX_CATALOG_ITEMS, get_selection, resolve_selection
 
 from .forms import CustomCatalogForm
 from .models import CustomCatalog
-from .selectors import catalogs_for_business, resolve_catalog
-from .services import (
-    CatalogError,
-    create_custom_catalog,
-    set_catalog_exclusions,
-    set_catalog_lots,
-    update_catalog,
-)
-
-logger = logging.getLogger(__name__)
-
-
-def _rules_from(form: CustomCatalogForm, request: HttpRequest) -> dict:
-    """Read the rule fields off the same filter form the search bar uses."""
-    filter_form = ItemFilterForm(request.POST or None, prefix="rule")
-    return filter_form.to_spec().to_dict()
+from .selectors import catalogs_for_business, resolve_catalog, selected_catalog_lots
+from .services import CatalogError, create_custom_catalog, remove_catalog_lot, update_catalog
 
 
 @business_login_required
 @require_capability(CATALOG_MANAGE)
 def catalog_list(request: HttpRequest) -> HttpResponse:
-    return render(
-        request,
-        "catalog/manage_list.html",
-        {"catalogs": catalogs_for_business(request.business)},
-    )
+    return render(request, "catalog/manage_list.html", {"catalogs": catalogs_for_business(request.business)})
 
 
 @business_login_required
 @require_capability(CATALOG_MANAGE)
 @require_http_methods(["GET", "POST"])
 def catalog_create(request: HttpRequest) -> HttpResponse:
-    form = CustomCatalogForm(request.POST or None, business=request.business)
-    rule_form = ItemFilterForm(request.POST or None, prefix="rule")
-
+    token = request.GET.get("selection") or request.POST.get("selection") or ""
+    selection = get_selection(request, business=request.business, token=token)
+    if selection is None:
+        messages.info(request, "ابتدا محصولات کاتالوگ را از موجودی انتخاب کنید.")
+        return redirect("inventory:lot_list")
+    selected = resolve_selection(business=request.business, record=selection)
+    form = CustomCatalogForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        try:
-            catalog = create_custom_catalog(
-                business=request.business,
-                membership=request.membership,
-                title=form.cleaned_data["title"],
-                customer_name=form.cleaned_data.get("customer_name", ""),
-                custom_message=form.cleaned_data.get("custom_message", ""),
-                expires_at=form.cleaned_data.get("expires_at"),
-                mode=form.cleaned_data["mode"],
-                rules=_rules_from(form, request),
-                lot_ids=[lot.id for lot in form.cleaned_data.get("lots", [])],
+        # Re-resolve on submit: a filter selection means "all matching now", and
+        # ownership/deletion may have changed since the confirmation page loaded.
+        selected_ids = list(
+            resolve_selection(business=request.business, record=selection)
+            .values_list("pk", flat=True)[: MAX_CATALOG_ITEMS + 1]
+        )
+        if not selected_ids:
+            form.add_error(None, "هیچ محصول معتبری برای ساخت کاتالوگ باقی نمانده است.")
+        elif len(selected_ids) > MAX_CATALOG_ITEMS:
+            form.add_error(
+                None,
+                f"هر کاتالوگ حداکثر {MAX_CATALOG_ITEMS} محصول دارد؛ فیلتر را محدودتر کنید.",
             )
-            if not form.cleaned_data.get("is_active", True):
-                update_catalog(catalog=catalog, membership=request.membership, is_active=False)
-        except CatalogError as exc:
-            form.add_error(None, exc.message)
-        except Exception:
-            logger.exception("Catalog create failed")
-            form.add_error(None, "ایجاد کاتالوگ با خطا روبه‌رو شد.")
         else:
-            messages.success(request, "کاتالوگ ساخته شد.")
-            return redirect("catalog_manage:detail", catalog_id=catalog.id)
-
+            try:
+                catalog = create_custom_catalog(
+                    business=request.business,
+                    membership=request.membership,
+                    title=form.cleaned_data["title"],
+                    customer_name=form.cleaned_data.get("customer_name", ""),
+                    custom_message=form.cleaned_data.get("custom_message", ""),
+                    expires_at=form.cleaned_data.get("expires_at"),
+                    lot_ids=selected_ids,
+                )
+                if not form.cleaned_data.get("is_active", True):
+                    update_catalog(catalog=catalog, membership=request.membership, is_active=False)
+            except CatalogError as exc:
+                form.add_error(None, exc.message)
+            else:
+                get_selection(request, business=request.business, token=token, consume=True)
+                messages.success(request, "کاتالوگ ساخته شد.")
+                return redirect("catalog_manage:detail", catalog_id=catalog.id)
     return render(
         request,
         "catalog/manage_form.html",
-        {"form": form, "rule_form": rule_form, "mode": "create"},
+        {"form": form, "mode": "create", "selection": token, "selected_count": selected.count()},
     )
 
 
@@ -84,13 +77,7 @@ def catalog_create(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def catalog_edit(request: HttpRequest, catalog_id) -> HttpResponse:
     catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
-    form = CustomCatalogForm(request.POST or None, instance=catalog, business=request.business)
-    rule_form = ItemFilterForm(
-        request.POST or None,
-        prefix="rule",
-        initial=catalog.rules if not request.POST else None,
-    )
-
+    form = CustomCatalogForm(request.POST or None, instance=catalog)
     if request.method == "POST" and form.is_valid():
         try:
             update_catalog(
@@ -101,40 +88,27 @@ def catalog_edit(request: HttpRequest, catalog_id) -> HttpResponse:
                 custom_message=form.cleaned_data.get("custom_message", ""),
                 expires_at=form.cleaned_data.get("expires_at"),
                 is_active=form.cleaned_data.get("is_active", True),
-                mode=form.cleaned_data["mode"],
-                rules=_rules_from(form, request),
-            )
-            set_catalog_lots(
-                catalog=catalog,
-                membership=request.membership,
-                lot_ids=[lot.id for lot in form.cleaned_data.get("lots", [])],
             )
         except CatalogError as exc:
             form.add_error(None, exc.message)
         else:
             messages.success(request, "کاتالوگ به‌روزرسانی شد.")
             return redirect("catalog_manage:detail", catalog_id=catalog.id)
-
-    return render(
-        request,
-        "catalog/manage_form.html",
-        {"form": form, "rule_form": rule_form, "mode": "edit", "catalog": catalog},
-    )
+    return render(request, "catalog/manage_form.html", {"form": form, "mode": "edit", "catalog": catalog})
 
 
 @business_login_required
 @require_capability(CATALOG_MANAGE)
 def catalog_detail(request: HttpRequest, catalog_id) -> HttpResponse:
     catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
+    items = selected_catalog_lots(catalog)
     return render(
         request,
         "catalog/manage_detail.html",
         {
             "catalog": catalog,
-            # Resolved live, exactly as the public link will render it, so the
-            # seller sees what the customer will see rather than what they picked.
-            "items": resolve_catalog(catalog),
-            "excluded": catalog.items.filter(inclusion="exclude").select_related("lot__product"),
+            "items": items,
+            "public_count": resolve_catalog(catalog).count(),
             "share_url": request.build_absolute_uri(f"/c/{catalog.share_token}/"),
             "storefront_url": request.build_absolute_uri(f"/s/{request.business.slug}/"),
         },
@@ -144,41 +118,16 @@ def catalog_detail(request: HttpRequest, catalog_id) -> HttpResponse:
 @business_login_required
 @require_capability(CATALOG_MANAGE)
 @require_POST
-def catalog_exclude(request: HttpRequest, catalog_id) -> HttpResponse:
-    """Drop one product out of a rule-based catalog without changing the rule."""
+def catalog_remove_item(request: HttpRequest, catalog_id) -> HttpResponse:
     catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
-    existing = list(
-        catalog.items.filter(inclusion="exclude").values_list("lot_id", flat=True)
-    )
-    lot_id = request.POST.get("lot_id")
-    if lot_id and lot_id not in {str(pk) for pk in existing}:
-        existing.append(lot_id)
     try:
-        set_catalog_exclusions(catalog=catalog, membership=request.membership, lot_ids=existing)
+        remove_catalog_lot(
+            catalog=catalog, membership=request.membership, lot_id=request.POST.get("lot_id")
+        )
     except CatalogError as exc:
         messages.error(request, exc.message)
     else:
-        messages.success(request, "محصول از این کاتالوگ حذف شد.")
-    return redirect("catalog_manage:detail", catalog_id=catalog.id)
-
-
-@business_login_required
-@require_capability(CATALOG_MANAGE)
-@require_POST
-def catalog_unexclude(request: HttpRequest, catalog_id) -> HttpResponse:
-    catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
-    lot_id = str(request.POST.get("lot_id") or "")
-    remaining = [
-        pk
-        for pk in catalog.items.filter(inclusion="exclude").values_list("lot_id", flat=True)
-        if str(pk) != lot_id
-    ]
-    try:
-        set_catalog_exclusions(catalog=catalog, membership=request.membership, lot_ids=remaining)
-    except CatalogError as exc:
-        messages.error(request, exc.message)
-    else:
-        messages.success(request, "محصول دوباره به کاتالوگ برگشت.")
+        messages.success(request, "محصول از کاتالوگ حذف شد.")
     return redirect("catalog_manage:detail", catalog_id=catalog.id)
 
 
@@ -188,15 +137,11 @@ def catalog_unexclude(request: HttpRequest, catalog_id) -> HttpResponse:
 def catalog_toggle_active(request: HttpRequest, catalog_id) -> HttpResponse:
     catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
     try:
-        update_catalog(
-            catalog=catalog,
-            membership=request.membership,
-            is_active=not catalog.is_active,
-        )
+        update_catalog(catalog=catalog, membership=request.membership, is_active=not catalog.is_active)
     except CatalogError as exc:
         messages.error(request, exc.message)
     else:
-        messages.success(request, "کاتالوگ فعال شد." if catalog.is_active else "کاتالوگ غیرفعال شد.")
+        messages.success(request, "وضعیت کاتالوگ تغییر کرد.")
     return redirect("catalog_manage:detail", catalog_id=catalog.id)
 
 

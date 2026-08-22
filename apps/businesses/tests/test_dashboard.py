@@ -14,7 +14,8 @@ from apps.businesses.services import create_business_for_owner
 from apps.core.testing import expire_stock, make_business, make_item, make_product
 from apps.inquiries.models import Inquiry
 from apps.pricing.services import ensure_default_tiers
-from apps.trading.models import PurchaseRequest
+from apps.trading.models import TradeProposal
+from apps.trading.services import confirm_trade_proposal, save_trade_proposal
 
 User = get_user_model()
 
@@ -77,13 +78,13 @@ def shop(db):
         phone="09121110001",
         status=Inquiry.Status.CONTACTED,
     )
-    # A colleague asking to buy from us: our task until we answer it.
-    incoming = PurchaseRequest.objects.create(
-        item=priced,
+    # A colleague recorded an offline purchase from us: our task until we
+    # confirm or reject the bilateral agreement.
+    incoming = save_trade_proposal(
         seller_business=business,
         buyer_business=colleague,
-        requested_qty_sqm=Decimal("100"),
-        proposed_unit_price=Decimal("1200000"),
+        membership=colleague_m,
+        lines=[{"item": priced, "quantity": Decimal("100"), "unit_price": Decimal("1200000")}],
     )
 
     return {
@@ -99,7 +100,7 @@ def shop(db):
         "unpriced": unpriced,
         "stale": stale,
         "priced": priced,
-        "incoming_request": incoming,
+        "incoming_proposal": incoming,
     }
 
 
@@ -258,28 +259,24 @@ def test_pending_work_counts_only_unanswered_items(client, shop):
     # The «تماس گرفته‌شده» inquiry is already being handled.
     assert context["unanswered_inquiry_count"] == 1
     assert [i.name for i in context["unanswered_inquiries"]] == ["مشتری تازه"]
-    assert context["open_request_count"] == 1
-    assert [r.id for r in context["open_requests"]] == [shop["incoming_request"].id]
+    assert context["pending_confirmation_count"] == 1
+    assert [p.id for p in context["pending_confirmations"]] == [shop["incoming_proposal"].id]
 
 
-def test_an_accepted_request_stays_on_the_list_until_the_sale_is_finalized(client, shop):
-    """An agreement nobody finalized is unfinished work, not a closed item."""
-    request_ = shop["incoming_request"]
-    request_.status = PurchaseRequest.Status.ACCEPTED
-    request_.final_unit_price = Decimal("1200000")
-    request_.save(update_fields=["status", "final_unit_price"])
+def test_a_confirmed_agreement_leaves_the_pending_list(client, shop):
+    proposal = shop["incoming_proposal"]
+    confirm_trade_proposal(proposal=proposal, membership=shop["membership"])
 
     context = _dashboard(client, shop).context
-    assert context["open_request_count"] == 1
-    assert context["awaiting_finalize_count"] == 1
+    assert context["pending_confirmation_count"] == 0
 
 
-def test_a_rejected_request_leaves_the_pending_list(client, shop):
-    request_ = shop["incoming_request"]
-    request_.status = PurchaseRequest.Status.REJECTED
-    request_.save(update_fields=["status"])
+def test_a_rejected_agreement_leaves_the_pending_list(client, shop):
+    proposal = shop["incoming_proposal"]
+    proposal.status = TradeProposal.Status.REJECTED
+    proposal.save(update_fields=["status"])
 
-    assert _dashboard(client, shop).context["open_request_count"] == 0
+    assert _dashboard(client, shop).context["pending_confirmation_count"] == 0
 
 
 def test_pending_work_is_tenant_scoped(client, shop):
@@ -287,8 +284,8 @@ def test_pending_work_is_tenant_scoped(client, shop):
     context = client.get(DASHBOARD).context
 
     assert context["unanswered_inquiry_count"] == 0
-    # The request the colleague *sent* is somebody else's decision, not its own task.
-    assert context["open_request_count"] == 0
+    # The agreement the colleague initiated is somebody else's decision, not its own task.
+    assert context["pending_confirmation_count"] == 0
 
 
 # --- empty state and cost ---------------------------------------------------
@@ -310,7 +307,7 @@ def test_a_brand_new_business_gets_a_coherent_empty_dashboard(client, db):
     # Empty sections are hidden rather than rendered as five empty frames; the
     # counters at the top still say zero.
     assert response.context["unanswered_inquiry_count"] == 0
-    assert response.context["open_request_count"] == 0
+    assert response.context["pending_confirmation_count"] == 0
 
 
 def test_the_dashboard_query_count_stays_bounded(client, shop, django_assert_max_num_queries):

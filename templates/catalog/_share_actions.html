@@ -6,16 +6,14 @@ nothing to authenticate. They share the SANGA URL and nothing else.
 
 Expects: share_url, product (optional, for the prefilled message)
 {% endcomment %}
-<div class="btn-row share-actions" x-data="{ copied: false }">
-  <button class="btn btn-ghost" type="button"
-          @click="navigator.clipboard.writeText('{{ share_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
-          x-text="copied ? 'لینک کپی شد' : 'کپی لینک'">
+<div class="btn-row share-actions" data-share-actions
+     data-share-url="{{ share_url }}"
+     data-share-title="{{ product.commercial_name|default:'سنگا' }}">
+  <button class="btn btn-ghost" type="button" data-copy-link>
     کپی لینک
   </button>
 
-  <button class="btn btn-ghost" type="button"
-          x-show="typeof navigator.share === 'function'" x-cloak
-          @click="navigator.share({title: '{{ product.commercial_name|escapejs }}', url: '{{ share_url }}'})">
+  <button class="btn btn-ghost" type="button" data-native-share hidden>
     اشتراک‌گذاری
   </button>
 

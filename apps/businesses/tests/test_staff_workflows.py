@@ -5,7 +5,7 @@ The default staff role holds ``inventory.create`` and ``sale.finalize`` but not
 designed independently, so both of those combinations produced a dead end that
 only appeared after the user had committed to the action:
 
-- the add-product wizard always wrote prices, so staff got an error *after* the
+- the old add-product wizard always wrote prices, so staff got an error *after* the
   draft had been saved, and had to find and clean up the orphan themselves;
 - finalizing a sale swallowed the invoice failure, so the ledger moved, no
   document existed, and the trade page offered no way to ask for one.
@@ -25,7 +25,7 @@ from django.urls import reverse
 from apps.accounting.selectors import current_balance
 from apps.businesses.models import BusinessMembership
 from apps.core.testing import make_business, make_item, make_product, make_user, owner_membership
-from apps.inventory.models import InventoryLot
+from apps.inventory.models import InventoryLot, VocabularyTerm
 from apps.invoicing.models import SalesInvoice
 from apps.pricing.services import ensure_default_tiers, resolve_visible_prices
 from apps.trading.services import record_direct_sale
@@ -53,6 +53,17 @@ def _login(client, membership) -> None:
     session.save()
 
 
+def _product_payload():
+    return {
+        "stone": VocabularyTerm.objects.get(name="تراورتن").id,
+        "name_suffix": "کارمند",
+        "processing_type": "ساب خورده",
+        "available_sqm": "150",
+        "stock_valid_for_days": "7",
+        "availability_status": InventoryLot.Availability.AVAILABLE,
+    }
+
+
 def test_the_default_staff_role_is_the_one_under_test(shop):
     staff = shop["staff"]
     assert staff.has_capability("inventory.create")
@@ -65,20 +76,9 @@ def test_the_default_staff_role_is_the_one_under_test(shop):
 
 
 @pytest.mark.django_db
-def test_staff_can_complete_the_add_product_wizard(client, shop):
+def test_staff_can_complete_the_unified_product_form(client, shop):
     _login(client, shop["staff"])
-
-    client.post(reverse("inventory:quick_add_product"), {"commercial_name": "تراورتن کارمند"}, follow=True)
-    client.post(
-        reverse("inventory:quick_add_details"),
-        {"lot_code": "ST-1", "grade": "سوپر"},
-        follow=True,
-    )
-    response = client.post(
-        reverse("inventory:quick_add_stock"),
-        {"stock_mode": InventoryLot.StockMode.EXACT, "available_sqm": "150", "stock_valid_for_days": "7"},
-        follow=True,
-    )
+    response = client.post(reverse("inventory:product_create"), _product_payload(), follow=True)
 
     assert response.status_code == 200
     lot = InventoryLot.objects.get(business=shop["seller"])
@@ -90,14 +90,7 @@ def test_a_product_staff_created_is_priced_by_inquiry_not_left_half_made(client,
     """Not an orphan draft and not a silent zero: «استعلام قیمت» is the honest
     display for a price nobody has set yet."""
     _login(client, shop["staff"])
-
-    client.post(reverse("inventory:quick_add_product"), {"commercial_name": "تراورتن کارمند"}, follow=True)
-    client.post(reverse("inventory:quick_add_details"), {"lot_code": "ST-2"}, follow=True)
-    client.post(
-        reverse("inventory:quick_add_stock"),
-        {"stock_mode": InventoryLot.StockMode.EXACT, "available_sqm": "150", "stock_valid_for_days": "7"},
-        follow=True,
-    )
+    client.post(reverse("inventory:product_create"), _product_payload(), follow=True)
 
     lot = InventoryLot.objects.get(business=shop["seller"])
     assert lot.prices.count() == 0
@@ -105,13 +98,9 @@ def test_a_product_staff_created_is_priced_by_inquiry_not_left_half_made(client,
 
 
 @pytest.mark.django_db
-def test_the_wizard_does_not_offer_staff_a_price_step_they_cannot_use(client, shop):
+def test_the_form_does_not_offer_staff_price_fields_they_cannot_use(client, shop):
     _login(client, shop["staff"])
-    client.post(reverse("inventory:quick_add_product"), {"commercial_name": "تراورتن کارمند"}, follow=True)
-    client.post(reverse("inventory:quick_add_details"), {"lot_code": "ST-3"}, follow=True)
-
-    body = client.get(reverse("inventory:quick_add_stock")).content.decode()
-    assert "شما اجازه ثبت قیمت ندارید" in body
+    body = client.get(reverse("inventory:product_create")).content.decode()
     assert "قیمت همکار" not in body
 
 
@@ -119,19 +108,21 @@ def test_the_wizard_does_not_offer_staff_a_price_step_they_cannot_use(client, sh
 def test_a_failed_price_write_leaves_no_orphan_draft(shop):
     """Creation and pricing are one transaction, so a rejected price rolls the
     whole thing back rather than saving half of it."""
-    from apps.inventory.services import InventoryError, create_draft_item
+    from apps.inventory.services import InventoryError, create_product_item
 
-    product = make_product(shop["seller"], commercial_name="تراورتن اتمی")
+    before = InventoryLot.objects.filter(business=shop["seller"]).count()
     with pytest.raises(InventoryError):
-        create_draft_item(
+        create_product_item(
             business=shop["seller"],
             membership=shop["staff"],
-            product=product,
-            lot_code="ST-4",
-            available_sqm=Decimal("10"),
-            b2c_price={"amount": Decimal("1000")},
+            product_fields={
+                "stone": VocabularyTerm.objects.get(name="تراورتن"),
+                "name_suffix": "اتمی",
+            },
+            item_fields={"available_sqm": Decimal("10")},
+            b2c_price={"mode": "fixed", "amount": Decimal("1000")},
         )
-    assert not InventoryLot.objects.filter(lot_code="ST-4").exists()
+    assert InventoryLot.objects.filter(business=shop["seller"]).count() == before
 
 
 # --- finalizing a sale --------------------------------------------------------

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
+from django.db.models import Q, QuerySet
 
 from apps.businesses.eligibility import business_can_sell
 from apps.businesses.models import Business
@@ -8,7 +8,7 @@ from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
 from apps.inventory.policy import eligible_items, get_eligible_item
 
-from .models import CustomCatalog, CustomCatalogItem
+from .models import CustomCatalog
 
 __all__ = [
     "public_catalog_lots",
@@ -19,6 +19,7 @@ __all__ = [
     "related_public_lots",
     "get_shareable_catalog",
     "resolve_catalog",
+    "selected_catalog_lots",
     "catalog_notes",
     "catalogs_for_business",
 ]
@@ -56,9 +57,7 @@ def related_public_lots(lot: InventoryLot, *, limit: int = 4) -> list[InventoryL
         public_catalog_lots(lot.business)
         .exclude(pk=lot.pk)
         .filter(
-            Q(product_id=lot.product_id)
-            | Q(product__stone_type=lot.product.stone_type)
-            | Q(product__primary_color=lot.product.primary_color)
+            Q(product_id=lot.product_id) | Q(product__stone_id=lot.product.stone_id)
         )[:limit]
     )
 
@@ -86,8 +85,7 @@ def resolve_catalog(catalog: CustomCatalog) -> QuerySet[InventoryLot]:
     """The products this catalog shows *right now*.
 
     ```text
-    (products matching the rules + manual includes - manual excludes)
-        INTERSECT currently eligible products
+    selected products INTERSECT currently eligible products
     ```
 
     The intersection is the important half. It is what stops a curated link from
@@ -101,52 +99,27 @@ def resolve_catalog(catalog: CustomCatalog) -> QuerySet[InventoryLot]:
     were applied, which meant the cost of rendering page one grew with the size
     of the entire match.
 
-    A rule catalog is live by definition — a new matching product appears without
-    the seller touching the catalog — so there is nothing to cache and nothing to
-    invalidate.
+    Membership is explicit; the values rendered for each selected item stay live.
     """
     eligible = eligible_items(audience="public", seller_business=catalog.business)
 
-    overrides = list(catalog.items.values_list("lot_id", "inclusion"))
-    include_ids = [pk for pk, kind in overrides if kind == CustomCatalogItem.Inclusion.INCLUDE]
-    exclude_ids = [pk for pk, kind in overrides if kind == CustomCatalogItem.Inclusion.EXCLUDE]
-
-    if catalog.uses_rules:
-        spec = ItemFilterSpec.from_dict(catalog.rules)
-        selected = spec.apply(eligible, audience="public")
-        if include_ids:
-            # OR the manual additions back in: they are exceptions to the rule,
-            # not further narrowing of it. A subquery rather than a materialized
-            # set, so the database does the work it is for.
-            selected = eligible.filter(Q(pk__in=selected.values("pk")) | Q(pk__in=include_ids))
-    else:
-        selected = eligible.filter(pk__in=include_ids)
-
-    if exclude_ids:
-        selected = selected.exclude(pk__in=exclude_ids)
-
-    # No extra prefetch: eligible_items already loaded the B2C tier and media,
-    # and adding a second `prices` prefetch would conflict with it.
-    selected = selected.distinct()
-
-    if catalog.mode == CustomCatalog.Mode.MANUAL:
-        # A hand-picked catalog is a presentation, so the seller's ordering wins.
-        # Ordered in SQL by the curated positions — a bounded, hand-written list,
-        # unlike the rule matches — so the result stays a pageable queryset.
-        return selected.order_by(_manual_position(catalog), "-updated_at")
-    return selected
-
-
-def _manual_position(catalog: CustomCatalog):
-    ordered_ids = list(
-        catalog.items.filter(inclusion=CustomCatalogItem.Inclusion.INCLUDE)
-        .order_by("sort_order", "id")
-        .values_list("lot_id", flat=True)
+    return eligible.filter(custom_catalog_items__catalog=catalog).order_by(
+        "custom_catalog_items__sort_order",
+        "custom_catalog_items__id",
+        "-updated_at",
     )
-    return Case(
-        *[When(pk=pk, then=Value(index)) for index, pk in enumerate(ordered_ids)],
-        default=Value(len(ordered_ids)),
-        output_field=IntegerField(),
+
+
+def selected_catalog_lots(catalog: CustomCatalog) -> QuerySet[InventoryLot]:
+    """Every still-owned selection for management, regardless of publication."""
+    return (
+        InventoryLot.objects.filter(
+            business=catalog.business,
+            deleted_at__isnull=True,
+            custom_catalog_items__catalog=catalog,
+        )
+        .select_related("product", "product__stone")
+        .order_by("custom_catalog_items__sort_order", "custom_catalog_items__id")
     )
 
 
@@ -159,4 +132,4 @@ def catalog_notes(catalog: CustomCatalog) -> dict:
 
 
 def catalogs_for_business(business: Business) -> QuerySet[CustomCatalog]:
-    return CustomCatalog.objects.filter(business=business).prefetch_related("items__lot__product")
+    return CustomCatalog.objects.filter(business=business).only("id", "title").order_by("title")

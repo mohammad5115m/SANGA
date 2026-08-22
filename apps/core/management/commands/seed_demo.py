@@ -7,9 +7,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.businesses.models import BusinessMembership
+from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import complete_onboarding, create_business_for_owner
-from apps.inventory.models import Application, InventoryLot, Product
+from apps.inventory.models import Application, InventoryLot, Product, VocabularyTerm
 from apps.pricing.services import ensure_default_tiers, set_lot_price
 
 #: name, stone, colour, quarry, sqm, b2b, b2c, application codes
@@ -23,6 +23,60 @@ SAMPLES = [
 ]
 
 
+def _restore_demo_business(*, phone: str, full_name: str, name: str, city: str, province: str):
+    """Create or repair one login-ready fictional demo business."""
+    user, _ = User.objects.update_or_create(
+        phone=phone,
+        defaults={"full_name": full_name, "is_active": True},
+    )
+    user_updates: list[str] = []
+    if not user.is_active:
+        user.is_active = True
+        user_updates.append("is_active")
+    if user.full_name != full_name:
+        user.full_name = full_name
+        user_updates.append("full_name")
+    if user_updates:
+        user.save(update_fields=user_updates)
+
+    membership = BusinessMembership.objects.filter(
+        user=user,
+        role=BusinessMembership.Role.OWNER,
+    ).first()
+    if membership is None:
+        business = create_business_for_owner(
+            owner=user,
+            name=name,
+            city=city,
+            province=province,
+            phone=phone,
+        )
+        complete_onboarding(business)
+        return user, business
+
+    business = membership.business
+    if membership.status != BusinessMembership.Status.ACTIVE:
+        membership.status = BusinessMembership.Status.ACTIVE
+        membership.save(update_fields=["status"])
+
+    business.status = Business.Status.ACTIVE
+    business.verification_status = Business.VerificationStatus.VERIFIED
+    business.plan = Business.Plan.SELLER
+    business.active_until = None
+    business.save(
+        update_fields=[
+            "status",
+            "verification_status",
+            "plan",
+            "active_until",
+            "updated_at",
+        ]
+    )
+    if not business.is_onboarded:
+        complete_onboarding(business)
+    return user, business
+
+
 class Command(BaseCommand):
     help = "Seed fictional Persian demo data for local development (SANGA)."
 
@@ -30,57 +84,49 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         ensure_default_tiers()
 
-        owner, _ = User.objects.get_or_create(
+        owner, business = _restore_demo_business(
             phone="09121111111",
-            defaults={"full_name": "مالک دمو (فرضی)"},
+            full_name="مالک دمو (فرضی)",
+            name="سنگبری آذرخش (دمو ـ فرضی)",
+            city="محلات",
+            province="مرکزی",
         )
 
-        membership = BusinessMembership.objects.filter(user=owner, role=BusinessMembership.Role.OWNER).first()
-        if membership:
-            business = membership.business
-        else:
-            business = create_business_for_owner(
-                owner=owner,
-                name="سنگبری آذرخش (دمو ـ فرضی)",
-                city="محلات",
-                province="مرکزی",
-                phone="09121111111",
+        prefixes = {
+            "تراورتن": "T", "مرمریت": "M", "گرانیت": "G", "کریستال": "C",
+            "مرمر": "O", "لایمستون": "L", "ترامیت": "TR", "چینی": "CH",
+        }
+        for idx, (name, stone_name, _color, _region, qty, b2b, b2c, apps) in enumerate(
+            SAMPLES, start=1
+        ):
+            stone, _ = VocabularyTerm.objects.get_or_create(
+                kind=VocabularyTerm.Kind.STONE_TYPE,
+                name=stone_name,
+                defaults={"code_prefix": prefixes[stone_name], "is_active": True},
             )
-            complete_onboarding(business)
-
-        for idx, (name, stone, color, region, qty, b2b, b2c, apps) in enumerate(SAMPLES, start=1):
-            product, _ = Product.objects.get_or_create(
-                business=business,
-                commercial_name=name,
-                defaults={
-                    "stone_type": stone,
-                    "primary_color": color,
-                    "quarry_region": region,
-                    "description_public": "نمونه فرضی توسعه سنگا — داده واقعی نیست.",
-                },
-            )
-            product.applications.set(Application.objects.filter(code__in=apps))
-
             code = f"DEMO-{idx:03d}"
-            item, created = InventoryLot.objects.get_or_create(
-                business=business,
-                lot_code=code,
-                defaults={
-                    "product": product,
-                    "status": InventoryLot.Status.ACTIVE,
-                    "is_visible": True,
-                    "availability_status": InventoryLot.Availability.AVAILABLE,
-                    "stock_mode": InventoryLot.StockMode.EXACT,
-                    "available_sqm": Decimal(qty),
-                    "original_sqm": Decimal(qty),
-                    "stock_confirmed_at": timezone.now(),
-                    "location_city": "محلات",
-                    "location_province": "مرکزی",
-                    "grade": "ممتاز",
-                    "processing_type": "صیقلی",
-                    "description": "داده دمو فرضی برای تست سنگا",
-                },
-            )
+            item = InventoryLot.objects.filter(lot_code=code, business=business).first()
+            created = item is None
+            if item is None:
+                product = Product.objects.create(
+                    business=business,
+                    stone=stone,
+                    name_suffix=name.removeprefix("سنگ ").removeprefix(stone_name).strip(),
+                    description_public="نمونه فرضی توسعه سنگا — داده واقعی نیست.",
+                )
+                product.applications.set(Application.objects.filter(code__in=apps))
+                item = InventoryLot.objects.create(
+                    business=business,
+                    lot_code=code,
+                    product=product,
+                    status=InventoryLot.Status.ACTIVE,
+                    is_visible=True,
+                    availability_status=InventoryLot.Availability.AVAILABLE,
+                    available_sqm=Decimal(qty),
+                    stock_confirmed_at=timezone.now(),
+                    processing_type="صیقلی",
+                    description="داده دمو فرضی برای تست سنگا",
+                )
             if created or not item.prices.exists():
                 set_lot_price(lot=item, tier_code="b2b", amount=Decimal(b2b))
                 set_lot_price(lot=item, tier_code="b2c", amount=Decimal(b2c))
@@ -94,22 +140,17 @@ class Command(BaseCommand):
 
         inquiry_item = InventoryLot.objects.filter(business=business, lot_code="DEMO-003").first()
         if inquiry_item is not None:
-            inquiry_item.stock_mode = InventoryLot.StockMode.INQUIRY
-            inquiry_item.save()
+            inquiry_item.available_sqm = None
+            inquiry_item.stock_confirmed_at = None
+            inquiry_item.save(update_fields=["available_sqm", "stock_confirmed_at", "stock_expires_at", "updated_at"])
 
-        partner_owner, _ = User.objects.get_or_create(
+        partner_owner, _partner_business = _restore_demo_business(
             phone="09122222222",
-            defaults={"full_name": "شریک دمو (فرضی)"},
+            full_name="شریک دمو (فرضی)",
+            name="بازرگانی سنگ پارس (دمو ـ فرضی)",
+            city="تهران",
+            province="تهران",
         )
-        if not BusinessMembership.objects.filter(user=partner_owner, role=BusinessMembership.Role.OWNER).exists():
-            partner_business = create_business_for_owner(
-                owner=partner_owner,
-                name="بازرگانی سنگ پارس (دمو ـ فرضی)",
-                city="تهران",
-                province="تهران",
-                phone="09122222222",
-            )
-            complete_onboarding(partner_business)
 
         self.stdout.write(self.style.SUCCESS("Demo seed complete (fictional SANGA data)."))
         self.stdout.write(f"Seller login phone: {owner.phone}")

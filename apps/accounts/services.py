@@ -296,7 +296,12 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     else:
         logger.info("OTP requested for unprovisioned phone; no SMS sent")
 
-    dev_code = code if settings.DEBUG and settings.SMS_PROVIDER == "console" and is_provisioned else None
+    # Console mode is the explicit no-gateway/test mode. It must remain usable
+    # even in a staging deployment with DEBUG=False; production settings already
+    # refuse this provider unless the operator deliberately allows undelivered
+    # OTPs. Return a code for every phone so this does not reveal whether an
+    # account exists. Verification still refuses unprovisioned users.
+    dev_code = code if (settings.SMS_PROVIDER or "").strip().lower() == "console" else None
     return OTPRequestResult(
         phone=phone,
         expires_at=expires_at,
@@ -347,7 +352,9 @@ def request_customer_otp(phone: str, *, request: HttpRequest | None = None) -> O
         phone=phone,
         expires_at=expires_at,
         cooldown_seconds=cooldown,
-        dev_code=code if settings.DEBUG and settings.SMS_PROVIDER == "console" else None,
+        dev_code=(
+            code if (settings.SMS_PROVIDER or "").strip().lower() == "console" else None
+        ),
     )
 
 

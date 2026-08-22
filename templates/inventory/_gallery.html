@@ -2,11 +2,15 @@
 Product media gallery: the primary image large, everything else as thumbnails,
 videos inline.
 
-Expects: media_items (already ordered; primary first is not assumed)
+Expects: media_items. JavaScript activates the primary image when present and
+falls back to the first item without making the gallery unusable without JS.
 {% endcomment %}
-<div class="gallery gallery-lg" x-data="{ active: 0 }">
-  {% for media in media_items %}
-    <div class="gallery-slide" {% if not forloop.first %}x-show="active === {{ forloop.counter0 }}" x-cloak{% endif %}>
+<div class="product-gallery" data-gallery>
+  <div class="gallery gallery-lg">
+    {% for media in media_items %}
+    <div class="gallery-slide" data-gallery-slide data-media-id="{{ media.id }}"
+         {% if media.is_primary %}data-primary="true"{% endif %}
+         {% if not forloop.first %}hidden{% endif %}>
       {% if media.kind == "video" %}
         <video controls preload="metadata" playsinline>
           <source src="{{ media.file.url }}">
@@ -16,21 +20,23 @@ Expects: media_items (already ordered; primary first is not assumed)
       {% endif %}
       {% if media.caption %}<div class="gallery-caption">{{ media.caption }}</div>{% endif %}
     </div>
-  {% empty %}
+    {% empty %}
     <div class="empty-state">تصویری ثبت نشده است</div>
-  {% endfor %}
-</div>
+    {% endfor %}
+  </div>
 
-{% if media_items|length > 1 %}
+  {% if media_items|length > 1 %}
   <div class="gallery-thumbs">
     {% for media in media_items %}
-      <button type="button" class="gallery-thumb" @click="active = {{ forloop.counter0 }}">
+      <button type="button" class="gallery-thumb" data-gallery-thumb data-media-id="{{ media.id }}"
+              aria-label="نمایش رسانه {{ forloop.counter }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">
         {% if media.kind == "video" %}
           <span class="gallery-thumb-video">ویدیو</span>
         {% else %}
-          <img src="{{ media.file.url }}" alt="" loading="lazy">
+          <img src="{{ media.file.url }}" alt="نمای کوچک {{ media.caption|default:forloop.counter }}" loading="lazy">
         {% endif %}
       </button>
     {% endfor %}
   </div>
-{% endif %}
+  {% endif %}
+</div>

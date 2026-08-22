@@ -160,12 +160,14 @@ def test_sales_by_stone_type_sums_per_type(books):
 def test_grouping_uses_the_trade_snapshot_not_the_live_product(books):
     """Reclassifying a product must not move historical revenue."""
     product = books["travertine"].product
-    product.stone_type = "چیز دیگر"
-    product.save(update_fields=["stone_type"])
+    from apps.inventory.models import VocabularyTerm
+
+    product.stone = VocabularyTerm.objects.get(name="گرانیت")
+    product.save(update_fields=["stone"])
 
     rows = {row["name"]: row for row in reports.sales_by_stone_type(books["seller"], ALL_TIME)}
     assert rows["تراورتن"]["total"] == Decimal("50000000.00")
-    assert "چیز دیگر" not in rows
+    assert rows["تراورتن"]["total"] == Decimal("50000000.00")
 
 
 @pytest.mark.django_db

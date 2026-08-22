@@ -15,6 +15,8 @@ from enum import StrEnum
 
 from django.utils import timezone
 
+from apps.core.formatting import format_decimal
+
 from .models import InventoryLot
 
 
@@ -22,7 +24,6 @@ class StockDisplay(StrEnum):
     """What a viewer should be told about the quantity."""
 
     EXACT = "exact"
-    UNLIMITED = "unlimited"
     INQUIRY = "inquiry"
 
 
@@ -66,24 +67,12 @@ def stock_view(lot: InventoryLot) -> StockView:
     """Resolve what to show for this item's stock, right now."""
     confirmed_at = lot.stock_confirmed_at
     human = humanize_confirmed(confirmed_at)
-    effective = lot.effective_stock_mode
     expires_at = lot.stock_expires_at
 
-    if effective == InventoryLot.StockMode.UNLIMITED:
-        return StockView(
-            display=StockDisplay.UNLIMITED,
-            label="موجودی نامحدود",
-            quantity_sqm=None,
-            confirmed_at=confirmed_at,
-            human_confirmed=human,
-            expires_at=expires_at,
-            needs_confirmation=False,
-        )
-
-    if effective == InventoryLot.StockMode.EXACT:
+    if lot.available_sqm is not None and lot.is_stock_fresh:
         return StockView(
             display=StockDisplay.EXACT,
-            label=f"{lot.available_sqm:,.0f} متر مربع",
+            label=f"{format_decimal(lot.available_sqm, grouped=True)} متر مربع",
             quantity_sqm=lot.available_sqm,
             confirmed_at=confirmed_at,
             human_confirmed=human,
@@ -91,9 +80,6 @@ def stock_view(lot: InventoryLot) -> StockView:
             needs_confirmation=False,
         )
 
-    # Either the seller chose inquiry mode, or a quantity went stale. The seller
-    # is asked to reconfirm only in the second case: a deliberate inquiry item
-    # has nothing to refresh.
     return StockView(
         display=StockDisplay.INQUIRY,
         label="استعلام موجودی",
@@ -101,12 +87,12 @@ def stock_view(lot: InventoryLot) -> StockView:
         confirmed_at=confirmed_at,
         human_confirmed=human,
         expires_at=expires_at,
-        needs_confirmation=lot.stock_mode != InventoryLot.StockMode.INQUIRY,
+        needs_confirmation=lot.available_sqm is not None,
     )
 
 
 def needs_stock_confirmation(lot: InventoryLot) -> bool:
     """True when the seller has a quantity that has stopped being trustworthy."""
-    if lot.stock_mode == InventoryLot.StockMode.INQUIRY:
+    if lot.available_sqm is None:
         return False
     return not lot.is_stock_fresh

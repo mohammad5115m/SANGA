@@ -30,9 +30,9 @@ hourly, so the primary bar stays short enough to read on a phone.
          href="{% url 'inventory:lot_list' %}">موجودی من</a>
       <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
          href="{% url 'marketplace:home' %}">بازار</a>
-      {% if 'purchase.request' in capabilities %}
+      {% if 'trade.propose' in capabilities or 'trade.confirm' in capabilities %}
         <a class="topbar-link {% if request.resolver_match.app_name == 'trading' %}is-active{% endif %}"
-           href="{% url 'trading:received_list' %}">خرید و فروش</a>
+           href="{% url 'trading:proposal_list' %}">خرید و فروش</a>
       {% endif %}
       {% if can_manage_catalogs %}
         <a class="topbar-link {% if request.resolver_match.app_name == 'catalog_manage' %}is-active{% endif %}"
@@ -82,7 +82,7 @@ hourly, so the primary bar stays short enough to read on a phone.
     {% comment %}
     Gated on plan as well as capability. A browse-only or expired owner bypasses
     every capability check by design, so checking capabilities alone left the
-    most prominent control on the screen pointing at a wizard that cannot finish.
+    most prominent control on the screen pointing at a create flow that cannot finish.
     {% endcomment %}
     {% if can_add_products %}
       <a class="nav-item nav-item-primary {% if 'quick_add' in request.resolver_match.url_name|default:'' %}is-active{% endif %}"

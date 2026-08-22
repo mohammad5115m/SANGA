@@ -35,13 +35,13 @@ def market(db):
     )
     second = make_item(
         seller,
-        product=make_product(seller, commercial_name="مرمریت لاشتر"),
+        product=make_product(seller, commercial_name="مرمریت لاشتر", stone_type="مرمریت"),
         lot_code="A-2",
         b2c="2500000",
     )
     third = make_item(
         other,
-        product=make_product(other, commercial_name="گرانیت نطنز"),
+        product=make_product(other, commercial_name="گرانیت نطنز", stone_type="گرانیت"),
         lot_code="B-1",
         b2c="3000000",
     )
@@ -140,8 +140,8 @@ def test_the_full_public_flow_saves_one_inquiry_with_several_products(client, ma
 
     lines = {line.product_name: line.requested_qty_sqm for line in inquiry.items.all()}
     assert lines == {
-        "تراورتن عباس‌آباد": Decimal("120.000"),
-        "مرمریت لاشتر": Decimal("80.000"),
+        "سنگ تراورتن عباس‌آباد": Decimal("120.000"),
+        "سنگ مرمریت لاشتر": Decimal("80.000"),
     }
 
 
@@ -187,8 +187,8 @@ def test_a_selection_spanning_two_sellers_becomes_two_inquiries(client, market, 
     seller_inquiry = Inquiry.objects.get(business=market["seller"])
     other_inquiry = Inquiry.objects.get(business=market["other"])
 
-    assert [line.product_name for line in seller_inquiry.items.all()] == ["تراورتن عباس‌آباد"]
-    assert [line.product_name for line in other_inquiry.items.all()] == ["گرانیت نطنز"]
+    assert [line.product_name for line in seller_inquiry.items.all()] == ["سنگ تراورتن عباس‌آباد"]
+    assert [line.product_name for line in other_inquiry.items.all()] == ["سنگ گرانیت نطنز"]
 
 
 # --- one submission, one set of inquiries ---------------------------------------
@@ -419,11 +419,11 @@ def test_the_line_keeps_a_product_name_snapshot(market):
         items=[{"item": market["first"], "quantity": Decimal("30")}],
     )
     product = market["first"].product
-    product.commercial_name = "نام جدید"
-    product.save(update_fields=["commercial_name"])
+    product.name_suffix = "نام جدید"
+    product.save(update_fields=["name_suffix"])
 
     line = InquiryItem.objects.get(inquiry=inquiry)
-    assert line.product_name == "تراورتن عباس‌آباد"
+    assert line.product_name == "سنگ تراورتن عباس‌آباد"
 
 
 # --- seller inbox ----------------------------------------------------------------

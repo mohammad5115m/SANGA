@@ -9,6 +9,14 @@
     <p class="page-lead">ارسال‌شده به <span dir="ltr">{{ phone }}</span></p>
   </div>
 
+  {% if dev_code %}
+    <div class="alert alert-warning dev-otp" role="status">
+      <span>حالت آزمایشی بدون درگاه پیامک — کد ورود:</span>
+      <strong class="dev-otp-code">{{ dev_code }}</strong>
+      <small>پس از فعال شدن ارسال پیامک، این کد در صفحه نمایش داده نمی‌شود.</small>
+    </div>
+  {% endif %}
+
   <form method="post" class="stack-md" novalidate>
     {% csrf_token %}
     {{ form.phone }}

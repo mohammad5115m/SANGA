@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
-from .permissions import defaults_for_role
+from .permissions import CAPABILITY_MIGRATION_MAP, defaults_for_role
 
 
 class Business(models.Model):
@@ -153,7 +153,8 @@ class BusinessMembership(models.Model):
             return False
         if self.role == self.Role.OWNER:
             return True
-        return capability in (self.permissions or [])
+        current_code = CAPABILITY_MIGRATION_MAP.get(capability, capability)
+        return current_code is not None and current_code in (self.permissions or [])
 
 
 class Warehouse(models.Model):

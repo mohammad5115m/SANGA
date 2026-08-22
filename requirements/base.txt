@@ -20,3 +20,7 @@ gunicorn>=22.0,<24
 django-htmx>=1.18,<2
 arabic-reshaper>=3.0,<4
 python-bidi>=0.4,<0.7
+# The canonical HTML invoice is rendered server-side so PDF text stays
+# searchable/selectable; PyMuPDF rasterizes those same PDF pages for PNG export.
+WeasyPrint>=69,<70
+PyMuPDF>=1.28,<1.29

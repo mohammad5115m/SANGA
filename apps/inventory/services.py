@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-import uuid
+import secrets
 from decimal import Decimal
 
 from django.core.files.uploadedfile import UploadedFile
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.businesses.eligibility import NotOperationalError, require_operational
@@ -25,12 +25,11 @@ from apps.businesses.permissions import (
     INVENTORY_QUANTITY,
     PRICES_EDIT,
 )
-from apps.pricing.models import LotPrice
 from apps.pricing.services import set_lot_price
 
 from .media_validation import MediaValidationError, verify_image, verify_video
 from .models import Application, InventoryLot, LotMedia, Product, VocabularyTerm
-from .taxonomy import canonical, normalize_searchable
+from .taxonomy import normalize_searchable
 
 logger = logging.getLogger(__name__)
 
@@ -87,47 +86,42 @@ def _require_owner(lot: InventoryLot, membership: BusinessMembership) -> None:
         raise InventoryError("دسترسی به این محصول وجود ندارد.")
 
 
-def _next_lot_code(business: Business) -> str:
-    stamp = timezone.localtime().strftime("%y%m%d")
-    suffix = uuid.uuid4().hex[:4].upper()
-    return f"L-{stamp}-{suffix}"
+_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _next_lot_code(stone: VocabularyTerm) -> str:
+    prefix = (stone.code_prefix or "S").upper()
+    for _attempt in range(20):
+        suffix = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(6))
+        candidate = f"{prefix}-{suffix}"
+        if not InventoryLot.objects.filter(lot_code=candidate).exists():
+            return candidate
+    raise InventoryError("ساخت کد یکتا ممکن نشد؛ دوباره تلاش کنید.")
 
 
 @transaction.atomic
-def create_or_get_product(
+def create_product(
     *,
     business: Business,
     membership: BusinessMembership,
-    commercial_name: str,
-    stone_type: str = "",
-    primary_color: str = "",
-    quarry_region: str = "",
-    product_id=None,
+    stone: VocabularyTerm,
+    name_suffix: str = "",
+    pattern: str = "",
+    description_public: str = "",
+    description_professional: str = "",
     applications: list[Application] | None = None,
 ) -> Product:
     _require(membership, INVENTORY_CREATE)
     _require_plan(business, CREATE_PRODUCTS)
-    if product_id:
-        product = Product.objects.filter(business=business, pk=product_id, is_active=True).first()
-        if product is None:
-            raise InventoryError("محصول یافت نشد.")
-        if applications is not None:
-            product.applications.set(applications)
-        return product
-
-    # Normalized on the way in, not on the way out. Storing whatever the
-    # seller's keyboard produced and normalizing only the search query protected
-    # nothing: a product entered with an Arabic ي was invisible to a search typed
-    # with a Persian ی. See apps/inventory/taxonomy.py.
-    name = normalize_searchable(commercial_name)
-    if len(name) < 2:
-        raise InventoryError("نام محصول خیلی کوتاه است.")
+    if stone.kind != VocabularyTerm.Kind.STONE_TYPE or not stone.is_active:
+        raise InventoryError("نوع سنگ انتخاب‌شده معتبر نیست.")
     product = Product.objects.create(
         business=business,
-        commercial_name=name,
-        stone_type=canonical(VocabularyTerm.Kind.STONE_TYPE, stone_type),
-        primary_color=canonical(VocabularyTerm.Kind.COLOR, primary_color),
-        quarry_region=normalize_searchable(quarry_region),
+        stone=stone,
+        name_suffix=normalize_searchable(name_suffix),
+        pattern=normalize_searchable(pattern),
+        description_public=(description_public or "").strip(),
+        description_professional=(description_professional or "").strip(),
     )
     if applications:
         product.applications.set(applications)
@@ -140,20 +134,19 @@ def create_draft_item(
     business: Business,
     membership: BusinessMembership,
     product: Product,
-    lot_code: str = "",
-    grade: str = "",
     processing_type: str = "",
     description: str = "",
-    location_province: str = "",
-    location_city: str = "",
-    location_address: str = "",
-    stock_mode: str = InventoryLot.StockMode.EXACT,
     available_sqm: Decimal | None = None,
     stock_valid_for_days: int = 7,
     length_cm: Decimal | None = None,
     width_cm: Decimal | None = None,
     thickness_mm: Decimal | None = None,
-    slab_count: int | None = None,
+    min_sale_qty: Decimal | None = None,
+    defect_notes: str = "",
+    availability_status: str = InventoryLot.Availability.AVAILABLE,
+    is_visible: bool = False,
+    is_urgent_sale: bool = False,
+    creation_token=None,
     b2b_price: dict | None = None,
     b2c_price: dict | None = None,
 ) -> InventoryLot:
@@ -171,41 +164,63 @@ def create_draft_item(
     if product.business_id != business.id:
         raise InventoryError("محصول متعلق به این کسب‌وکار نیست.")
 
-    code = (lot_code or "").strip() or _next_lot_code(business)
-    if InventoryLot.objects.filter(business=business, lot_code=code).exists():
-        raise InventoryError("کد محصول تکراری است.")
-
-    if stock_mode not in set(InventoryLot.StockMode.values):
-        raise InventoryError("نوع موجودی نامعتبر است.")
-
-    qty = available_sqm if available_sqm is not None else Decimal("0")
-    if qty < 0:
+    if hasattr(product, "lot"):
+        raise InventoryError("برای این محصول قبلاً یک آیتم موجودی ساخته شده است.")
+    if available_sqm is not None and available_sqm < 0:
         raise InventoryError("مقدار موجودی نمی‌تواند منفی باشد.")
+    if available_sqm == 0 and availability_status == InventoryLot.Availability.AVAILABLE:
+        raise InventoryError("محصول با موجودی صفر باید ناموجود باشد.")
+    minimum = min_sale_qty or Decimal("0")
+    if available_sqm is not None and minimum > available_sqm:
+        raise InventoryError("حداقل فروش نمی‌تواند از موجودی بیشتر باشد.")
+    for label, value in (("طول", length_cm), ("عرض", width_cm), ("ضخامت", thickness_mm)):
+        if value is not None and value <= 0:
+            raise InventoryError(f"{label} باید بیشتر از صفر باشد.")
+    try:
+        stock_valid_for_days = int(stock_valid_for_days)
+    except (TypeError, ValueError) as exc:
+        raise InventoryError("مدت اعتبار موجودی معتبر نیست.") from exc
+    if not 1 <= stock_valid_for_days <= 365:
+        raise InventoryError("مدت اعتبار موجودی باید بین ۱ تا ۳۶۵ روز باشد.")
+    if availability_status not in InventoryLot.Availability.values:
+        raise InventoryError("وضعیت موجود بودن نامعتبر است.")
+    if is_visible:
+        if not membership.has_capability(INVENTORY_PUBLISH):
+            raise InventoryError("اجازه انتشار محصول را ندارید.")
+        _require_plan(business, PUBLISH_PRODUCTS)
 
-    lot = InventoryLot.objects.create(
-        business=business,
-        product=product,
-        lot_code=code,
-        status=InventoryLot.Status.DRAFT,
-        is_visible=False,
-        availability_status=InventoryLot.Availability.AVAILABLE,
-        stock_mode=stock_mode,
-        available_sqm=qty,
-        original_sqm=qty,
-        # Entering a quantity is itself a confirmation of it.
-        stock_confirmed_at=timezone.now(),
-        stock_valid_for_days=stock_valid_for_days,
-        location_province=(location_province or business.province or "").strip(),
-        location_city=(location_city or business.city or "").strip(),
-        location_address=(location_address or "").strip(),
-        grade=normalize_searchable(grade),
-        processing_type=canonical(VocabularyTerm.Kind.FINISH, processing_type),
-        description=(description or "").strip(),
-        length_cm=length_cm,
-        width_cm=width_cm,
-        thickness_mm=thickness_mm,
-        slab_count=slab_count,
-    )
+    lot = None
+    for _attempt in range(20):
+        lot_code = _next_lot_code(product.stone)
+        try:
+            with transaction.atomic():
+                lot = InventoryLot.objects.create(
+                    business=business,
+                    product=product,
+                    lot_code=lot_code,
+                    creation_token=creation_token,
+                    status=InventoryLot.Status.ACTIVE if is_visible else InventoryLot.Status.DRAFT,
+                    is_visible=is_visible,
+                    availability_status=availability_status,
+                    available_sqm=available_sqm,
+                    stock_confirmed_at=timezone.now() if available_sqm is not None else None,
+                    stock_valid_for_days=stock_valid_for_days,
+                    processing_type=normalize_searchable(processing_type) or "ساب خورده",
+                    description=(description or "").strip(),
+                    length_cm=length_cm,
+                    width_cm=width_cm,
+                    thickness_mm=thickness_mm,
+                    min_sale_qty=minimum,
+                    defect_notes=(defect_notes or "").strip(),
+                    is_urgent_sale=is_urgent_sale,
+                )
+        except IntegrityError:
+            if InventoryLot.objects.filter(lot_code=lot_code).exists():
+                continue
+            raise
+        break
+    if lot is None:
+        raise InventoryError("ساخت کد یکتا ممکن نشد؛ دوباره تلاش کنید.")
 
     if b2b_price is not None:
         _set_price(lot=lot, membership=membership, tier_code="b2b", spec=b2b_price)
@@ -214,6 +229,89 @@ def create_draft_item(
 
     logger.info("Draft item created business=%s item=%s", business.id, lot.id)
     return lot
+
+
+@transaction.atomic
+def create_product_item(
+    *,
+    business: Business,
+    membership: BusinessMembership,
+    product_fields: dict,
+    item_fields: dict,
+    applications: list[Application] | None = None,
+    b2b_price: dict | None = None,
+    b2c_price: dict | None = None,
+    submission_id=None,
+) -> InventoryLot:
+    """Create one product idempotently, including prices, in a single transaction."""
+
+    if submission_id is not None:
+        existing = InventoryLot.objects.filter(business=business, creation_token=submission_id).first()
+        if existing is not None:
+            return existing
+    try:
+        with transaction.atomic():
+            product = create_product(
+                business=business,
+                membership=membership,
+                applications=applications,
+                **product_fields,
+            )
+            return create_draft_item(
+                business=business,
+                membership=membership,
+                product=product,
+                creation_token=submission_id,
+                b2b_price=b2b_price,
+                b2c_price=b2c_price,
+                **item_fields,
+            )
+    except IntegrityError:
+        existing = (
+            InventoryLot.objects.filter(business=business, creation_token=submission_id).first()
+            if submission_id is not None
+            else None
+        )
+        if existing is not None:
+            return existing
+        raise
+
+
+@transaction.atomic
+def update_product_item(
+    *,
+    lot: InventoryLot,
+    membership: BusinessMembership,
+    product_fields: dict,
+    item_fields: dict,
+    applications: list[Application] | None = None,
+    b2b_price: dict | None = None,
+    b2c_price: dict | None = None,
+) -> InventoryLot:
+    """Update the product and its one sellable item as one user action."""
+
+    _require(membership, INVENTORY_EDIT)
+    _require_owner(lot, membership)
+    product = lot.product
+    stone = product_fields.get("stone", product.stone)
+    if stone.kind != VocabularyTerm.Kind.STONE_TYPE or not stone.is_active:
+        raise InventoryError("نوع سنگ انتخاب‌شده معتبر نیست.")
+    for key in ("stone", "name_suffix", "pattern", "description_public", "description_professional"):
+        if key in product_fields:
+            value = product_fields[key]
+            if key in {"name_suffix", "pattern"}:
+                value = normalize_searchable(value)
+            setattr(product, key, value)
+    product.save()
+    if applications is not None:
+        product.applications.set(applications)
+    return update_item(
+        lot=lot,
+        membership=membership,
+        fields=item_fields,
+        b2b_price=b2b_price,
+        b2c_price=b2c_price,
+    )
 
 
 @transaction.atomic
@@ -237,8 +335,11 @@ def update_item(
 
     fields = fields or {}
 
-    quantity_keys = {"available_sqm", "original_sqm", "slab_count", "stock_mode", "stock_valid_for_days"}
-    if quantity_keys.intersection(fields) and not membership.has_capability(INVENTORY_QUANTITY):
+    quantity_keys = {"available_sqm", "stock_valid_for_days"}
+    changing_quantity = any(
+        key in fields and getattr(lot, key) != fields[key] for key in quantity_keys
+    )
+    if changing_quantity and not membership.has_capability(INVENTORY_QUANTITY):
         raise InventoryError("اجازه تغییر مقدار موجودی را ندارید.")
 
     publish_keys = {"is_visible", "availability_status"}
@@ -249,23 +350,15 @@ def update_item(
         _require_plan(lot.business, PUBLISH_PRODUCTS)
 
     allowed = {
-        "grade",
         "processing_type",
         "description",
         "defect_notes",
-        "stock_mode",
         "available_sqm",
         "stock_valid_for_days",
-        "original_sqm",
         "length_cm",
         "width_cm",
         "thickness_mm",
-        "slab_count",
-        "bundle_count",
         "min_sale_qty",
-        "location_province",
-        "location_city",
-        "location_address",
         "ready_for_loading_at",
         "photographed_at",
         "is_featured",
@@ -277,25 +370,32 @@ def update_item(
     #: Applying it only at creation would let an edit reintroduce exactly the
     #: unsearchable spelling the create path exists to prevent.
     normalizers = {
-        "processing_type": lambda value: canonical(VocabularyTerm.Kind.FINISH, value),
-        "grade": normalize_searchable,
-        "location_province": normalize_searchable,
-        "location_city": normalize_searchable,
+        "processing_type": normalize_searchable,
     }
 
     stock_changed = False
     for key, value in fields.items():
         if key not in allowed:
             continue
-        if key in {"available_sqm", "stock_mode"} and getattr(lot, key) != value:
+        if key == "available_sqm" and getattr(lot, key) != value:
             stock_changed = True
         normalize = normalizers.get(key)
         setattr(lot, key, normalize(value) if normalize and isinstance(value, str) else value)
 
+    if lot.available_sqm == 0 and lot.availability_status == InventoryLot.Availability.AVAILABLE:
+        raise InventoryError("محصول با موجودی صفر باید ناموجود باشد.")
+    if lot.available_sqm is not None and lot.min_sale_qty > lot.available_sqm:
+        raise InventoryError("حداقل فروش نمی‌تواند از موجودی بیشتر باشد.")
+    for label, value in (("طول", lot.length_cm), ("عرض", lot.width_cm), ("ضخامت", lot.thickness_mm)):
+        if value is not None and value <= 0:
+            raise InventoryError(f"{label} باید بیشتر از صفر باشد.")
+
     # Changing the number restarts the window: the seller has just told us what
     # it is now.
     if stock_changed:
-        lot.stock_confirmed_at = timezone.now()
+        lot.stock_confirmed_at = timezone.now() if lot.available_sqm is not None else None
+    if lot.is_visible:
+        lot.status = InventoryLot.Status.ACTIVE
 
     lot.save()
 
@@ -317,7 +417,6 @@ def _set_price(*, lot: InventoryLot, membership: BusinessMembership, tier_code: 
             amount=spec.get("amount"),
             mode=spec.get("mode"),
             currency=spec.get("currency") or "IRR",
-            unit=spec.get("unit") or LotPrice.Unit.PER_SQM,
             valid_for_days=spec.get("valid_for_days"),
             special_amount=spec.get("special_amount"),
             special_until=spec.get("special_until"),
@@ -348,7 +447,7 @@ def publish_item(*, lot: InventoryLot, membership: BusinessMembership, is_visibl
         _require_plan(lot.business, PUBLISH_PRODUCTS)
     lot.status = InventoryLot.Status.ACTIVE
     lot.is_visible = bool(is_visible)
-    if lot.stock_confirmed_at is None:
+    if lot.available_sqm is not None and lot.stock_confirmed_at is None:
         lot.stock_confirmed_at = timezone.now()
     lot.save()
     return lot
@@ -360,7 +459,6 @@ def confirm_item_stock(
     lot: InventoryLot,
     membership: BusinessMembership,
     available_sqm: Decimal | None = None,
-    stock_mode: str | None = None,
     stock_valid_for_days: int | None = None,
 ) -> InventoryLot:
     """Restart the stock validity window, optionally with a new quantity.
@@ -372,14 +470,9 @@ def confirm_item_stock(
     _require(membership, INVENTORY_CONFIRM)
     _require_owner(lot, membership)
 
-    if stock_mode is not None:
-        if stock_mode not in set(InventoryLot.StockMode.values):
-            raise InventoryError("نوع موجودی نامعتبر است.")
-        lot.stock_mode = stock_mode
-    if available_sqm is not None:
-        if available_sqm < 0:
-            raise InventoryError("مقدار موجودی نمی‌تواند منفی باشد.")
-        lot.available_sqm = available_sqm
+    if available_sqm is not None and available_sqm < 0:
+        raise InventoryError("مقدار موجودی نمی‌تواند منفی باشد.")
+    lot.available_sqm = available_sqm
     if stock_valid_for_days is not None:
         # The confirmation screen has always asked how long the number should be
         # trusted for; the view simply never passed the answer on, so the seller
@@ -388,7 +481,11 @@ def confirm_item_stock(
             raise InventoryError("مدت اعتبار موجودی باید بین ۱ تا ۳۶۵ روز باشد.")
         lot.stock_valid_for_days = int(stock_valid_for_days)
 
-    lot.stock_confirmed_at = timezone.now()
+    if available_sqm is not None and lot.min_sale_qty > available_sqm:
+        raise InventoryError("موجودی نمی‌تواند از حداقل فروش کمتر باشد.")
+    if available_sqm == 0:
+        lot.availability_status = InventoryLot.Availability.UNAVAILABLE
+    lot.stock_confirmed_at = timezone.now() if available_sqm is not None else None
     lot.save()
     return lot
 
@@ -401,8 +498,10 @@ def set_item_availability(*, lot: InventoryLot, membership: BusinessMembership, 
     :func:`apps.inventory.policy.eligible_items`, without deleting anything: the
     seller flips it back later without re-creating the product.
     """
-    _require(membership, INVENTORY_EDIT)
+    _require(membership, INVENTORY_PUBLISH)
     _require_owner(lot, membership)
+    if available and lot.available_sqm == 0:
+        raise InventoryError("ابتدا موجودی را بیشتر از صفر ثبت یا مقدار را روی استعلام بگذارید.")
     lot.availability_status = (
         InventoryLot.Availability.AVAILABLE if available else InventoryLot.Availability.UNAVAILABLE
     )
@@ -566,9 +665,11 @@ def add_lot_media(
     # decide they are the first and both become the cover.
     _lock_lot(lot)
 
-    if is_primary or not lot.media.filter(is_primary=True).exists():
+    if kind == LotMedia.Kind.IMAGE and (is_primary or not lot.media.filter(is_primary=True).exists()):
         lot.media.filter(is_primary=True).update(is_primary=False)
         is_primary = True
+    elif kind == LotMedia.Kind.VIDEO:
+        is_primary = False
 
     media = LotMedia.objects.create(
         lot=lot,
@@ -598,7 +699,7 @@ def delete_lot_media(*, lot: InventoryLot, membership: BusinessMembership, media
     schedule_storage_cleanup(media)
     if was_primary:
         # Never leave a gallery with no cover: promote whatever is now first.
-        replacement = lot.media.order_by("sort_order", "created_at").first()
+        replacement = lot.media.filter(kind=LotMedia.Kind.IMAGE).order_by("sort_order", "created_at").first()
         if replacement is not None:
             replacement.is_primary = True
             replacement.save(update_fields=["is_primary"])
@@ -633,6 +734,7 @@ def reorder_lot_media(*, lot: InventoryLot, membership: BusinessMembership, medi
 
     owned = {str(pk): pk for pk in lot.media.values_list("pk", flat=True)}
     ordered = [owned[str(mid)] for mid in media_ids if str(mid) in owned]
+    ordered.extend(pk for pk in owned.values() if pk not in ordered)
     for position, pk in enumerate(ordered):
         LotMedia.objects.filter(pk=pk).update(sort_order=position)
 
@@ -643,27 +745,31 @@ def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> Inve
     _require_plan(lot.business, CREATE_PRODUCTS)
     _require_owner(lot, membership)
 
+    product = Product.objects.create(
+        business=lot.business,
+        stone=lot.product.stone,
+        name_suffix=lot.product.name_suffix,
+        pattern=lot.product.pattern,
+        vein_notes=lot.product.vein_notes,
+        technical_notes=lot.product.technical_notes,
+        description_public=lot.product.description_public,
+        description_professional=lot.product.description_professional,
+        alt_names=lot.product.alt_names,
+    )
+    product.applications.set(lot.product.applications.all())
     clone = InventoryLot.objects.create(
         business=lot.business,
-        product=lot.product,
-        lot_code=_next_lot_code(lot.business),
+        product=product,
+        lot_code=_next_lot_code(product.stone),
         status=InventoryLot.Status.DRAFT,
         is_visible=False,
         availability_status=InventoryLot.Availability.AVAILABLE,
-        stock_mode=lot.stock_mode,
         available_sqm=lot.available_sqm,
-        original_sqm=lot.original_sqm,
-        stock_confirmed_at=timezone.now(),
+        stock_confirmed_at=timezone.now() if lot.available_sqm is not None else None,
         stock_valid_for_days=lot.stock_valid_for_days,
-        location_province=lot.location_province,
-        location_city=lot.location_city,
-        location_address=lot.location_address,
-        slab_count=lot.slab_count,
-        bundle_count=lot.bundle_count,
         length_cm=lot.length_cm,
         width_cm=lot.width_cm,
         thickness_mm=lot.thickness_mm,
-        grade=lot.grade,
         processing_type=lot.processing_type,
         min_sale_qty=lot.min_sale_qty,
         description=lot.description,
@@ -686,7 +792,6 @@ def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> Inve
             amount=price.amount,
             mode=price.mode,
             currency=price.currency,
-            unit=price.unit,
             valid_for_days=price.price_valid_for_days,
         )
     return clone

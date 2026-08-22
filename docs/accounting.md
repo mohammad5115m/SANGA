@@ -79,10 +79,10 @@ A reversal cannot itself be reversed, and an entry cannot be reversed twice.
 
 ## 5. One authoritative posting event
 
-A sale reaches the books **exactly once**, when the seller finalizes the trade.
+A colleague sale reaches the books **exactly once**, when the counterparty confirms the agreement.
 
 ```text
-finalize_sale()  /  record_direct_sale()
+confirm_trade_proposal()
   → create Trade
   → post_trade_entries()   ← the books move here, and only here
   → create the invoice
@@ -138,7 +138,7 @@ inventing one would create a debtor nobody can settle with.
 
 ### Who is allowed to post it
 
-Deliberately `sale.finalize`, **not** `ledger.manage`. The entry is a consequence
+Deliberately `trade.confirm`, **not** `ledger.manage`. The entry is a consequence
 of the sale the user just completed, not bookkeeping they are authoring.
 Requiring `ledger.manage` would mean no salesperson could complete a sale.
 

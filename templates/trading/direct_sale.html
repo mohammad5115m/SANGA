@@ -48,11 +48,26 @@
         <fieldset class="panel stack-sm">
           <legend class="section-subtitle">ردیف {{ forloop.counter }}</legend>
           {% for field in line %}
-            <label class="field">
-              <span class="field-label">{{ field.label }}</span>
-              {{ field }}
-              {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-            </label>
+            {% if field.name == "item" %}
+              <div class="field">
+                <span class="field-label">{{ field.label }}</span>
+                <div class="product-picker" data-product-picker data-product-url="{% url 'inventory:product_options' %}" data-autofill-name>
+                  {{ field }}
+                  <div class="product-picker-input-row">
+                    <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول را جست‌وجو کنید" autocomplete="off" data-product-query aria-label="جست‌وجوی محصول">
+                    <button class="btn btn-ghost btn-sm" type="button" data-product-clear>پاک کردن</button>
+                  </div>
+                  <div class="product-picker-results" data-product-results role="listbox" hidden></div>
+                </div>
+                {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+              </div>
+            {% else %}
+              <label class="field">
+                <span class="field-label">{{ field.label }}</span>
+                {{ field }}
+                {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+              </label>
+            {% endif %}
           {% endfor %}
         </fieldset>
       {% endfor %}

@@ -30,6 +30,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
       - run: pip install -r requirements/development.txt -c requirements/constraints.txt
       - name: Ruff
         run: ruff check .
@@ -49,6 +51,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
       - run: pip install -r requirements/development.txt -c requirements/constraints.txt
       - run: pytest
         env:
@@ -76,6 +83,11 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
       - run: pip install -r requirements/development.txt -c requirements/constraints.txt
       - name: Full suite, including the concurrency lane
         run: ./scripts/run_pg_tests.sh
@@ -135,6 +147,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
       - run: pip install -r requirements/development.txt -c requirements/constraints.txt
       - name: SQLite, from an empty file
         run: ./scripts/check_fresh_migrate.sh
@@ -153,6 +167,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
       - run: pip install -r requirements/development.txt -c requirements/constraints.txt
       - name: check --deploy with a production-like environment
         run: python manage.py check --deploy --fail-level WARNING

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
@@ -32,7 +33,9 @@ def login_view(request: HttpRequest) -> HttpResponse:
         else:
             request.session["otp_phone"] = result.phone
             if result.dev_code:
-                messages.info(request, f"کد توسعه (فقط DEBUG): {result.dev_code}")
+                request.session["otp_dev_code"] = result.dev_code
+            else:
+                request.session.pop("otp_dev_code", None)
             return redirect("accounts:verify")
 
     return render(request, "accounts/login.html", {"form": form})
@@ -45,8 +48,14 @@ def verify_view(request: HttpRequest) -> HttpResponse:
 
     phone = request.session.get("otp_phone", "")
     if not phone:
+        request.session.pop("otp_dev_code", None)
         messages.error(request, "ابتدا شماره موبایل خود را وارد کنید.")
         return redirect("accounts:login")
+
+    # Console is the explicit no-gateway/test mode. Gate again at render time so
+    # a stale session cannot expose a code after switching to a real provider.
+    show_dev_code = (settings.SMS_PROVIDER or "").strip().lower() == "console"
+    dev_code = request.session.get("otp_dev_code") if show_dev_code else None
 
     form = OTPVerifyForm(request.POST or None, initial={"phone": phone})
     if request.method == "POST" and form.is_valid():
@@ -61,10 +70,15 @@ def verify_view(request: HttpRequest) -> HttpResponse:
             form.add_error(None, "خطای غیرمنتظره رخ داد. دوباره تلاش کنید.")
         else:
             request.session.pop("otp_phone", None)
+            request.session.pop("otp_dev_code", None)
             messages.success(request, "با موفقیت وارد شدید.")
             return redirect("businesses:post_login")
 
-    return render(request, "accounts/verify.html", {"form": form, "phone": phone})
+    return render(
+        request,
+        "accounts/verify.html",
+        {"form": form, "phone": phone, "dev_code": dev_code},
+    )
 
 
 @login_required

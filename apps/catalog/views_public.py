@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.businesses.eligibility import public_business_or_none
 from apps.core.pagination import paginate
+from apps.inventory.filters import effective_price_bounds
 from apps.inventory.forms import ItemFilterForm
 
 from . import cart
@@ -41,16 +42,33 @@ def _business_or_404(slug: str):
     return business
 
 
-def _compare_ids(request: HttpRequest) -> list[str]:
-    raw = request.session.get(COMPARE_SESSION_KEY, [])
-    return [str(x) for x in raw][:4]
+def _compare_map(request: HttpRequest) -> dict[str, list[str]]:
+    raw = request.session.get(COMPARE_SESSION_KEY, {})
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(key): [str(item) for item in value][:4]
+        for key, value in raw.items()
+        if isinstance(value, list)
+    }
+
+
+def _compare_ids(request: HttpRequest, business) -> list[str]:
+    return _compare_map(request).get(str(business.id), [])
+
+
+def _all_compare_ids(request: HttpRequest) -> list[str]:
+    return [item for values in _compare_map(request).values() for item in values]
 
 
 @require_http_methods(["GET"])
 def public_search(request: HttpRequest) -> HttpResponse:
     """Login-free product discovery across every eligible seller."""
     form = ItemFilterForm(request.GET or None)
-    qs = filter_public_lots(public_items(), spec=form.to_spec())
+    spec = form.to_spec()
+    base = public_items()
+    qs = filter_public_lots(base, spec=spec)
+    minimum, maximum = effective_price_bounds(base, spec=spec, audience="public")
     page = paginate(request, qs)
     cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
@@ -63,8 +81,9 @@ def public_search(request: HttpRequest) -> HttpResponse:
             "filter_form": form,
             "cards": cards,
             "page": page,
-            "compare_ids": _compare_ids(request),
+            "compare_ids": _all_compare_ids(request),
             "selection_count": cart.count(request),
+            "price_bounds": {"minimum": minimum, "maximum": maximum},
         },
     )
 
@@ -73,7 +92,10 @@ def public_search(request: HttpRequest) -> HttpResponse:
 def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
     business = _business_or_404(business_slug)
     form = ItemFilterForm(request.GET or None)
-    qs = filter_public_lots(public_catalog_lots(business), spec=form.to_spec())
+    spec = form.to_spec()
+    base = public_catalog_lots(business)
+    qs = filter_public_lots(base, spec=spec)
+    minimum, maximum = effective_price_bounds(base, spec=spec, audience="public")
     page = paginate(request, qs)
     cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
@@ -87,8 +109,9 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
             "filter_form": form,
             "cards": cards,
             "page": page,
-            "compare_ids": _compare_ids(request),
+            "compare_ids": _compare_ids(request, business),
             "selection_count": cart.count(request),
+            "price_bounds": {"minimum": minimum, "maximum": maximum},
         },
     )
 
@@ -114,7 +137,7 @@ def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse
             "media_items": list(lot.media.all()),
             "related_cards": [public_lot_card(item) for item in related_public_lots(lot)],
             "is_selected": cart.contains(request, lot.pk),
-            "compare_ids": _compare_ids(request),
+            "compare_ids": _compare_ids(request, business),
             "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
         },
     )
@@ -159,8 +182,8 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
 
     record_catalog_view(catalog)
 
-    # resolve_catalog already intersected the rules and the manual overrides with
-    # the public eligibility queryset, so everything here is showable.
+    # resolve_catalog already intersected the selected membership with the public
+    # eligibility queryset, so everything here is showable.
     # Re-filtering in the template layer is what let a private item slip through
     # before.
     notes = catalog_notes(catalog)
@@ -195,13 +218,16 @@ def compare_toggle(request: HttpRequest, business_slug: str, lot_id) -> HttpResp
     lot = get_public_lot(business, lot_id)
     if lot is None:
         return redirect("catalog:storefront", business_slug=business_slug)
-    ids = _compare_ids(request)
+    compare_map = _compare_map(request)
+    key = str(business.id)
+    ids = compare_map.get(key, [])
     lid = str(lot.id)
     if lid in ids:
         ids = [x for x in ids if x != lid]
     elif len(ids) < 4:
         ids.append(lid)
-    request.session[COMPARE_SESSION_KEY] = ids
+    compare_map[key] = ids
+    request.session[COMPARE_SESSION_KEY] = compare_map
     request.session.modified = True
     next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
     # Only follow same-host redirects; anything else could be an open redirect.
@@ -215,7 +241,7 @@ def compare_toggle(request: HttpRequest, business_slug: str, lot_id) -> HttpResp
 @require_http_methods(["GET"])
 def compare_view(request: HttpRequest, business_slug: str) -> HttpResponse:
     business = _business_or_404(business_slug)
-    ids = _compare_ids(request)
+    ids = _compare_ids(request, business)
     lots = list(public_catalog_lots(business).filter(id__in=ids))
     order = {lid: idx for idx, lid in enumerate(ids)}
     lots.sort(key=lambda lot: order.get(str(lot.id), 99))

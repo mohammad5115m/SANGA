@@ -1,0 +1,14 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}سوابق درخواست‌های قدیمی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">سوابق درخواست‌های قدیمی</h1>
+    <p class="page-lead">این بخش فقط برای مشاهده سوابق است؛ درخواست جدید از مسیر توافق دوطرفه ثبت می‌شود.</p>
+  </div>
+  <div class="btn-row"><a class="btn btn-primary" href="{% url 'trading:proposal_create' %}">ثبت توافق معامله</a></div>
+  {% include "trading/_request_list.html" with detail_url_name=sent|yesno:"trading:sent_detail,trading:received_detail" counterparty_attr=sent|yesno:"seller,buyer" %}
+</section>
+{% endblock %}

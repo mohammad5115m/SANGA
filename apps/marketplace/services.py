@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from apps.core.formatting import format_rial
 from apps.inventory.freshness import stock_view
 from apps.inventory.models import InventoryLot
 from apps.pricing.services import effective_price, resolve_prices_for_viewer
@@ -25,7 +26,6 @@ def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
             "has_price": False,
             "amount": None,
             "currency": None,
-            "unit": None,
             "label": "استعلام قیمت",
             "is_special": False,
         }
@@ -33,8 +33,7 @@ def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
         "has_price": True,
         "amount": price.amount,
         "currency": price.currency,
-        "unit": price.unit,
-        "label": f"{price.amount:,.0f} {price.currency}",
+        "label": format_rial(price.amount),
         "is_special": price.is_special,
         "special_until": price.special_until,
     }

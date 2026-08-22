@@ -1,92 +1,45 @@
 # Catalogs — سنگا (SANGA)
 
-## 1. Catalogs are live
+## 1. Inventory-first creation
 
-A catalog always shows **current** data: today's price, today's stock, today's
-photos. Change a product and every catalog containing it changes with it.
+A seller starts in «موجودی من», selects individual items or chooses all items
+matching the current filters across every page, then creates a catalog. The
+create form asks only for title, customer, message, expiry and active state.
 
-This is the deliberate opposite of an invoice, and the contrast is worth
-stating plainly because the same products flow through both:
+The selection is stored briefly in the seller's session with an opaque token.
+It is bound to the current business, expires after one hour and is resolved
+again on submit. Filter-based selection therefore means "everything matching
+now", while ownership and deletion changes cannot smuggle stale IDs into the
+catalog.
+
+Existing catalogs can receive more selected inventory through the same list.
+
+## 2. Explicit membership, live values
+
+`CustomCatalogItem` is a simple ordered membership row. There are no manual,
+rule or hybrid modes, no stored filter language and no include/exclude override
+states.
+
+A catalog still shows current data: today's price, stock, visibility, media and
+descriptions. That is the deliberate opposite of an invoice:
 
 > **Catalog = current. Invoice = historical.**
 
-Nothing is copied into a catalog. There is no snapshot, no cache and nothing to
-invalidate, because the resolution happens at read time in the database.
-
-For MVP a catalog is a **web link**. There is no downloadable PDF.
-
-## 2. Three modes
-
-| Mode | What it contains |
-|------|------------------|
-| `manual` | exactly the products the seller picked |
-| `rule` | everything matching a stored filter |
-| `hybrid` | the rule, plus manual additions, minus manual removals |
-
-### Rules are stored searches
-
-`CustomCatalog.rules` holds a serialized
-`apps.inventory.filters.ItemFilterSpec` — the *same* schema the search bar
-produces. A rule catalog is therefore literally a saved search, not a second
-filtering language that has to be kept in step with the first.
-
-Incoming rule JSON is round-tripped through `ItemFilterSpec` on save, so unknown
-keys are dropped rather than persisted to fail later, and a rule saved by an
-older version of the form keeps resolving.
-
-A rule catalog must have at least one filter. An empty rule would silently mean
-"everything", which is never what somebody meant to build.
-
-### Manual overrides
-
-`CustomCatalogItem.inclusion` is either `include` or `exclude`. Both exist
-because "add this one extra thing" and "not that one" are normal requests, and a
-rule that has to encode its own exceptions stops being readable —
-«همه تراورتن‌های عباس‌آباد، غیر از این یکی» is two ideas.
-
-A product cannot be both. Setting one replaces the other, because the two
-instructions contradict each other and the newer one is what the seller just
-said.
-
-## 3. Resolution
-
 ```text
-catalog products
-  = ( products matching the rules
-      + manual includes
-      - manual excludes )
-    INTERSECT currently eligible products
+catalog products = selected membership INTERSECT currently eligible products
 ```
 
-The intersection is the security half. `eligible_items(audience="public")` is
-the same gate the storefront and search use, so a catalog can never widen
-visibility. Concretely:
+The eligibility intersection is the security boundary. A hidden, unavailable or
+deleted item disappears from a shared catalog without destroying its membership;
+if it becomes eligible again, it returns. Another business's item can never be
+added by either the UI or the service layer.
 
-- A product marked **ناموجود** disappears from every catalog immediately.
-- It **returns on its own** when marked available again, if it still matches.
-- A **hidden** or **deleted** product never appears, even if it was manually
-  included earlier.
-- Another business's product can never match, whatever the rule says.
+## 3. Management and public safety
 
-This mattered: before the shared policy existed, attaching a private product to
-a catalog published it, complete with its price, to anyone holding the link.
+The management page lists current eligible catalog items, supports removing an
+item, adding more from inventory, editing metadata, deactivating the link and
+deleting the catalog. Deleting a catalog never deletes inventory.
 
-## 4. Public payloads are B2C-safe
-
-Catalog pages render through the same `b2c_price_context` as the storefront, so
-they carry a flat, pre-resolved price dict with no tier map to walk. A B2B price
-is never loaded into memory on a catalog page, let alone rendered.
-
-Expired stock reads «استعلام موجودی» and an expired price «استعلام قیمت», exactly
-as everywhere else.
-
-## 5. Managing a catalog
-
-The manage page shows the **resolved** list — what the customer will actually
-see — not the stored rows. For a rule catalog the stored rows are usually empty,
-so showing them would show nothing.
-
-From there a seller can exclude a product from a rule catalog without touching
-the rule, put it back, deactivate the catalog (the link stops working), or delete
-it. Deleting removes the catalog and its link; it does not touch the products,
-which is worth saying on the confirmation page because sellers assume otherwise.
+Public catalog pages use the shared B2C price resolver. B2B price rows are absent
+from the public payload. Expired stock and expired prices render as inquiry,
+matching storefront and search behaviour.

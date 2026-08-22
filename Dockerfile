@@ -29,9 +29,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     DJANGO_SETTINGS_MODULE=config.settings.production
 
-# libpq for psycopg and curl for the container health check. No compiler.
+# libpq for psycopg, curl for the health check, and Pango for WeasyPrint.
+# No compiler is kept in the runtime image.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 curl \
+    && apt-get install -y --no-install-recommends \
+       libpq5 curl libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 sanga
 

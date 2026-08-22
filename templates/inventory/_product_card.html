@@ -22,7 +22,7 @@ Expects: card = {lot, product, price, stock, primary_media, supplier?}, card_url
     <div class="list-title">{{ card.product.commercial_name }}</div>
     {% if card.supplier %}<div class="muted">{{ card.supplier.name }}</div>{% endif %}
     <div class="muted">
-      {{ card.product.stone_type }}{% if card.product.primary_color %} · {{ card.product.primary_color }}{% endif %}
+      {{ card.product.stone.name }}{% if card.lot.processing_type %} · {{ card.lot.processing_type }}{% endif %}
     </div>
     <div class="catalog-price">{{ card.price.label }}</div>
     <div class="muted stock-line{% if card.stock.is_inquiry %} stock-line-inquiry{% endif %}">

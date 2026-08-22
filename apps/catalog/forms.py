@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from django import forms
-
-from apps.inventory.models import InventoryLot
+from django.utils import timezone
 
 from .models import CustomCatalog
 
@@ -65,40 +64,30 @@ class InquiryForm(forms.Form):
 
 
 class CustomCatalogForm(forms.ModelForm):
-    lots = forms.ModelMultipleChoiceField(
-        label="محصولات (انتخاب دستی)",
-        queryset=InventoryLot.objects.none(),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-    )
-
     class Meta:
         model = CustomCatalog
-        fields = ("title", "mode", "customer_name", "custom_message", "expires_at", "is_active")
+        fields = ("title", "customer_name", "custom_message", "expires_at", "is_active")
         widgets = {
             "title": forms.TextInput(attrs={"class": "field-input"}),
-            "mode": forms.RadioSelect(attrs={"class": "field-checkbox"}),
             "customer_name": forms.TextInput(attrs={"class": "field-input"}),
             "custom_message": forms.Textarea(attrs={"class": "field-input", "rows": 3}),
-            "expires_at": forms.DateTimeInput(attrs={"class": "field-input", "type": "datetime-local"}),
+            "expires_at": forms.DateTimeInput(
+                attrs={"class": "field-input", "type": "datetime-local"},
+                format="%Y-%m-%dT%H:%M",
+            ),
             "is_active": forms.CheckboxInput(attrs={"class": "field-checkbox"}),
         }
 
-    def __init__(self, *args, business=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if business is not None:
-            # Everything the seller owns is selectable, including items that are
-            # currently hidden or unavailable: curating is a management action.
-            # Whether a selected item actually renders is decided at read time by
-            # apps.inventory.policy, not here.
-            self.fields["lots"].queryset = (
-                InventoryLot.objects.filter(business=business, deleted_at__isnull=True)
-                .select_related("product")
-                .order_by("-updated_at")
-            )
-        if self.instance and self.instance.pk:
-            # Only the manual includes: exclusions are managed on the detail page,
-            # where the seller can see what the rule is currently selecting.
-            self.fields["lots"].initial = self.instance.items.filter(
-                inclusion="include"
-            ).values_list("lot_id", flat=True)
+        self.fields["expires_at"].input_formats = [
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+        ]
+
+    def clean_expires_at(self):
+        value = self.cleaned_data.get("expires_at")
+        if value is not None and value <= timezone.now():
+            raise forms.ValidationError("تاریخ انقضا باید در آینده باشد.")
+        return value

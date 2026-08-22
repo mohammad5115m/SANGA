@@ -132,20 +132,16 @@ def test_the_storefront_does_not_scale_queries_with_rows(client, busy, django_as
 
 @pytest.mark.django_db
 def test_a_shared_catalog_does_not_scale_queries_with_rows(client, busy, django_assert_max_num_queries):
-    from apps.catalog.models import CustomCatalog
     from apps.catalog.services import create_custom_catalog
 
     catalog = create_custom_catalog(
         business=busy["seller"],
         membership=owner_membership(busy["seller"]),
         title="همه محصولات",
-        mode=CustomCatalog.Mode.RULE,
-        rules={"stone_type": "تراورتن"},
+        lot_ids=list(busy["seller"].lots.values_list("pk", flat=True)),
     )
     url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
-    # One higher than the other lists: a rule catalog resolves its membership as a
-    # subquery, which the paginator's COUNT then wraps. Still flat in row count,
-    # which is what this file exists to prove.
+    # Membership resolves as a subquery, so cost remains flat in row count.
     with django_assert_max_num_queries(13):
         assert client.get(url).status_code == 200
 

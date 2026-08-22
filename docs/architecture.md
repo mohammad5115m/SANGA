@@ -63,9 +63,9 @@ catalog path checked `status` but forgot `visibility`, and a private product
 attached to a share link rendered publicly with its price.
 
 **`inventory/filters.py`** — `ItemFilterSpec` is one serializable filter
-vocabulary, shared by «موجودی من», the marketplace, public search and catalog
-rules. It round-trips through plain dicts, which is what makes a rule-based
-catalog a stored search rather than a second filtering language.
+vocabulary shared by «موجودی من», the marketplace and public search. Catalog
+creation can use the same spec for a short-lived "select all matches" action,
+then stores only explicit item membership.
 
 ## 5. Multi-Tenancy Model
 

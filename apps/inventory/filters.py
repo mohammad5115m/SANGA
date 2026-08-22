@@ -1,35 +1,20 @@
-"""One filter schema, shared by every surface that lists inventory.
-
-«موجودی من», the colleague marketplace, public search and rule-based catalogs
-all ask the same kinds of question. Before this module each of them had its own
-slightly different filter function, so a fix in one never reached the others.
-
-:class:`ItemFilterSpec` round-trips through plain dicts, which is what lets a
-rule-based catalog be *literally* a stored search rather than a second filtering
-language that has to be kept in step with the first.
-"""
+"""One compact, audience-aware filter schema shared by every inventory surface."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import F, Q, QuerySet
+from django.db.models import F, Max, Min, Q, QuerySet
+from django.utils import timezone
 
-from apps.core.persian import normalize_persian_text
-from apps.pricing.queries import effective_amount_subquery, live_special_subquery
+from apps.core.persian import normalize_persian_text, persian_search_variants
+from apps.pricing.queries import effective_amount_subquery
 
 from .models import InventoryLot
 from .policy import Audience
-from .queries import current_quantity_q, effective_stock_mode_q
 
-#: Price tier a given audience's price filters apply to. A public visitor
-#: filtering by price must be filtering B2C numbers, never B2B ones.
-_FILTER_TIER: dict[str, str] = {
-    "owner": "b2c",
-    "colleague": "b2b",
-    "public": "b2c",
-}
+_FILTER_TIER: dict[str, str] = {"owner": "b2c", "colleague": "b2b", "public": "b2c"}
 
 SORT_CHOICES: tuple[tuple[str, str], ...] = (
     ("recent", "جدیدترین"),
@@ -54,46 +39,30 @@ def _text(value) -> str:
 
 @dataclass(frozen=True)
 class ItemFilterSpec:
-    """A serializable description of "which items".
-
-    Every field is optional and an empty spec means "no narrowing", so the same
-    object works for an unfiltered listing and for a tightly-scoped catalog rule.
-    """
-
     q: str = ""
-    stone_type: str = ""
-    color: str = ""
-    quarry_region: str = ""
+    stone: str = ""
     processing_type: str = ""
-    grade: str = ""
     applications: list[str] = field(default_factory=list)
-    thickness_min: Decimal | None = None
-    thickness_max: Decimal | None = None
+    application_match: str = "any"
+    availability: str = ""
     price_min: Decimal | None = None
     price_max: Decimal | None = None
     min_qty_sqm: Decimal | None = None
-    stock_mode: str = ""
-    only_special: bool = False
     sort: str = "recent"
-
-    # --- serialization --------------------------------------------------------
+    price_tier: str = ""
 
     @classmethod
     def from_dict(cls, data: dict | None) -> ItemFilterSpec:
-        """Build a spec from untrusted input (query string or stored rule JSON).
-
-        Unknown keys are dropped and unparseable numbers become ``None`` rather
-        than raising: a catalog rule saved by an older version of the form must
-        keep resolving, and a hand-edited query string must not 500.
-        """
         data = data or {}
-        known = {f.name for f in fields(cls)}
+        known = {item.name for item in fields(cls)}
         clean: dict = {}
-
-        for key in ("q", "stone_type", "color", "quarry_region", "processing_type", "grade"):
+        for key in ("q", "stone", "processing_type"):
             if key in data:
                 clean[key] = _text(data.get(key))
-        for key in ("thickness_min", "thickness_max", "price_min", "price_max", "min_qty_sqm"):
+        # Compatibility for links generated before the controlled stone FK.
+        if not clean.get("stone") and data.get("stone_type"):
+            clean["stone"] = _text(data.get("stone_type"))
+        for key in ("price_min", "price_max", "min_qty_sqm"):
             if key in data:
                 clean[key] = _decimal(data.get(key))
         if "applications" in data:
@@ -101,120 +70,109 @@ class ItemFilterSpec:
             if isinstance(raw, str):
                 raw = [raw]
             clean["applications"] = [str(item) for item in raw if item]
-        if "stock_mode" in data:
-            mode = str(data.get("stock_mode") or "")
-            clean["stock_mode"] = mode if mode in InventoryLot.StockMode.values else ""
-        if "only_special" in data:
-            clean["only_special"] = bool(data.get("only_special"))
+        if "application_match" in data:
+            clean["application_match"] = "all" if data.get("application_match") == "all" else "any"
+        if "availability" in data:
+            value = str(data.get("availability") or "")
+            clean["availability"] = value if value in InventoryLot.Availability.values else ""
         if "sort" in data:
-            sort = str(data.get("sort") or "recent")
-            clean["sort"] = sort if sort in dict(SORT_CHOICES) else "recent"
-
-        return cls(**{k: v for k, v in clean.items() if k in known})
+            value = str(data.get("sort") or "recent")
+            clean["sort"] = value if value in dict(SORT_CHOICES) else "recent"
+        if "price_tier" in data:
+            value = str(data.get("price_tier") or "")
+            clean["price_tier"] = value if value in {"b2b", "b2c"} else ""
+        return cls(**{key: value for key, value in clean.items() if key in known})
 
     def to_dict(self) -> dict:
-        """JSON-safe form, with empty values dropped so stored rules stay small."""
-        out: dict = {}
+        result: dict = {}
         for key, value in asdict(self).items():
-            if value in (None, "", [], False):
+            if value in (None, "", [], False) or (key == "sort" and value == "recent"):
                 continue
-            if key == "sort" and value == "recent":
-                continue
-            out[key] = str(value) if isinstance(value, Decimal) else value
-        return out
+            result[key] = str(value) if isinstance(value, Decimal) else value
+        return result
 
     @property
     def is_empty(self) -> bool:
         return not self.to_dict()
 
-    # --- query ----------------------------------------------------------------
-
-    def apply(self, qs: QuerySet[InventoryLot], *, audience: Audience = "public") -> QuerySet[InventoryLot]:
-        """Narrow ``qs`` according to this spec.
-
-        ``qs`` is expected to already be scoped by
-        :func:`apps.inventory.policy.eligible_items` or
-        :func:`~apps.inventory.policy.owned_items`. This method only narrows; it
-        never widens, and it never makes an eligibility decision of its own.
-        """
+    def apply_non_price(self, qs: QuerySet[InventoryLot]) -> QuerySet[InventoryLot]:
         if self.q:
-            qs = qs.filter(
-                Q(product__commercial_name__icontains=self.q)
-                | Q(product__stone_type__icontains=self.q)
-                | Q(product__primary_color__icontains=self.q)
-                | Q(product__quarry_region__icontains=self.q)
-                | Q(lot_code__icontains=self.q)
-                | Q(processing_type__icontains=self.q)
-                | Q(grade__icontains=self.q)
-            )
-        if self.stone_type:
-            qs = qs.filter(product__stone_type__icontains=self.stone_type)
-        if self.color:
-            qs = qs.filter(product__primary_color__icontains=self.color)
-        if self.quarry_region:
-            qs = qs.filter(product__quarry_region__icontains=self.quarry_region)
+            query = Q()
+            for term in persian_search_variants(self.q):
+                query |= (
+                    Q(product__commercial_name__icontains=term)
+                    | Q(product__name_suffix__icontains=term)
+                    | Q(product__stone__name__icontains=term)
+                    | Q(product__pattern__icontains=term)
+                    | Q(lot_code__icontains=term)
+                    | Q(processing_type__icontains=term)
+                )
+            qs = qs.filter(query)
+        if self.stone:
+            try:
+                stone_id = int(self.stone)
+            except (TypeError, ValueError):
+                qs = qs.filter(product__stone__name__icontains=self.stone)
+            else:
+                qs = qs.filter(product__stone_id=stone_id)
         if self.processing_type:
             qs = qs.filter(processing_type__icontains=self.processing_type)
-        if self.grade:
-            qs = qs.filter(grade__icontains=self.grade)
         if self.applications:
-            qs = qs.filter(product__applications__code__in=self.applications).distinct()
-        if self.thickness_min is not None:
-            qs = qs.filter(thickness_mm__gte=self.thickness_min)
-        if self.thickness_max is not None:
-            qs = qs.filter(thickness_mm__lte=self.thickness_max)
+            if self.application_match == "all":
+                for code in self.applications:
+                    qs = qs.filter(product__applications__code=code)
+            else:
+                qs = qs.filter(product__applications__code__in=self.applications)
+            qs = qs.distinct()
+        if self.availability:
+            qs = qs.filter(availability_status=self.availability)
+        if self.min_qty_sqm is not None:
+            qs = qs.filter(
+                available_sqm__gte=self.min_qty_sqm,
+                stock_expires_at__gt=timezone.now(),
+            )
+        return qs
 
-        qs = self._apply_stock(qs)
+    def apply(self, qs: QuerySet[InventoryLot], *, audience: Audience = "public") -> QuerySet[InventoryLot]:
+        qs = self.apply_non_price(qs)
         qs = self._apply_price(qs, audience=audience)
         return self._apply_sort(qs, audience=audience)
 
-    def _apply_stock(self, qs: QuerySet[InventoryLot]) -> QuerySet[InventoryLot]:
-        """Quantity questions, answered with the quantity a viewer is shown.
-
-        Both predicates go through :mod:`apps.inventory.queries`, so an item whose
-        confirmation has expired behaves here exactly as it reads on its card:
-        inquiry-only, with no number to compare. Filtering on the stored column
-        instead meant «حداقل ۱۰۰ متر» returned items that, on the same page, said
-        they had no current quantity at all.
-        """
-        if self.stock_mode:
-            qs = qs.filter(effective_stock_mode_q(self.stock_mode))
-        if self.min_qty_sqm is not None:
-            qs = qs.filter(current_quantity_q(self.min_qty_sqm))
-        return qs
-
     def _apply_price(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
-        """Price questions, answered with the price a viewer is shown.
-
-        The annotation is NULL for an inquiry-mode price and for a fixed one past
-        its validity window, so neither can satisfy a range the viewer cannot see
-        the number behind. A live special sale is the number that counts, because
-        it is the one on the card.
-        """
-        tier = _FILTER_TIER.get(audience, "b2c")
-        if self.price_min is None and self.price_max is None and not self.only_special:
+        if self.price_min is None and self.price_max is None:
             return qs
-
+        tier = self._price_tier(audience)
         qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
         if self.price_min is not None:
             qs = qs.filter(_effective_price__gte=self.price_min)
         if self.price_max is not None:
             qs = qs.filter(_effective_price__lte=self.price_max)
-        if self.only_special:
-            qs = qs.annotate(_live_special=live_special_subquery(tier)).filter(_live_special__isnull=False)
         return qs
 
     def _apply_sort(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
         if self.sort == "confirmed":
             return qs.order_by("-stock_confirmed_at", "-updated_at")
         if self.sort in ("price_asc", "price_desc"):
-            tier = _FILTER_TIER.get(audience, "b2c")
-            # One tier only: ordering across the join would silently sort a public
-            # page by B2B numbers. Items with no current price sort last either
-            # way, because "ارزان‌ترین" must not be led by things that have no
-            # price at all.
+            tier = self._price_tier(audience)
             qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
             if self.sort == "price_asc":
                 return qs.order_by(F("_effective_price").asc(nulls_last=True), "-updated_at")
             return qs.order_by(F("_effective_price").desc(nulls_last=True), "-updated_at")
-        return qs
+        return qs.order_by("-updated_at")
+
+    def _price_tier(self, audience: Audience) -> str:
+        if audience == "owner" and self.price_tier in {"b2b", "b2c"}:
+            return self.price_tier
+        return _FILTER_TIER.get(audience, "b2c")
+
+
+def effective_price_bounds(
+    qs: QuerySet[InventoryLot], *, spec: ItemFilterSpec, audience: Audience
+) -> tuple[Decimal | None, Decimal | None]:
+    """Bounds after non-price filters, using exactly the price this audience sees."""
+
+    tier = spec._price_tier(audience)
+    values = spec.apply_non_price(qs).annotate(_effective_price=effective_amount_subquery(tier)).aggregate(
+        minimum=Min("_effective_price"), maximum=Max("_effective_price")
+    )
+    return values["minimum"], values["maximum"]

@@ -19,7 +19,7 @@ reports numbers nobody has checked.
 1. Product discovery
 2. B2B colleague marketplace
 3. Public B2C discovery
-4. Product-bound purchase requests
+4. Bilateral agreements for phone/in-person colleague trades
 5. Finalized trades and invoices
 6. Per-colleague account ledger
 7. Dynamic catalogs
@@ -64,8 +64,9 @@ See [inventory.md](./inventory.md).
 `inventory.policy.eligible_items()`. Three near-copies of that question drifted
 apart in v1 and the drift was a live data leak.
 
-**One filter schema.** «موجودی من», the marketplace, public search and catalog
-rules share `ItemFilterSpec`, so a rule catalog is literally a saved search.
+**One filter schema.** «موجودی من», the marketplace and public search share
+`ItemFilterSpec`. Catalog creation can select all current matches without
+persisting a second filtering language.
 
 **Current versus historical is a modelling decision.** A catalog always renders
 live data. An invoice never changes. Same products, two representations, on
@@ -104,7 +105,7 @@ Product metrics, not necessarily instrumented yet:
 - active visible products
 - share of products with current stock information
 - share with current price information
-- B2B product views → purchase requests
+- B2B product views → pre-filled bilateral agreements
 - accepted requests → finalized sales
 - public product views → customer inquiries
 - inquiries containing more than one product

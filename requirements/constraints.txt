@@ -39,6 +39,7 @@ packaging==26.3
 pillow==12.3.0
 psycopg==3.2.13
 psycopg-binary==3.2.13
+PyMuPDF==1.28.2
 PyJWT==2.13.0
 python-bidi==0.6.11
 python-crontab==3.3.0
@@ -46,9 +47,10 @@ python-dateutil==2.9.0.post0
 redis==5.3.1
 s3transfer==0.19.2
 six==1.17.0
-sqlparse==0.5.5
+sqlparse==0.6.0
 typing_extensions==4.16.0
 tzdata==2026.3
 urllib3==2.7.0
 vine==5.1.0
 whitenoise==6.12.0
+WeasyPrint==69.0

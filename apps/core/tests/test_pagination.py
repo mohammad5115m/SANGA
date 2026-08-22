@@ -165,15 +165,13 @@ def test_a_unicode_query_survives_the_page_link(client, stocked):
 
 @pytest.mark.django_db
 def test_a_large_shared_catalog_is_paged_not_truncated(client, stocked):
-    from apps.catalog.models import CustomCatalog
     from apps.catalog.services import create_custom_catalog
 
     catalog = create_custom_catalog(
         business=stocked["seller"],
         membership=stocked["membership"],
         title="همه محصولات",
-        mode=CustomCatalog.Mode.RULE,
-        rules={"q": "سنگ"},
+        lot_ids=list(stocked["seller"].lots.values_list("pk", flat=True)),
     )
     url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
 
@@ -186,29 +184,23 @@ def test_a_large_shared_catalog_is_paged_not_truncated(client, stocked):
 
 
 @pytest.mark.django_db
-def test_resolving_a_rule_catalog_does_not_load_every_match(stocked, django_assert_max_num_queries):
-    """AUD-026. Rule matches used to be pulled into a Python set of primary keys
-    before the manual includes were applied, so the cost of page one grew with
-    the size of the entire match."""
-    from apps.catalog.models import CustomCatalog
+def test_resolving_a_catalog_does_not_load_every_membership(stocked, django_assert_max_num_queries):
+    """Catalog membership remains a database subquery rather than a Python set."""
     from apps.catalog.selectors import resolve_catalog
     from apps.catalog.services import create_custom_catalog
 
     catalog = create_custom_catalog(
         business=stocked["seller"],
         membership=stocked["membership"],
-        title="ترکیبی",
-        mode=CustomCatalog.Mode.HYBRID,
-        rules={"stone_type": "تراورتن"},
-        lot_ids=[stocked["seller"].lots.filter(lot_code="PG-001").first().id],
+        title="همه",
+        lot_ids=list(stocked["seller"].lots.values_list("pk", flat=True)),
     )
 
     resolved = resolve_catalog(catalog)
-    # Two queries: the manual overrides, then one count against the composed SQL.
-    with django_assert_max_num_queries(2):
+    with django_assert_max_num_queries(1):
         total = resolved.count()
 
-    assert total == ROWS // 2 + ROWS % 2 + 1, "the rule matches plus the one manual include"
+    assert total == ROWS
 
 
 @pytest.mark.django_db

@@ -8,11 +8,12 @@
       <h1 class="page-title">{{ catalog.title }}</h1>
       <p class="page-lead">
         {% if catalog.customer_name %}برای {{ catalog.customer_name }} · {% endif %}
-        {{ catalog.get_mode_display }} · {{ catalog.view_count }} بازدید
+        {{ items|length }} محصول انتخاب‌شده · {{ public_count }} محصول در لینک · {{ catalog.view_count }} بازدید
       </p>
     </div>
     <div class="btn-row">
-      <a class="btn btn-secondary" href="{% url 'catalog_manage:edit' catalog.id %}">ویرایش</a>
+      <a class="btn btn-secondary" href="{% url 'catalog_manage:edit' catalog.id %}">ویرایش اطلاعات</a>
+      <a class="btn btn-primary" href="{% url 'inventory:lot_list' %}">افزودن از موجودی</a>
       <form method="post" action="{% url 'catalog_manage:toggle_active' catalog.id %}">
         {% csrf_token %}
         <button class="btn btn-ghost" type="submit">
@@ -39,14 +40,7 @@
     <div class="toolbar">
       <h2 class="section-title">محصولات این کاتالوگ ({{ items|length }})</h2>
     </div>
-    {# Resolved live, exactly as the customer will see it — not the list the
-       seller picked, which for a rule catalog may be nothing at all. #}
-    {% if catalog.uses_rules %}
-      <p class="muted">
-        این فهرست همیشه به‌روز است. محصولی که دیگر با فیلتر نخواند یا ناموجود شود،
-        خودبه‌خود از کاتالوگ خارج می‌شود.
-      </p>
-    {% endif %}
+    <p class="muted">موجودی‌های ناموجود یا پنهان، خودکار در لینک عمومی نمایش داده نمی‌شوند.</p>
 
     <div class="list-stack">
       {% for item in items %}
@@ -54,45 +48,23 @@
           <div>
             <div class="list-title">{{ item.product.commercial_name }}</div>
             <div class="muted" dir="ltr">{{ item.lot_code }}</div>
+            <div class="badge-row">
+              {% if item.status == 'draft' %}<span class="badge">پیش‌نویس</span>{% endif %}
+              {% if not item.is_visible %}<span class="badge">منتشر نشده</span>{% endif %}
+              {% if item.is_unavailable %}<span class="badge badge-danger">ناموجود</span>{% endif %}
+            </div>
           </div>
-          {% if catalog.uses_rules %}
-            <form method="post" action="{% url 'catalog_manage:exclude' catalog.id %}">
-              {% csrf_token %}
-              <input type="hidden" name="lot_id" value="{{ item.id }}">
-              <button class="btn btn-ghost btn-sm" type="submit">حذف از این کاتالوگ</button>
-            </form>
-          {% endif %}
+          <form method="post" action="{% url 'catalog_manage:remove_item' catalog.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="lot_id" value="{{ item.id }}">
+            <button class="btn btn-ghost btn-sm" type="submit">حذف از کاتالوگ</button>
+          </form>
         </div>
       {% empty %}
-        <div class="empty-state">
-          {% if catalog.uses_rules %}
-            هیچ محصولی با این فیلترها مطابقت ندارد.
-          {% else %}
-            محصولی انتخاب نشده است.
-          {% endif %}
-        </div>
+        <div class="empty-state">محصولی در این کاتالوگ باقی نمانده است.</div>
       {% endfor %}
     </div>
   </section>
-
-  {% if excluded %}
-    <section class="panel stack-md">
-      <h2 class="section-title">حذف‌شده‌های دستی</h2>
-      <p class="muted">این محصولات با فیلتر می‌خوانند، اما شما آن‌ها را کنار گذاشته‌اید.</p>
-      <div class="list-stack">
-        {% for row in excluded %}
-          <div class="list-item">
-            <div class="list-title">{{ row.lot.product.commercial_name }}</div>
-            <form method="post" action="{% url 'catalog_manage:unexclude' catalog.id %}">
-              {% csrf_token %}
-              <input type="hidden" name="lot_id" value="{{ row.lot_id }}">
-              <button class="btn btn-ghost btn-sm" type="submit">برگرداندن</button>
-            </form>
-          </div>
-        {% endfor %}
-      </div>
-    </section>
-  {% endif %}
 
   <div class="btn-row">
     <a class="btn btn-danger" href="{% url 'catalog_manage:delete' catalog.id %}">حذف کاتالوگ</a>

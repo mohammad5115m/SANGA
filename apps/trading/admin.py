@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from apps.core.admin import HistoricalRecordAdmin
 
-from .models import PurchaseRequest, Trade, TradeItem
+from .models import PurchaseRequest, Trade, TradeItem, TradeProposal, TradeProposalItem
 
 
 @admin.register(PurchaseRequest)
@@ -41,6 +41,41 @@ class TradeItemInline(admin.TabularInline):
 
     def has_add_permission(self, request, obj=None) -> bool:
         return False
+
+
+class TradeProposalItemInline(admin.TabularInline):
+    model = TradeProposalItem
+    extra = 0
+    can_delete = False
+    fields = ("product_name", "stone_type", "grade", "quantity", "unit", "unit_price", "line_total")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(TradeProposal)
+class TradeProposalAdmin(HistoricalRecordAdmin):
+    list_display = (
+        "created_at",
+        "seller_business",
+        "buyer_business",
+        "initiated_by_business",
+        "status",
+        "total_amount",
+    )
+    list_filter = ("status", "currency")
+    search_fields = ("seller_business__name", "buyer_business__name", "note")
+    inlines = [TradeProposalItemInline]
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return [field.name for field in self.model._meta.fields]
 
 
 @admin.register(Trade)
