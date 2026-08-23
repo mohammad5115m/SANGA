@@ -10,9 +10,11 @@
   var emptyTemplate = editor.querySelector("[data-empty-line]");
   var preview = editor.querySelector("[data-invoice-preview]");
   var previewStatus = editor.querySelector("[data-preview-status]");
+  var previewPanel = editor.querySelector("[data-preview-panel]");
+  var previewRefresh = editor.querySelector("[data-preview-refresh]");
+  var previewExpand = editor.querySelector("[data-preview-expand]");
   var previewTimer;
   var previewController;
-  var currentStep = 1;
   var customerName = form.elements.customer_name;
   var customerOptions = editor.querySelector("#invoice-customer-options");
 
@@ -124,9 +126,9 @@
             option.textContent = item.label;
             option.addEventListener("click", function () {
               hidden.value = item.id;
-              query.value = item.label;
-              if (!field(row, "product_name").value.trim()) field(row, "product_name").value = item.name || "";
+              query.value = item.name || item.label;
               if (!field(row, "stone_type").value.trim()) field(row, "stone_type").value = item.stone || "";
+              picker.classList.add("is-selected");
               hide();
               changed();
             });
@@ -141,6 +143,7 @@
     query.addEventListener("focus", load);
     query.addEventListener("input", function () {
       hidden.value = "";
+      picker.classList.remove("is-selected");
       clearTimeout(timer);
       timer = setTimeout(load, 250);
     });
@@ -161,7 +164,17 @@
         query.focus();
       }
     });
-    clear.addEventListener("click", function () { hidden.value = ""; query.value = ""; hide(); changed(); });
+    clear.addEventListener("click", function () {
+      hidden.value = "";
+      query.value = "";
+      picker.classList.remove("is-selected");
+      hide();
+      query.focus();
+      changed();
+    });
+    document.addEventListener("pointerdown", function (event) {
+      if (!picker.contains(event.target)) hide();
+    });
   }
 
   function initRow(row) {
@@ -193,27 +206,19 @@
     changed();
   }
 
-  function showStep(step) {
-    currentStep = Math.max(1, Math.min(3, step));
-    editor.querySelectorAll("[data-step-target]").forEach(function (button) {
-      button.classList.toggle("is-active", Number(button.dataset.stepTarget) === currentStep);
-      if (Number(button.dataset.stepTarget) === currentStep) button.setAttribute("aria-current", "step");
-      else button.removeAttribute("aria-current");
-    });
-    editor.querySelectorAll("[data-step]").forEach(function (section) {
-      section.classList.toggle("is-current", Number(section.dataset.step) === currentStep);
-    });
-    if (window.matchMedia("(max-width: 899px)").matches) {
-      editor.querySelector('[data-step="' + currentStep + '"]').scrollIntoView({behavior: "smooth", block: "start"});
-    }
+  function setPreviewLoading(loading) {
+    if (!previewPanel) return;
+    previewPanel.classList.toggle("is-loading", loading);
+    previewPanel.setAttribute("aria-busy", loading ? "true" : "false");
   }
 
-  function requestPreview() {
+  function requestPreview(immediate) {
     clearTimeout(previewTimer);
     previewTimer = setTimeout(function () {
       if (previewController) previewController.abort();
       previewController = new AbortController();
       previewStatus.textContent = "در حال به‌روزرسانی…";
+      setPreviewLoading(true);
       var formData = new FormData(form);
       var previewData = new URLSearchParams();
       formData.forEach(function (value, key) {
@@ -227,13 +232,24 @@
       }).then(function (response) {
         return response.text().then(function (body) { return {ok: response.ok, body: body}; });
       }).then(function (result) {
-        if (!result.ok) { previewStatus.textContent = result.body; return; }
+        if (!result.ok) {
+          previewStatus.textContent = result.body;
+          previewStatus.classList.add("is-error");
+          setPreviewLoading(false);
+          return;
+        }
         preview.srcdoc = result.body;
         previewStatus.textContent = "به‌روز است";
+        previewStatus.classList.remove("is-error");
+        setPreviewLoading(false);
       }).catch(function (error) {
-        if (error.name !== "AbortError") previewStatus.textContent = "پیش‌نمایش در دسترس نیست";
+        if (error.name !== "AbortError") {
+          previewStatus.textContent = "پیش‌نمایش در دسترس نیست";
+          previewStatus.classList.add("is-error");
+          setPreviewLoading(false);
+        }
       });
-    }, 450);
+    }, immediate ? 0 : 350);
   }
 
   function changed() { liveTotals(); requestPreview(); }
@@ -271,17 +287,20 @@
   });
   form.addEventListener("input", changed);
   form.addEventListener("change", changed);
-  editor.querySelectorAll("[data-step-target]").forEach(function (button) {
-    button.addEventListener("click", function () { showStep(Number(button.dataset.stepTarget)); });
-  });
-  editor.querySelectorAll("[data-step-next]").forEach(function (button) {
-    button.addEventListener("click", function () { showStep(currentStep + 1); });
-  });
-  editor.querySelectorAll("[data-step-prev]").forEach(function (button) {
-    button.addEventListener("click", function () { showStep(currentStep - 1); });
-  });
+  if (previewRefresh) {
+    previewRefresh.addEventListener("click", function () { requestPreview(true); });
+  }
+  if (previewExpand) {
+    previewExpand.addEventListener("click", function () {
+      var expanded = editor.classList.toggle("is-preview-expanded");
+      previewExpand.setAttribute("aria-expanded", expanded ? "true" : "false");
+      previewExpand.textContent = expanded ? "بازگشت به فرم" : "نمایش بزرگ";
+      if (expanded) previewPanel.scrollIntoView({behavior: "smooth", block: "start"});
+    });
+  }
   lines.querySelectorAll("[data-invoice-line]").forEach(initRow);
-  renumber(); showStep(Number(editor.dataset.initialStep || 1)); changed();
+  renumber();
+  changed();
   var errorSummary = editor.querySelector("[data-error-summary]");
   if (errorSummary) errorSummary.focus();
 })();

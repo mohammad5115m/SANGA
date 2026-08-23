@@ -29,9 +29,34 @@
     </section>
     <section class="panel stack-md">
       <h2 class="section-title">ظاهر پیش‌فرض</h2>
+      <fieldset class="invoice-color-setting" data-invoice-color-picker>
+        <legend class="field-label">رنگ‌بندی فاکتور</legend>
+        <p class="muted">یک رنگ آماده انتخاب کنید یا رنگ دلخواه خود را بسازید. همین انتخاب در سربرگ، جدول و مبالغ مهم استفاده می‌شود.</p>
+        {{ form.palette.as_hidden }}{{ form.primary_color.as_hidden }}
+        <div class="invoice-color-options" role="group" aria-label="رنگ‌بندی فاکتور">
+          <button class="invoice-color-option" type="button" data-color-palette="forest" data-color-value="#1f513c" aria-pressed="{% if form.palette.value == 'forest' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#1f513c"></span><span>سبز جنگلی</span>
+          </button>
+          <button class="invoice-color-option" type="button" data-color-palette="ocean" data-color-value="#164e78" aria-pressed="{% if form.palette.value == 'ocean' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#164e78"></span><span>آبی اقیانوسی</span>
+          </button>
+          <button class="invoice-color-option" type="button" data-color-palette="charcoal" data-color-value="#30343b" aria-pressed="{% if form.palette.value == 'charcoal' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#30343b"></span><span>ذغالی</span>
+          </button>
+          <button class="invoice-color-option" type="button" data-color-palette="saffron" data-color-value="#7a4700" aria-pressed="{% if form.palette.value == 'saffron' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#7a4700"></span><span>زعفرانی</span>
+          </button>
+          <label class="invoice-color-option invoice-color-custom">
+            <input type="color" value="{{ form.primary_color.value|default:'#1f513c' }}" data-custom-color aria-label="انتخاب رنگ دلخواه">
+            <span>رنگ دلخواه</span>
+          </label>
+        </div>
+        {% if form.palette.errors %}<span class="field-error">{{ form.palette.errors|striptags }}</span>{% endif %}
+        {% if form.primary_color.errors %}<span class="field-error">{{ form.primary_color.errors|striptags }}</span>{% endif %}
+      </fieldset>
       <div class="form-grid form-grid-compact">
         {% for field in form %}
-          {% if field.name in 'palette primary_color header_style logo_size show_bank_information show_stamp show_signature' %}
+          {% if field.name in 'header_style logo_size show_bank_information show_stamp show_signature' %}
           <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
           {% endif %}
         {% endfor %}

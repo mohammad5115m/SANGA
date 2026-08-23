@@ -25,6 +25,12 @@ UNIT_CHOICES = [
     ("کیلوگرم", "کیلوگرم"),
     ("پالت", "پالت"),
 ]
+INVOICE_PALETTE_COLORS = {
+    BusinessInvoiceSettings.Palette.FOREST: "#1f513c",
+    BusinessInvoiceSettings.Palette.OCEAN: "#164e78",
+    BusinessInvoiceSettings.Palette.CHARCOAL: "#30343b",
+    BusinessInvoiceSettings.Palette.SAFFRON: "#7a4700",
+}
 
 
 class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
@@ -323,6 +329,11 @@ class BusinessInvoiceSettingsForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        preset_color = INVOICE_PALETTE_COLORS.get(cleaned.get("palette"))
+        if preset_color:
+            # A preset and its primary color are one setting.  Persisting the
+            # canonical color keeps documents consistent even without JS.
+            cleaned["primary_color"] = preset_color
         currency = cleaned.get("default_currency")
         display = cleaned.get("default_display_unit")
         if currency and display:

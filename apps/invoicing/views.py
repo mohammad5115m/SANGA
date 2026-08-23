@@ -65,35 +65,6 @@ def _can_manage_invoices(request: HttpRequest) -> bool:
     )
 
 
-def _initial_step(form: ManualInvoiceForm, formset) -> int:
-    if not form.is_bound:
-        return 1
-    if formset.errors or formset.non_form_errors() or any(
-        form.errors.get(name)
-        for name in (
-            "invoice_discount_type",
-            "invoice_discount_value",
-            "tax_amount",
-            "shipping_amount",
-            "adjustment_amount",
-            "paid_amount",
-        )
-    ):
-        return 2
-    if any(
-        form.errors.get(name)
-        for name in (
-            "palette",
-            "primary_color",
-            "header_style",
-            "logo_size",
-            "buyer_signature",
-        )
-    ):
-        return 3
-    return 1
-
-
 def _invoice_or_redirect(request, invoice_id):
     invoice = get_invoice(request.business, invoice_id)
     if invoice is None:
@@ -145,9 +116,9 @@ def _header_data(form: ManualInvoiceForm) -> dict:
         "buyer_signature",
         "remove_buyer_signature",
     )
-    return {field: form.cleaned_data.get(field) for field in fields} | {
-        "appearance": form.appearance()
-    }
+    # Document appearance always comes from BusinessInvoiceSettings.  The
+    # creation form no longer exposes or honors per-invoice appearance choices.
+    return {field: form.cleaned_data.get(field) for field in fields}
 
 
 @business_login_required
@@ -361,7 +332,6 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
             "invoice": None,
             "templates": InvoiceTemplate.objects.filter(business=request.business),
             "recent_customers": recent_customers(request.business),
-            "initial_step": _initial_step(form, formset),
         },
     )
 
@@ -417,7 +387,6 @@ def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
             "formset": formset,
             "invoice": invoice,
             "templates": [],
-            "initial_step": _initial_step(form, formset),
         },
     )
 

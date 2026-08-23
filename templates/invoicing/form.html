@@ -5,13 +5,13 @@
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
 
 {% block content %}
-<section class="stack-lg invoice-editor" data-invoice-editor data-initial-step="{{ initial_step|default:1 }}">
-  <div class="toolbar">
+<section class="stack-lg invoice-editor" data-invoice-editor>
+  <div class="toolbar invoice-editor-heading">
     <div>
       <h1 class="page-title">{% if invoice %}ویرایش پیش‌نویس{% else %}ساخت فاکتور{% endif %}</h1>
-      <p class="page-lead">اطلاعات را وارد کنید؛ پیش‌نمایش نهایی هم‌زمان به‌روز می‌شود.</p>
+      <p class="page-lead">اطلاعات خریدار و اقلام را در همین صفحه وارد کنید؛ پیش‌نمایش نهایی هم‌زمان به‌روز می‌شود.</p>
     </div>
-    <a class="btn btn-ghost" href="{% url 'invoicing:settings' %}">لوگو، مهر و قالب</a>
+    <a class="btn btn-ghost" href="{% url 'invoicing:settings' %}">تنظیمات کلی فاکتور</a>
   </div>
 
   {% if templates %}
@@ -24,77 +24,90 @@
   <div class="alert alert-info">فروش به همکار فقط از <a href="{% url 'trading:proposal_create' %}">توافق دوطرفه</a> انجام می‌شود تا دقیقاً یک معامله، دو سند دفتر حساب و یک فاکتور ایجاد شود.</div>
 
   <div class="invoice-editor-layout">
-    <form method="post" enctype="multipart/form-data" class="invoice-form" novalidate data-invoice-form data-unsaved-warning data-preview-url="{% url 'invoicing:preview' %}">
+    <form method="post" enctype="multipart/form-data" class="invoice-form stack-md" novalidate data-invoice-form data-unsaved-warning data-preview-url="{% url 'invoicing:preview' %}">
       {% csrf_token %}
       {{ form.submission_id }}{{ form.version }}
+      {# These values come from global settings or an existing draft and have no per-invoice controls. #}
+      {{ form.currency.as_hidden }}{{ form.display_unit.as_hidden }}
+      {{ form.notes.as_hidden }}{{ form.payment_terms.as_hidden }}
+      {{ form.invoice_discount_type.as_hidden }}{{ form.invoice_discount_value.as_hidden }}
+      {{ form.palette.as_hidden }}{{ form.primary_color.as_hidden }}
+      {{ form.header_style.as_hidden }}{{ form.logo_size.as_hidden }}
+      {{ form.show_bank_information.as_hidden }}{{ form.show_stamp.as_hidden }}{{ form.show_signature.as_hidden }}
       <datalist id="invoice-customer-options">
         {% for customer in recent_customers %}<option value="{{ customer.name }}" data-phone="{{ customer.phone }}" data-address="{{ customer.address }}"></option>{% endfor %}
       </datalist>
       {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
       {% if formset.non_form_errors %}<div class="alert alert-error">{{ formset.non_form_errors|striptags }}</div>{% endif %}
-      {% if form.errors or formset.errors %}<div class="alert alert-error" role="alert" tabindex="-1" data-error-summary>برخی اطلاعات معتبر نیست. خطاهای مرحله مشخص‌شده را اصلاح کنید.</div>{% endif %}
+      {% if form.errors or formset.errors %}<div class="alert alert-error" role="alert" tabindex="-1" data-error-summary>برخی اطلاعات معتبر نیست. فیلدهای مشخص‌شده را اصلاح کنید.</div>{% endif %}
 
-      <nav class="invoice-stepper" aria-label="مراحل ساخت فاکتور">
-        <button type="button" class="{% if initial_step == 1 %}is-active{% endif %}" data-step-target="1" aria-controls="invoice-step-1" {% if initial_step == 1 %}aria-current="step"{% endif %}><span>۱</span> طرف حساب</button>
-        <button type="button" class="{% if initial_step == 2 %}is-active{% endif %}" data-step-target="2" aria-controls="invoice-step-2" {% if initial_step == 2 %}aria-current="step"{% endif %}><span>۲</span> اقلام و مبالغ</button>
-        <button type="button" class="{% if initial_step == 3 %}is-active{% endif %}" data-step-target="3" aria-controls="invoice-step-3" {% if initial_step == 3 %}aria-current="step"{% endif %}><span>۳</span> ظاهر و خروجی</button>
-      </nav>
-
-      <section id="invoice-step-1" class="panel stack-md invoice-step {% if initial_step == 1 %}is-current{% endif %}" data-step="1">
-        <h2 class="section-title">اطلاعات فاکتور و خریدار</h2>
-        <div class="form-grid">
+      <section class="panel stack-md invoice-section" aria-labelledby="invoice-party-title">
+        <div>
+          <h2 class="section-title" id="invoice-party-title">اطلاعات فاکتور و خریدار</h2>
+          <p class="muted">نام خریدار الزامی است؛ شماره تماس و آدرس برای تکمیل سند استفاده می‌شوند.</p>
+        </div>
+        <div class="form-grid invoice-party-grid">
           {% for field in form %}
-            {% if field.name in 'customer_name customer_phone buyer_address issue_date currency display_unit payment_terms notes' %}
+            {% if field.name in 'customer_name customer_phone buyer_address issue_date' %}
             <label class="field field-{{ field.name }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
             {% endif %}
           {% endfor %}
         </div>
-        <div class="step-actions"><button class="btn btn-primary" type="button" data-step-next>مرحله بعد</button></div>
       </section>
 
-      <section id="invoice-step-2" class="panel stack-md invoice-step {% if initial_step == 2 %}is-current{% endif %}" data-step="2">
-        <div class="toolbar"><h2 class="section-title">اقلام فاکتور</h2><button class="btn btn-secondary" type="button" data-line-add>افزودن ردیف</button></div>
+      <section class="panel stack-md invoice-section" aria-labelledby="invoice-lines-title">
+        <div class="toolbar invoice-lines-heading">
+          <div>
+            <h2 class="section-title" id="invoice-lines-title">اقلام فاکتور</h2>
+            <p class="muted">محصول موجود را جست‌وجو کنید یا نام یک سنگ دلخواه را مستقیم بنویسید.</p>
+          </div>
+          <button class="btn btn-secondary" type="button" data-line-add>افزودن ردیف</button>
+        </div>
         {{ formset.management_form }}
         <div class="invoice-lines" data-invoice-lines>
           {% for line in formset %}{% include "invoicing/_line_form.html" with line=line %}{% endfor %}
         </div>
         <template data-empty-line>{% include "invoicing/_line_form.html" with line=formset.empty_form %}</template>
-        <h3 class="section-subtitle">تخفیف‌ها و پرداخت‌ها</h3>
-        <div class="form-grid form-grid-compact">
-          {% for field in form %}
-            {% if field.name in 'invoice_discount_type invoice_discount_value tax_amount shipping_amount adjustment_amount paid_amount' %}
-            <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
-            {% endif %}
-          {% endfor %}
-        </div>
-        <div class="invoice-live-total"><span>برآورد قابل پرداخت</span><strong data-invoice-total>۰</strong></div>
-        <div class="step-actions"><button class="btn btn-ghost" type="button" data-step-prev>قبلی</button><button class="btn btn-primary" type="button" data-step-next>مرحله بعد</button></div>
-      </section>
 
-      <section id="invoice-step-3" class="panel stack-md invoice-step {% if initial_step == 3 %}is-current{% endif %}" data-step="3">
-        <h2 class="section-title">ظاهر و ذخیره</h2>
-        <div class="form-grid form-grid-compact">
-          {% for field in form %}
-            {% if field.name in 'palette primary_color header_style logo_size show_bank_information show_stamp show_signature buyer_signature remove_buyer_signature' %}
-            <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
-            {% endif %}
-          {% endfor %}
+        <div class="invoice-adjustments" aria-labelledby="invoice-adjustments-title">
+          <h3 class="section-subtitle" id="invoice-adjustments-title">مبالغ تکمیلی</h3>
+          <div class="form-grid form-grid-compact">
+            {% for field in form %}
+              {% if field.name in 'tax_amount shipping_amount adjustment_amount paid_amount' %}
+              <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+              {% endif %}
+            {% endfor %}
+          </div>
         </div>
-        <p class="muted">محاسبات مرورگر فقط برای بازخورد سریع است؛ هنگام ذخیره همه مبالغ دوباره در سرور محاسبه می‌شوند.</p>
+
+        <div class="invoice-live-total" aria-live="polite"><span>برآورد قابل پرداخت</span><strong data-invoice-total>۰</strong></div>
+        <p class="muted invoice-calculation-note">همه مبالغ هنگام ذخیره دوباره در سرور محاسبه می‌شوند.</p>
         <div class="invoice-submit-row">
           <button class="btn btn-secondary" name="action" value="draft" type="submit">ذخیره پیش‌نویس</button>
           <button class="btn btn-primary" name="action" value="issue" type="submit" data-confirm="پس از صدور، اقلام و مبالغ تغییرناپذیر می‌شوند. ادامه می‌دهید؟">صدور فاکتور</button>
         </div>
-        <div class="step-actions"><button class="btn btn-ghost" type="button" data-step-prev>قبلی</button></div>
       </section>
     </form>
 
-    <aside class="invoice-preview-panel" aria-live="polite">
-      <div class="invoice-preview-head"><strong>پیش‌نمایش نهایی</strong><span data-preview-status>در انتظار اطلاعات کامل</span></div>
-      <iframe title="پیش‌نمایش زنده فاکتور" data-invoice-preview sandbox="allow-same-origin"></iframe>
+    <aside class="invoice-preview-panel" aria-labelledby="invoice-preview-title" data-preview-panel>
+      <div class="invoice-preview-head">
+        <div>
+          <strong id="invoice-preview-title">پیش‌نمایش فاکتور</strong>
+          <span class="invoice-preview-status" data-preview-status role="status">در حال آماده‌سازی…</span>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost btn-sm" type="button" data-preview-refresh>به‌روزرسانی</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-preview-expand aria-expanded="false">نمایش بزرگ</button>
+        </div>
+      </div>
+      <div class="invoice-preview-canvas">
+        <div class="invoice-preview-loading" data-preview-loading aria-hidden="true"><span></span><span></span><span></span></div>
+        <iframe title="پیش‌نمایش زنده فاکتور" data-invoice-preview sandbox="allow-same-origin"></iframe>
+      </div>
     </aside>
   </div>
 </section>
 {% endblock %}
 
 {% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}"></script><script src="{% static 'js/invoice_editor.js' %}"></script>{% endblock %}
+
