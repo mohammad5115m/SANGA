@@ -4,12 +4,12 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from apps.accounts.models import OTPChallenge
-from apps.businesses.models import Business, BusinessMembership
 from apps.accounts.services import (
     OTPValidationError,
     request_login_otp,
     verify_login_otp,
 )
+from apps.businesses.models import Business, BusinessMembership
 
 User = get_user_model()
 
