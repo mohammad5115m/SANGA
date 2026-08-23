@@ -206,6 +206,22 @@ OTP_MAX_REQUESTS_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_HOUR", default=10)
 # OTP. Empty by default so production remains closed unless its operator makes an
 # explicit choice; development supplies the two fictional demo accounts.
 SANGA_LOGIN_PHONE_ALLOWLIST = env.list("SANGA_LOGIN_PHONE_ALLOWLIST", default=[])
+# Metadata for the two fictional accounts used in development. The mapping is
+# inert unless the matching phone is explicitly present in the allowlist.
+SANGA_LOGIN_ACCOUNT_DEFAULTS = {
+    "09121111111": {
+        "full_name": "مالک دمو (فرضی)",
+        "business_name": "سنگبری آذرخش (دمو ـ فرضی)",
+        "city": "محلات",
+        "province": "مرکزی",
+    },
+    "09122222222": {
+        "full_name": "شریک دمو (فرضی)",
+        "business_name": "بازرگانی سنگ پارس (دمو ـ فرضی)",
+        "city": "تهران",
+        "province": "تهران",
+    },
+}
 # Every other limit keys on the phone number, so a caller with a list of numbers
 # could request a code for each and never touch one — SANGA paying the gateway
 # for each, and each recipient getting an unexplained message. An address is not
