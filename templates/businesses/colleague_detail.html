@@ -116,7 +116,7 @@
         {% for invoice in invoices %}
           <a class="lot-card" href="{% url 'invoicing:detail' invoice.id %}"><div class="lot-body">
             <div class="list-title">فاکتور {{ invoice.number }}</div>
-            <div class="muted">{{ invoice.seller_business.name }} ← {{ invoice.buyer_name }} · <span dir="ltr">{{ invoice.total_amount|rial }} ریال</span></div>
+            <div class="muted">{{ invoice.seller_business.name }} ← {{ invoice.buyer_name }} · <span dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</span></div>
           </div></a>
         {% empty %}<div class="empty-state">هنوز فاکتوری با این همکار صادر نشده است.</div>{% endfor %}
       </div>

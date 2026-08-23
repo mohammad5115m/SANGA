@@ -171,7 +171,7 @@
             <div class="muted">{{ invoice.issue_date }} · {{ invoice.buyer_name }}</div>
           </div>
           <div class="ledger-amounts">
-            <strong dir="ltr">{{ invoice.total_amount|rial }} ریال</strong>
+            <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>
             <span class="badge">{{ invoice.get_status_display }}</span>
           </div>
         </a>

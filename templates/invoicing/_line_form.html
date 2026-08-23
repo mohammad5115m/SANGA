@@ -1,4 +1,5 @@
 <fieldset class="invoice-editor-line" data-invoice-line>
+  {% if line.non_field_errors %}<div class="alert alert-error" role="alert">{{ line.non_field_errors|striptags }}</div>{% endif %}
   <div class="invoice-line-toolbar">
     <strong data-line-number>ردیف {{ forloop.counter|default:"1" }}</strong>
     <div class="btn-row">
@@ -8,26 +9,27 @@
     </div>
   </div>
   {{ line.item }}{{ line.ORDER }}<span hidden>{{ line.DELETE }}</span>
+  {% if line.item.errors %}<span class="field-error">محصول انتخاب‌شده معتبر یا متعلق به این کسب‌وکار نیست.</span>{% endif %}
   <div class="invoice-line-grid">
     <div class="field invoice-product-field">
       <span class="field-label">محصول ثبت‌شده یا عنوان دستی</span>
       <div class="product-picker" data-product-picker data-dynamic-product-picker data-product-url="{% url 'inventory:product_options' %}">
         <div class="product-picker-input-row">
-          <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول را جست‌وجو کنید" autocomplete="off" data-product-query>
+          <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول را جست‌وجو کنید" aria-label="جست‌وجوی محصول ثبت‌شده" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="product-results-{{ line.prefix }}" autocomplete="off" data-product-query>
           <button class="btn btn-ghost btn-sm" type="button" data-product-clear>پاک</button>
         </div>
-        <div class="product-picker-results" data-product-results role="listbox" hidden></div>
+        <div id="product-results-{{ line.prefix }}" class="product-picker-results" data-product-results role="listbox" aria-label="نتایج جست‌وجوی محصول" hidden></div>
       </div>
       {{ line.product_name }}
       {% if line.product_name.errors %}<span class="field-error">{{ line.product_name.errors|striptags }}</span>{% endif %}
     </div>
-    <label class="field"><span class="field-label">نوع سنگ</span>{{ line.stone_type }}</label>
-    <label class="field"><span class="field-label">سورت</span>{{ line.grade }}</label>
-    <label class="field"><span class="field-label">توضیح</span>{{ line.description }}</label>
+    <label class="field"><span class="field-label">نوع سنگ</span>{{ line.stone_type }}{% if line.stone_type.errors %}<span class="field-error">{{ line.stone_type.errors|striptags }}</span>{% endif %}</label>
+    <label class="field"><span class="field-label">سورت</span>{{ line.grade }}{% if line.grade.errors %}<span class="field-error">{{ line.grade.errors|striptags }}</span>{% endif %}</label>
+    <label class="field"><span class="field-label">توضیح</span>{{ line.description }}{% if line.description.errors %}<span class="field-error">{{ line.description.errors|striptags }}</span>{% endif %}</label>
     <label class="field"><span class="field-label">مقدار</span>{{ line.quantity }}{% if line.quantity.errors %}<span class="field-error">{{ line.quantity.errors|striptags }}</span>{% endif %}</label>
-    <label class="field"><span class="field-label">واحد</span>{{ line.unit }}</label>
+    <label class="field"><span class="field-label">واحد</span>{{ line.unit }}{% if line.unit.errors %}<span class="field-error">{{ line.unit.errors|striptags }}</span>{% endif %}</label>
     <label class="field"><span class="field-label">قیمت واحد</span>{{ line.unit_price }}{% if line.unit_price.errors %}<span class="field-error">{{ line.unit_price.errors|striptags }}</span>{% endif %}</label>
-    <label class="field"><span class="field-label">نوع تخفیف</span>{{ line.discount_type }}</label>
+    <label class="field"><span class="field-label">نوع تخفیف</span>{{ line.discount_type }}{% if line.discount_type.errors %}<span class="field-error">{{ line.discount_type.errors|striptags }}</span>{% endif %}</label>
     <label class="field"><span class="field-label">مقدار تخفیف</span>{{ line.discount_value }}{% if line.discount_value.errors %}<span class="field-error">{{ line.discount_value.errors|striptags }}</span>{% endif %}</label>
     <div class="invoice-line-total"><span>جمع ردیف</span><strong data-line-total>۰</strong></div>
   </div>

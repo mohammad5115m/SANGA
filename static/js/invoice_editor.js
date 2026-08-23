@@ -3,6 +3,7 @@
 
   var editor = document.querySelector("[data-invoice-editor]");
   if (!editor) return;
+  editor.classList.add("is-enhanced");
   var form = editor.querySelector("[data-invoice-form]");
   var lines = editor.querySelector("[data-invoice-lines]");
   var totalForms = form.querySelector('[name="lines-TOTAL_FORMS"]');
@@ -12,6 +13,8 @@
   var previewTimer;
   var previewController;
   var currentStep = 1;
+  var customerName = form.elements.customer_name;
+  var customerOptions = editor.querySelector("#invoice-customer-options");
 
   function field(row, suffix) {
     return row.querySelector('[name$="-' + suffix + '"]');
@@ -42,6 +45,14 @@
     payload.adjustment_amount = form.elements.adjustment_amount.value;
     payload.paid_amount = form.elements.paid_amount.value;
     var result = window.SangaInvoiceCalculator.calculate(payload);
+    if (!result.valid) {
+      activeRows.forEach(function (row) {
+        var invalidOutput = row.querySelector("[data-line-total]");
+        if (invalidOutput) invalidOutput.textContent = "—";
+      });
+      editor.querySelector("[data-invoice-total]").textContent = "—";
+      return;
+    }
     activeRows.forEach(function (row, index) {
       var output = row.querySelector("[data-line-total]");
       if (output) output.textContent = format(result.lines[index].line_total);
@@ -73,13 +84,32 @@
     var timer;
     var controller;
 
-    function hide() { results.hidden = true; results.replaceChildren(); }
+    var activeIndex = -1;
+    function setExpanded(value) {
+      query.setAttribute("aria-expanded", value ? "true" : "false");
+    }
+    function hide() {
+      activeIndex = -1;
+      results.hidden = true;
+      results.replaceChildren();
+      setExpanded(false);
+    }
+    function activate(index) {
+      var options = results.querySelectorAll('[role="option"]');
+      if (!options.length) return;
+      activeIndex = Math.max(0, Math.min(options.length - 1, index));
+      options.forEach(function (option, optionIndex) {
+        option.setAttribute("aria-selected", optionIndex === activeIndex ? "true" : "false");
+      });
+      options[activeIndex].focus();
+    }
     function load() {
       if (controller) controller.abort();
       controller = new AbortController();
       var url = new URL(picker.dataset.productUrl, window.location.origin);
       url.searchParams.set("q", query.value.trim());
       results.hidden = false;
+      setExpanded(true);
       results.textContent = "در حال جست‌وجو…";
       fetch(url, {headers: {Accept: "application/json"}, signal: controller.signal})
         .then(function (response) { if (!response.ok) throw new Error(); return response.json(); })
@@ -89,6 +119,8 @@
             var option = document.createElement("button");
             option.type = "button";
             option.className = "product-picker-option";
+            option.setAttribute("role", "option");
+            option.setAttribute("aria-selected", "false");
             option.textContent = item.label;
             option.addEventListener("click", function () {
               hidden.value = item.id;
@@ -102,6 +134,7 @@
           });
           if (!results.children.length) results.textContent = "محصولی پیدا نشد.";
           results.hidden = false;
+          setExpanded(true);
         })
         .catch(function (error) { if (error.name !== "AbortError") results.textContent = "جست‌وجو انجام نشد."; });
     }
@@ -110,6 +143,23 @@
       hidden.value = "";
       clearTimeout(timer);
       timer = setTimeout(load, 250);
+    });
+    query.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        activate(0);
+      } else if (event.key === "Escape") {
+        hide();
+      }
+    });
+    results.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        activate(activeIndex + (event.key === "ArrowDown" ? 1 : -1));
+      } else if (event.key === "Escape") {
+        hide();
+        query.focus();
+      }
     });
     clear.addEventListener("click", function () { hidden.value = ""; query.value = ""; hide(); changed(); });
   }
@@ -147,6 +197,8 @@
     currentStep = Math.max(1, Math.min(3, step));
     editor.querySelectorAll("[data-step-target]").forEach(function (button) {
       button.classList.toggle("is-active", Number(button.dataset.stepTarget) === currentStep);
+      if (Number(button.dataset.stepTarget) === currentStep) button.setAttribute("aria-current", "step");
+      else button.removeAttribute("aria-current");
     });
     editor.querySelectorAll("[data-step]").forEach(function (section) {
       section.classList.toggle("is-current", Number(section.dataset.step) === currentStep);
@@ -162,9 +214,14 @@
       if (previewController) previewController.abort();
       previewController = new AbortController();
       previewStatus.textContent = "در حال به‌روزرسانی…";
+      var formData = new FormData(form);
+      var previewData = new URLSearchParams();
+      formData.forEach(function (value, key) {
+        if (typeof value === "string") previewData.append(key, value);
+      });
       fetch(form.dataset.previewUrl, {
         method: "POST",
-        body: new FormData(form),
+        body: previewData,
         headers: {"X-Requested-With": "XMLHttpRequest"},
         signal: previewController.signal
       }).then(function (response) {
@@ -180,6 +237,22 @@
   }
 
   function changed() { liveTotals(); requestPreview(); }
+
+  if (customerName && customerOptions) {
+    customerName.addEventListener("change", function () {
+      var match = Array.from(customerOptions.options).find(function (option) {
+        return option.value === customerName.value;
+      });
+      if (!match) return;
+      if (form.elements.customer_phone && !form.elements.customer_phone.value) {
+        form.elements.customer_phone.value = match.dataset.phone || "";
+      }
+      if (form.elements.buyer_address && !form.elements.buyer_address.value) {
+        form.elements.buyer_address.value = match.dataset.address || "";
+      }
+      changed();
+    });
+  }
 
   editor.querySelector("[data-line-add]").addEventListener("click", addLine);
   lines.addEventListener("click", function (event) {
@@ -208,5 +281,7 @@
     button.addEventListener("click", function () { showStep(currentStep - 1); });
   });
   lines.querySelectorAll("[data-invoice-line]").forEach(initRow);
-  renumber(); showStep(1); changed();
+  renumber(); showStep(Number(editor.dataset.initialStep || 1)); changed();
+  var errorSummary = editor.querySelector("[data-error-summary]");
+  if (errorSummary) errorSummary.focus();
 })();

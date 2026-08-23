@@ -323,25 +323,46 @@ def invoice_summary(business: Business, window: DateRange) -> dict:
     subtotal, so a voided or unfinished document is visible rather than missing —
     without any single number doing two jobs.
     """
-    agg = invoices_in_range(business, window).aggregate(
-        issued_total=Coalesce(
-            Sum("total_amount", filter=Q(status=SalesInvoice.Status.ISSUED)),
-            Value(ZERO),
-            output_field=MONEY,
-        ),
-        draft_total=Coalesce(
-            Sum("total_amount", filter=Q(status=SalesInvoice.Status.DRAFT)),
-            Value(ZERO),
-            output_field=MONEY,
-        ),
+    qs = invoices_in_range(business, window)
+    agg = qs.aggregate(
         issued_count=Count("id", filter=Q(status=SalesInvoice.Status.ISSUED)),
         draft_count=Count("id", filter=Q(status=SalesInvoice.Status.DRAFT)),
         cancelled_count=Count("id", filter=Q(status=SalesInvoice.Status.CANCELLED)),
         total_count=Count("id"),
     )
+    currency_labels = dict(SalesInvoice.Currency.choices)
+
+    def totals_for(status: str) -> list[dict]:
+        rows = (
+            qs.filter(status=status)
+            .values("currency")
+            .annotate(total=Coalesce(Sum("total_amount"), Value(ZERO), output_field=MONEY))
+            .order_by("currency")
+        )
+        return [
+            {
+                "currency": row["currency"],
+                "label": currency_labels.get(row["currency"], row["currency"]),
+                "total": _money(row["total"]),
+            }
+            for row in rows
+        ]
+
+    issued_totals = totals_for(SalesInvoice.Status.ISSUED)
+    draft_totals = totals_for(SalesInvoice.Status.DRAFT)
+
+    def scalar_total(rows: list[dict]) -> Decimal | None:
+        if not rows:
+            return ZERO
+        return rows[0]["total"] if len(rows) == 1 else None
+
     return {
-        "total": _money(agg["issued_total"]),
-        "draft_total": _money(agg["draft_total"]),
+        # Compatibility for existing one-currency consumers. Mixed currencies
+        # deliberately have no scalar sum because it would be financially false.
+        "total": scalar_total(issued_totals),
+        "draft_total": scalar_total(draft_totals),
+        "totals": issued_totals,
+        "draft_totals": draft_totals,
         "issued_count": agg["issued_count"],
         "draft_count": agg["draft_count"],
         "cancelled_count": agg["cancelled_count"],

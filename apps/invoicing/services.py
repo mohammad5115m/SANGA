@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
@@ -239,6 +240,7 @@ def _calculate(
     paid_amount,
     previous_balance_snapshot=0,
     previous_balance_included=False,
+    previous_balance_state=SalesInvoice.BalanceState.DEBTOR,
 ):
     def normalized(value, label: str):
         if not values_are_display:
@@ -256,10 +258,11 @@ def _calculate(
             invoice_discount_value=discount_value,
             tax_amount=normalized(tax_amount, "مالیات"),
             shipping_amount=normalized(shipping_amount, "هزینه ارسال"),
-            adjustment_amount=normalized(adjustment_amount, "تعدیل"),
+            adjustment_amount=normalized(adjustment_amount, "افزایش مبلغ"),
             paid_amount=normalized(paid_amount, "مبلغ پرداخت‌شده"),
             previous_balance_snapshot=previous_balance_snapshot,
             previous_balance_included=previous_balance_included,
+            previous_balance_state=previous_balance_state,
         )
     except InvoiceCalculationError as exc:
         raise InvoiceError(str(exc)) from exc
@@ -410,10 +413,19 @@ def _create_invoice_for_trade(*, trade, created_by, notes: str, issue: bool) -> 
                 customer_name=trade.customer_name,
                 customer_phone=trade.customer_phone,
                 buyer_name=trade.counterparty_label,
-                buyer_phone=trade.customer_phone,
+                buyer_phone=(
+                    trade.buyer_business.phone
+                    if trade.buyer_business_id
+                    else trade.customer_phone
+                ),
+                buyer_address=(
+                    trade.buyer_business.address if trade.buyer_business_id else ""
+                ),
                 trade=trade,
                 issue_date=timezone.localdate(),
                 status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
+                issued_at=timezone.now() if issue else None,
+                issued_by=created_by if issue else None,
                 currency=trade.currency,
                 display_unit=(
                     settings_row.default_display_unit
@@ -465,8 +477,15 @@ def create_manual_invoice(
     appearance: dict | None = None,
     buyer_signature=None,
     remove_buyer_signature: bool = False,
+    submission_id: uuid.UUID | None = None,
 ) -> SalesInvoice:
     _require_manage(business, membership)
+    if submission_id is not None:
+        existing = SalesInvoice.objects.filter(
+            seller_business=business, submission_id=submission_id
+        ).first()
+        if existing is not None:
+            return existing
     if buyer_business is not None:
         raise InvoiceError(
             "فروش به همکار باید از «توافق معامله» ثبت شود تا حساب‌ها به‌روز شوند."
@@ -501,8 +520,15 @@ def create_manual_invoice(
     )
     if issue:
         Business.objects.select_for_update().get(pk=business.pk)
+        if submission_id is not None:
+            existing = SalesInvoice.objects.filter(
+                seller_business=business, submission_id=submission_id
+            ).first()
+            if existing is not None:
+                return existing
     invoice = SalesInvoice(
         seller_business=business,
+        submission_id=submission_id,
         number=allocate_number(business) if issue else "",
         counterparty_type=SalesInvoice.Counterparty.CUSTOMER,
         buyer_business=None,
@@ -513,6 +539,8 @@ def create_manual_invoice(
         buyer_address=(buyer_address or "").strip(),
         issue_date=issue_date or timezone.localdate(),
         status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
+        issued_at=timezone.now() if issue else None,
+        issued_by=membership.user if issue else None,
         currency=currency,
         display_unit=display_unit,
         notes=(notes or "").strip(),
@@ -525,19 +553,40 @@ def create_manual_invoice(
         created_by=membership.user,
     )
     _assign_totals(invoice, totals)
-    invoice.save()
-    _replace_items(invoice, calculated)
+    try:
+        with transaction.atomic():
+            invoice.save()
+            _replace_items(invoice, calculated)
+    except IntegrityError:
+        if submission_id is None:
+            raise
+        winner = SalesInvoice.objects.filter(
+            seller_business=business, submission_id=submission_id
+        ).first()
+        if winner is None:
+            raise
+        logger.info("Duplicate manual invoice submission resolved to %s", winner.pk)
+        return winner
     return invoice
 
 
 @transaction.atomic
 def update_draft_invoice(
-    *, invoice: SalesInvoice, membership: BusinessMembership, lines: list[dict], **header
+    *,
+    invoice: SalesInvoice,
+    membership: BusinessMembership,
+    lines: list[dict],
+    expected_version: int | None = None,
+    **header,
 ) -> SalesInvoice:
     invoice = SalesInvoice.objects.select_for_update().get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     if invoice.status != SalesInvoice.Status.DRAFT:
         raise InvoiceError("فقط پیش‌نویس قابل ویرایش است.")
+    if expected_version is not None and invoice.version != expected_version:
+        raise InvoiceError(
+            "این پیش‌نویس پس از باز شدن صفحه تغییر کرده است. صفحه را تازه‌سازی کنید."
+        )
     business = invoice.seller_business
     currency = header.get("currency", invoice.currency)
     display_unit = header.get("display_unit", invoice.display_unit)
@@ -561,6 +610,7 @@ def update_draft_invoice(
         paid_amount=header.get("paid_amount", 0),
         previous_balance_snapshot=invoice.previous_balance_snapshot,
         previous_balance_included=invoice.previous_balance_included,
+        previous_balance_state=invoice.previous_balance_state,
     )
     settings_row = get_invoice_settings(business)
     invoice.customer_name = str(header.get("customer_name") or "").strip()
@@ -589,6 +639,7 @@ def update_draft_invoice(
     elif header.get("remove_buyer_signature"):
         invoice.buyer_signature = None
     _assign_totals(invoice, totals)
+    invoice.version += 1
     invoice.save()
     _replace_items(invoice, calculated)
     return invoice
@@ -623,7 +674,7 @@ def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> S
             "discount_value": line.discount_value,
             "sort_order": line.sort_order,
         }
-        for line in invoice.items.all()
+        for line in invoice.items.select_related("item__product__stone")
     ]
     cleaned = _clean_lines(
         stored_lines,
@@ -645,6 +696,7 @@ def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> S
         paid_amount=invoice.paid_amount,
         previous_balance_snapshot=invoice.previous_balance_snapshot,
         previous_balance_included=invoice.previous_balance_included,
+        previous_balance_state=invoice.previous_balance_state,
     )
     _assign_totals(invoice, totals)
     settings_row = get_invoice_settings(invoice.seller_business)
@@ -659,19 +711,76 @@ def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> S
     }
     invoice.appearance_snapshot = appearance_snapshot(settings_row, selected_appearance)
     invoice.status = SalesInvoice.Status.ISSUED
+    invoice.issued_at = timezone.now()
+    invoice.issued_by = membership.user
     invoice.save()
     return invoice
 
 
 @transaction.atomic
-def cancel_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+def cancel_invoice(
+    *, invoice: SalesInvoice, membership: BusinessMembership, reason: str
+) -> SalesInvoice:
     invoice = SalesInvoice.objects.select_for_update().get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     if invoice.status == SalesInvoice.Status.DRAFT:
         raise InvoiceError("پیش‌نویس را حذف کنید؛ ابطال برای سند صادرشده است.")
+    if invoice.status == SalesInvoice.Status.CANCELLED:
+        return invoice
+    reason = str(reason or "").strip()
+    if not reason:
+        raise InvoiceError("علت ابطال را وارد کنید.")
     invoice.status = SalesInvoice.Status.CANCELLED
-    invoice.save(update_fields=["status", "updated_at"])
+    invoice.cancelled_at = timezone.now()
+    invoice.cancelled_by = membership.user
+    invoice.cancel_reason = reason
+    invoice.save(
+        update_fields=[
+            "status",
+            "cancelled_at",
+            "cancelled_by",
+            "cancel_reason",
+            "updated_at",
+        ]
+    )
     return invoice
+
+
+@transaction.atomic
+def delete_draft_invoice(
+    *, invoice: SalesInvoice, membership: BusinessMembership
+) -> None:
+    invoice = SalesInvoice.objects.select_for_update().get(pk=invoice.pk)
+    _require_manage(invoice.seller_business, membership)
+    if invoice.status != SalesInvoice.Status.DRAFT:
+        raise InvoiceError("فقط پیش‌نویس قابل حذف است.")
+    invoice.delete()
+
+
+@transaction.atomic
+def create_replacement_invoice(
+    *, invoice: SalesInvoice, membership: BusinessMembership, reason: str
+) -> SalesInvoice:
+    invoice = (
+        SalesInvoice.objects.select_for_update()
+        .prefetch_related("items")
+        .get(pk=invoice.pk)
+    )
+    _require_manage(invoice.seller_business, membership)
+    existing = SalesInvoice.objects.filter(replaces_invoice=invoice).first()
+    if existing is not None:
+        return existing
+    if invoice.status != SalesInvoice.Status.ISSUED:
+        raise InvoiceError("فقط فاکتور صادرشده قابل اصلاح است.")
+    if invoice.counterparty_type != SalesInvoice.Counterparty.CUSTOMER:
+        raise InvoiceError(
+            "اصلاح فاکتور معامله باید از مسیر همان توافق انجام شود تا اسناد متناقض نشوند."
+        )
+    replacement = duplicate_invoice(invoice=invoice, membership=membership)
+    replacement.replaces_invoice = invoice
+    replacement.save(update_fields=["replaces_invoice", "updated_at"])
+    cancel_invoice(invoice=invoice, membership=membership, reason=reason)
+    return replacement
 
 
 @transaction.atomic
@@ -749,6 +858,7 @@ def save_as_template(
     if not name:
         raise InvoiceError("نام قالب را وارد کنید.")
     payload = {
+        "schema_version": 1,
         "customer_name": invoice.customer_name,
         "customer_phone": invoice.customer_phone,
         "buyer_address": invoice.buyer_address,

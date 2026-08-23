@@ -91,10 +91,7 @@ prices the view populated.
 
 {% elif active == 'invoices' %}
   <div class="metric-row">
-    <div class="metric">
-      <div class="metric-label">جمع فاکتورها</div>
-      <div class="metric-value">{{ invoice_summary.total|rial }}</div>
-    </div>
+    {% for total in invoice_summary.totals %}<div class="metric"><div class="metric-label">جمع صادرشده · {{ total.label }}</div><div class="metric-value">{{ total.total|rial }}</div></div>{% empty %}<div class="metric"><div class="metric-label">جمع صادرشده</div><div class="metric-value">۰</div></div>{% endfor %}
     <div class="metric">
       <div class="metric-label">صادرشده</div>
       <div class="metric-value">{{ invoice_summary.issued_count }}</div>
@@ -106,7 +103,7 @@ prices the view populated.
   </div>
   <table class="table">
     <thead>
-      <tr><th scope="col">شماره</th><th scope="col">تاریخ</th><th scope="col">خریدار</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ (ریال)</th></tr>
+      <tr><th scope="col">شماره</th><th scope="col">تاریخ</th><th scope="col">خریدار</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ</th></tr>
     </thead>
     <tbody>
       {% for invoice in invoices %}
@@ -115,7 +112,7 @@ prices the view populated.
           <td>{{ invoice.issue_date }}</td>
           <td>{{ invoice.buyer_name }}</td>
           <td>{{ invoice.get_status_display }}</td>
-          <td class="num">{{ invoice.total_amount|rial }}</td>
+          <td class="num">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</td>
         </tr>
       {% empty %}
         <tr><td colspan="5" class="empty-state">فاکتوری در این بازه صادر نشده است.</td></tr>

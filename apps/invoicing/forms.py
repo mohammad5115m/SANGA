@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from decimal import Decimal
 
 from django import forms
@@ -34,6 +35,8 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         "adjustment_amount",
         "paid_amount",
     )
+    submission_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
+    version = forms.IntegerField(required=False, min_value=1, widget=forms.HiddenInput)
     customer_name = forms.CharField(
         label="نام مشتری", max_length=150, widget=forms.TextInput(attrs=_TEXT)
     )
@@ -76,7 +79,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         decimal_places=2, initial=0, widget=forms.NumberInput(attrs=_MONEY),
     )
     adjustment_amount = forms.DecimalField(
-        label="تعدیل/گردکردن", required=False, min_value=0, max_digits=16,
+        label="افزایش مبلغ (اختیاری)", required=False, min_value=0, max_digits=16,
         decimal_places=2, initial=0, widget=forms.NumberInput(attrs=_MONEY),
     )
     paid_amount = forms.DecimalField(
@@ -128,6 +131,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
     def __init__(self, *args, business=None, **kwargs):
         self.business = business
         super().__init__(*args, **kwargs)
+        self.fields["customer_name"].widget.attrs["list"] = "invoice-customer-options"
         self.fields["issue_date"].input_formats = ["%Y-%m-%d"]
         if not self.is_bound and business is not None:
             try:
@@ -351,6 +355,18 @@ class BusinessInvoiceSettingsForm(forms.ModelForm):
 
 class InvoiceTemplateNameForm(forms.Form):
     name = forms.CharField(label="نام قالب", max_length=120, widget=forms.TextInput(attrs=_TEXT))
+
+
+class InvoiceCancelForm(forms.Form):
+    reason = forms.CharField(
+        label="علت ابطال یا اصلاح",
+        max_length=250,
+        widget=forms.Textarea(attrs={**_TEXT, "rows": 2}),
+    )
+
+
+def new_submission_id() -> uuid.UUID:
+    return uuid.uuid4()
 
 
 def contrast_ratio(first: str, second: str) -> Decimal:

@@ -163,6 +163,7 @@ def calculate_invoice(
     paid_amount=0,
     previous_balance_snapshot=0,
     previous_balance_included: bool = False,
+    previous_balance_state: str = "debtor",
 ) -> tuple[list[CalculatedLine], InvoiceTotals]:
     calculated = [calculate_line(line) for line in lines]
     if not calculated:
@@ -180,7 +181,7 @@ def calculate_invoice(
     )
     tax = money(tax_amount, label="مالیات")
     shipping = money(shipping_amount, label="هزینه ارسال")
-    adjustment = money(adjustment_amount, label="تعدیل")
+    adjustment = money(adjustment_amount, label="افزایش مبلغ")
     paid = money(paid_amount, label="مبلغ پرداخت‌شده")
     previous = money(previous_balance_snapshot, label="بدهی قبلی")
     total = (net_items - invoice_discount + tax + shipping + adjustment).quantize(
@@ -190,9 +191,19 @@ def calculate_invoice(
         raise InvoiceCalculationError("جمع نهایی فاکتور بیش از حد مجاز است.")
     if paid > total:
         raise InvoiceCalculationError("مبلغ پرداخت‌شده نمی‌تواند از مبلغ نهایی بیشتر باشد.")
-    due = (total - paid + (previous if previous_balance_included else ZERO)).quantize(
-        MONEY, rounding=ROUND_HALF_UP
-    )
+    signed_previous = previous
+    if previous_balance_state == "creditor":
+        signed_previous = -previous
+    elif previous_balance_state == "settled":
+        signed_previous = ZERO
+    elif previous_balance_state != "debtor":
+        raise InvoiceCalculationError("وضعیت مانده قبلی معتبر نیست.")
+    due = (
+        total - paid + (signed_previous if previous_balance_included else ZERO)
+    ).quantize(MONEY, rounding=ROUND_HALF_UP)
+    # A credit larger than this invoice remains credit; an invoice cannot have
+    # a negative payable amount.
+    due = max(due, ZERO)
     return calculated, InvoiceTotals(
         gross_subtotal=gross,
         line_discount_total=line_discounts,

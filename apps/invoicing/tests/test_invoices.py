@@ -174,7 +174,7 @@ def test_cancelling_does_not_free_a_number_for_reuse(shop):
     from apps.invoicing.services import cancel_invoice
 
     first = _invoice(shop)
-    cancel_invoice(invoice=first, membership=shop["membership"])
+    cancel_invoice(invoice=first, membership=shop["membership"], reason="ابطال آزمون")
     second = _invoice(shop)
     assert second.number != first.number
 
@@ -327,7 +327,7 @@ def test_a_cancelled_invoice_cannot_be_issued(shop):
     from apps.invoicing.services import cancel_invoice
 
     invoice = _invoice(shop)
-    cancel_invoice(invoice=invoice, membership=shop["membership"])
+    cancel_invoice(invoice=invoice, membership=shop["membership"], reason="ابطال آزمون")
     with pytest.raises(InvoiceError):
         issue_invoice(invoice=invoice, membership=shop["membership"])
 

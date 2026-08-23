@@ -264,7 +264,9 @@ def test_cancelled_invoices_are_counted_but_not_totalled(books):
         lines=[line],
         customer_name="مشتری نقدی",
     )
-    cancel_invoice(invoice=doomed, membership=books["membership"])
+    cancel_invoice(
+        invoice=doomed, membership=books["membership"], reason="ابطال آزمون"
+    )
 
     # The three fixture sales each produced an invoice automatically
     # (90,000,000), plus the two typed here at 10,000,000 each, one of which is

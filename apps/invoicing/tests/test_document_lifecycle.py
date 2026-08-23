@@ -107,7 +107,7 @@ def test_issuing_a_draft_makes_it_visible_to_the_buyer(shop):
 def test_a_cancelled_invoice_stays_visible_to_the_buyer(shop):
     """They were sent it. Finding it missing is worse than seeing it voided."""
     invoice = _sale(shop, shop["owner"])
-    cancel_invoice(invoice=invoice, membership=shop["owner"])
+    cancel_invoice(invoice=invoice, membership=shop["owner"], reason="ابطال آزمون")
     assert get_invoice(shop["buyer"], invoice.id) is not None
 
 
@@ -132,7 +132,7 @@ def test_the_invoice_total_sums_issued_documents_only(shop):
 @pytest.mark.django_db
 def test_a_cancelled_invoice_is_counted_but_not_totalled(shop):
     invoice = _sale(shop, shop["owner"], quantity="10")
-    cancel_invoice(invoice=invoice, membership=shop["owner"])
+    cancel_invoice(invoice=invoice, membership=shop["owner"], reason="ابطال آزمون")
 
     summary = invoice_summary(shop["seller"], ALL_TIME)
     assert summary["total"] == Decimal("0.00")
@@ -148,7 +148,7 @@ def test_numbers_stay_sequential_and_are_never_reused(shop):
     """AUD-022. The counter only moves forward, so cancelling never frees a
     number — a gap in the sequence means something."""
     first = _sale(shop, shop["owner"], quantity="1")
-    cancel_invoice(invoice=first, membership=shop["owner"])
+    cancel_invoice(invoice=first, membership=shop["owner"], reason="ابطال آزمون")
     second = _sale(shop, shop["owner"], quantity="2")
     third = _sale(shop, shop["owner"], quantity="3")
 

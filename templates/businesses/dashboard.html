@@ -16,7 +16,7 @@ numbers and history come after. No charts.{% endcomment %}
       {% if can_add_products %}
         <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
       {% endif %}
-      {% if 'invoice.manage' in capabilities %}
+      {% if can_issue_invoices %}
         <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
       {% endif %}
       {% if 'trade.propose' in capabilities %}
@@ -203,9 +203,9 @@ numbers and history come after. No charts.{% endcomment %}
                 <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
                   <div>
                     <div class="list-title" dir="ltr">{{ invoice.number }}</div>
-                    <div class="muted">{{ invoice.buyer_name }}</div>
+                    <div class="muted">{% if invoice.seller_business_id == current_business.id %}{{ invoice.buyer_name }} · صادرشده{% else %}{{ invoice.seller_business.name }} · دریافتی{% endif %}</div>
                   </div>
-                  <strong dir="ltr">{{ invoice.total_amount|rial }}</strong>
+                  <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>
                 </a>
               {% empty %}
                 <div class="empty-state">فاکتوری صادر نشده است.</div>

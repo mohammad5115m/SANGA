@@ -8,7 +8,7 @@
     @page {
       size: A4;
       margin: 14mm 12mm 16mm;
-      @bottom-center { content: "صفحه " counter(page) " از " counter(pages); font-size: 8pt; color: #66736c; }
+      @bottom-center { content: counter(page) " / " counter(pages); direction: ltr; font-size: 8pt; color: #66736c; }
     }
     html, body { margin: 0; background: #fff; color: var(--ink); font-family: Vazirmatn, "DejaVu Sans", sans-serif; font-size: 10pt; line-height: 1.65; }
     body { direction: rtl; }
@@ -39,10 +39,11 @@
     .col-index { width: 7%; } .col-qty { width: 11%; } .col-unit { width: 11%; } .col-money { width: 17%; }
     .num { direction: ltr; unicode-bidi: isolate; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .line-meta { font-size: 8pt; color: var(--muted); }
-    .summary { width: 48%; margin: 5mm 0 0 auto; break-inside: avoid; }
-    .summary-row { display: flex; justify-content: space-between; gap: 5mm; padding: 1.4mm 0; border-bottom: 1px dashed var(--line); }
-    .summary-row strong { direction: ltr; unicode-bidi: isolate; }
-    .summary-total { border: 0; background: #f0f5f2; color: var(--invoice-primary); padding: 2.5mm; margin-top: 1mm; font-size: 11pt; }
+    table.summary { width: 52%; margin: 5mm 0 0 auto; break-inside: avoid; border-collapse: collapse; }
+    table.summary th, table.summary td { border: 0; border-bottom: 1px dashed var(--line); padding: 1.4mm 0; background: transparent; color: inherit; }
+    table.summary th { font-weight: 400; text-align: right; }
+    table.summary td { direction: ltr; unicode-bidi: isolate; text-align: left; font-weight: 700; }
+    table.summary tr.summary-total th, table.summary tr.summary-total td { border: 0; background: #f0f5f2; color: var(--invoice-primary); padding: 2.5mm; font-size: 11pt; }
     .amount-words { margin-top: 3mm; padding: 3mm; border-right: 3px solid var(--invoice-primary); background: #f6f8f7; break-inside: avoid; }
     .section { margin-top: 5mm; break-inside: avoid; }
     .section-title { font-weight: 700; color: var(--invoice-primary); margin-bottom: 1mm; }
@@ -87,6 +88,7 @@
         <span class="doc-status">{{ document.status_label }} · {{ document.payment_status_label }}</span>
       </div>
     </header>
+    {% if document.status == 'cancelled' and document.cancel_reason %}<div class="section balance-note"><strong>علت ابطال:</strong> {{ document.cancel_reason }}</div>{% endif %}
 
     <section class="party-grid">
       <div class="party">
@@ -102,7 +104,7 @@
     </section>
 
     <table aria-label="اقلام فاکتور">
-      <th scope="col"ead><tr>
+      <thead><tr>
         <th scope="col" class="col-index">ردیف</th><th scope="col">شرح</th><th scope="col" class="col-qty">مقدار</th>
         <th scope="col" class="col-unit">واحد</th><th scope="col" class="col-money">قیمت واحد</th><th scope="col" class="col-money">مبلغ نهایی</th>
       </tr></thead>
@@ -118,18 +120,18 @@
       </tbody>
     </table>
 
-    <section class="summary">
-      <div class="summary-row"><span>جمع ناخالص اقلام</span><strong>{{ document.gross_subtotal }}</strong></div>
-      {% if document.has_line_discounts %}<div class="summary-row"><span>تخفیف ردیف‌ها</span><strong>− {{ document.line_discount_total }}</strong></div>{% endif %}
-      {% if document.has_invoice_discount %}<div class="summary-row"><span>تخفیف کلی</span><strong>− {{ document.invoice_discount_amount }}</strong></div>{% endif %}
-      {% if document.has_tax %}<div class="summary-row"><span>مالیات</span><strong>+ {{ document.tax_amount }}</strong></div>{% endif %}
-      {% if document.has_shipping %}<div class="summary-row"><span>هزینه ارسال</span><strong>+ {{ document.shipping_amount }}</strong></div>{% endif %}
-      {% if document.has_adjustment %}<div class="summary-row"><span>تعدیل</span><strong>+ {{ document.adjustment_amount }}</strong></div>{% endif %}
-      <div class="summary-row"><span>مبلغ نهایی</span><strong>{{ document.total_amount }}</strong></div>
-      {% if document.has_paid %}<div class="summary-row"><span>پرداخت‌شده</span><strong>− {{ document.paid_amount }}</strong></div>{% endif %}
-      {% if document.has_previous_balance and document.previous_balance_included %}<div class="summary-row"><span>بدهی قبلی</span><strong>+ {{ document.previous_balance }}</strong></div>{% endif %}
-      <div class="summary-row summary-total"><span>قابل پرداخت ({{ document.unit_label }})</span><strong>{{ document.amount_due }}</strong></div>
-    </section>
+    <table class="summary" aria-label="جمع مبالغ فاکتور"><tbody>
+      <tr><th scope="row">جمع ناخالص اقلام</th><td>{{ document.gross_subtotal }}</td></tr>
+      {% if document.has_line_discounts %}<tr><th scope="row">تخفیف ردیف‌ها</th><td>− {{ document.line_discount_total }}</td></tr>{% endif %}
+      {% if document.has_invoice_discount %}<tr><th scope="row">تخفیف کلی</th><td>− {{ document.invoice_discount_amount }}</td></tr>{% endif %}
+      {% if document.has_tax %}<tr><th scope="row">مالیات</th><td>+ {{ document.tax_amount }}</td></tr>{% endif %}
+      {% if document.has_shipping %}<tr><th scope="row">هزینه ارسال</th><td>+ {{ document.shipping_amount }}</td></tr>{% endif %}
+      {% if document.has_adjustment %}<tr><th scope="row">افزایش مبلغ</th><td>+ {{ document.adjustment_amount }}</td></tr>{% endif %}
+      <tr><th scope="row">مبلغ نهایی</th><td>{{ document.total_amount }}</td></tr>
+      {% if document.has_paid %}<tr><th scope="row">پرداخت‌شده</th><td>− {{ document.paid_amount }}</td></tr>{% endif %}
+      {% if document.has_previous_balance and document.previous_balance_included %}<tr><th scope="row">بدهی قبلی</th><td>+ {{ document.previous_balance }}</td></tr>{% endif %}
+      <tr class="summary-total"><th scope="row">قابل پرداخت ({{ document.unit_label }})</th><td>{{ document.amount_due }}</td></tr>
+    </tbody></table>
     <div class="amount-words">به حروف: {{ document.amount_due_words }} {{ document.unit_label }}</div>
     {% if document.has_previous_balance %}<div class="section balance-note">مانده پیشین: {{ document.previous_balance }} {{ document.previous_balance_unit_label }} ({{ document.previous_balance_state }}) — {% if document.previous_balance_included %}در مبلغ قابل پرداخت لحاظ شده است.{% else %}صرفاً اطلاع‌رسانی است و در مبلغ قابل پرداخت لحاظ نشده است.{% endif %}</div>{% endif %}
     {% if document.notes %}<section class="section"><div class="section-title">توضیحات</div><div>{{ document.notes|linebreaksbr }}</div></section>{% endif %}

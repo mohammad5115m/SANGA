@@ -17,7 +17,11 @@
     <div><span class="muted">مبلغ نهایی</span><strong>{{ document.total_amount }} {{ document.unit_label }}</strong></div>
     <div><span class="muted">قابل پرداخت</span><strong>{{ document.amount_due }} {{ document.unit_label }}</strong></div>
     <div><span class="muted">اقلام</span><strong>{% for line in document.lines %}{{ line.product_name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong></div>
+    <div><span class="muted">مبدأ</span><strong>{% if invoice.trade_id %}معامله ثبت‌شده{% else %}فاکتور دستی{% endif %}</strong></div>
+    {% if invoice.issued_at %}<div><span class="muted">صدور نهایی</span><strong>{{ invoice.issued_at }}{% if invoice.issued_by %} · {{ invoice.issued_by }}{% endif %}</strong></div>{% endif %}
   </div>
+  {% if invoice.replaces_invoice %}<div class="alert alert-info">این سند جایگزین فاکتور <a href="{% url 'invoicing:detail' invoice.replaces_invoice.id %}">{{ invoice.replaces_invoice.display_number }}</a> است.</div>{% endif %}
+  {% if invoice.status == 'cancelled' %}<div class="alert alert-error"><strong>علت ابطال:</strong> {{ invoice.cancel_reason }}{% if invoice.cancelled_at %} · {{ invoice.cancelled_at }}{% endif %}{% if invoice.replacement_invoice %} · <a href="{% url 'invoicing:detail' invoice.replacement_invoice.id %}">مشاهده سند جایگزین</a>{% endif %}</div>{% endif %}
   <iframe class="invoice-document-frame" title="نسخه نهایی فاکتور" src="{% url 'invoicing:print' invoice.id %}?embedded=1"></iframe>
 
   {% if is_seller and can_manage %}
@@ -26,8 +30,16 @@
     <div class="invoice-action-grid">
       {% if invoice.status == 'draft' %}
       <form method="post" action="{% url 'invoicing:issue' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="پس از صدور، اقلام و مبالغ تغییرناپذیر می‌شوند. ادامه می‌دهید؟">صدور نهایی</button></form>
+      <form method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>
       {% elif invoice.status == 'issued' %}
-      <form method="post" action="{% url 'invoicing:cancel' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="فاکتور باطل شود؟ مانده دفتر حساب تغییر نمی‌کند.">ابطال سند</button></form>
+      <form class="stack-sm" method="post">
+        {% csrf_token %}
+        <label class="field"><span class="field-label">علت ابطال یا اصلاح</span>{{ cancel_form.reason }}</label>
+        <div class="btn-row">
+          <button class="btn btn-danger" type="submit" formaction="{% url 'invoicing:cancel' invoice.id %}" data-confirm="فاکتور باطل شود؟ مانده دفتر حساب تغییر نمی‌کند.">ابطال سند</button>
+          {% if invoice.counterparty_type == 'customer' %}<button class="btn btn-secondary" type="submit" formaction="{% url 'invoicing:create_replacement' invoice.id %}" data-confirm="اصل فاکتور باطل و یک پیش‌نویس جایگزین ساخته شود؟">ابطال و ساخت جایگزین</button>{% endif %}
+        </div>
+      </form>
       {% endif %}
       {% if invoice.counterparty_type == 'customer' %}<form method="post" action="{% url 'invoicing:duplicate' invoice.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">تکثیر به پیش‌نویس جدید</button></form>{% endif %}
     </div>

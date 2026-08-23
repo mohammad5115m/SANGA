@@ -20,7 +20,7 @@ from django.utils import timezone
 from apps.businesses.models import Business
 from apps.core.testing import make_business, make_item, make_product, owner_membership
 from apps.invoicing.models import SalesInvoice
-from apps.invoicing.services import issue_invoice
+from apps.invoicing.services import cancel_invoice, issue_invoice
 from apps.pricing.services import ensure_default_tiers
 from apps.trading.models import Trade
 from apps.trading.services import record_direct_sale
@@ -120,8 +120,11 @@ def test_a_draft_invoice_stays_editable(records):
 def test_a_cancelled_invoice_is_read_only_too(records):
     invoice = records["invoice"]
     issue_invoice(invoice=invoice, membership=records["membership"])
-    invoice.status = SalesInvoice.Status.CANCELLED
-    invoice.save(update_fields=["status"])
+    cancel_invoice(
+        invoice=invoice,
+        membership=records["membership"],
+        reason="ابطال آزمون ادمین",
+    )
 
     readonly = set(_admin(SalesInvoice).get_readonly_fields(_Request(), invoice))
     assert "status" in readonly

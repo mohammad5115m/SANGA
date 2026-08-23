@@ -22,4 +22,10 @@ urlpatterns = [
     path("<uuid:invoice_id>/save-template/", views.invoice_save_template, name="save_template"),
     path("<uuid:invoice_id>/issue/", views.invoice_issue, name="issue"),
     path("<uuid:invoice_id>/cancel/", views.invoice_cancel, name="cancel"),
+    path("<uuid:invoice_id>/delete/", views.invoice_delete_draft, name="delete_draft"),
+    path(
+        "<uuid:invoice_id>/replace/",
+        views.invoice_create_replacement,
+        name="create_replacement",
+    ),
 ]

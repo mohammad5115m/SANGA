@@ -252,7 +252,9 @@ def test_cancelling_an_invoice_does_not_change_the_balance(sale):
     trade = finalize_sale(request=sale["request"], membership=sale["seller_m"])
     invoice = SalesInvoice.objects.get(trade=trade)
 
-    cancel_invoice(invoice=invoice, membership=sale["seller_m"])
+    cancel_invoice(
+        invoice=invoice, membership=sale["seller_m"], reason="ابطال آزمون"
+    )
     invoice.refresh_from_db()
 
     assert invoice.status == SalesInvoice.Status.CANCELLED

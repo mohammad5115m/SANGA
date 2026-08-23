@@ -23,8 +23,8 @@ PALETTE_COLORS = {
 }
 
 
-def format_number(value: Decimal) -> str:
-    rendered = f"{Decimal(value):,.2f}"
+def format_number(value: Decimal, *, decimal_places: int = 2) -> str:
+    rendered = f"{Decimal(value):,.{decimal_places}f}"
     return rendered.rstrip("0").rstrip(".")
 
 
@@ -104,7 +104,7 @@ def build_invoice_document(invoice: SalesInvoice) -> dict:
                 "stone_type": line.stone_type,
                 "grade": line.grade,
                 "description": line.description,
-                "quantity": format_number(line.quantity),
+                "quantity": format_number(line.quantity, decimal_places=3),
                 "unit": line.unit,
                 "unit_price": format_number(_money(invoice, line.unit_price)),
                 "gross_total": format_number(_money(invoice, line.gross_total)),
@@ -126,6 +126,7 @@ def build_invoice_document(invoice: SalesInvoice) -> dict:
         "issue_date": invoice.issue_date,
         "status": invoice.status,
         "status_label": invoice.get_status_display(),
+        "cancel_reason": invoice.cancel_reason,
         "payment_status_label": invoice.get_payment_status_display(),
         "seller": seller,
         "buyer": {
@@ -207,7 +208,7 @@ def build_preview_document(*, business, header: dict, calculated, totals) -> dic
                 "stone_type": line.source.get("stone_type", ""),
                 "grade": line.source.get("grade", ""),
                 "description": line.source.get("description", ""),
-                "quantity": format_number(line.quantity),
+                "quantity": format_number(line.quantity, decimal_places=3),
                 "unit": line.source.get("unit", "متر مربع"),
                 "unit_price": format_number(display(line.unit_price)),
                 "gross_total": format_number(display(line.gross_total)),
@@ -223,6 +224,7 @@ def build_preview_document(*, business, header: dict, calculated, totals) -> dic
         "issue_date": header["issue_date"],
         "status": "draft",
         "status_label": "پیش‌نمایش",
+        "cancel_reason": "",
         "payment_status_label": "پیش‌نویس",
         "seller": seller_snapshot(business, settings_row),
         "buyer": {

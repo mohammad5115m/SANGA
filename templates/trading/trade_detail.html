@@ -67,7 +67,7 @@
     {% if invoice %}
       <div class="kv">
         <span>شماره</span>
-        <strong><a href="{% url 'invoicing:detail' invoice.id %}">{{ invoice.number }}</a></strong>
+        <strong><a href="{% url 'invoicing:detail' invoice.id %}">{{ invoice.display_number }}</a></strong>
       </div>
       <div class="kv"><span>وضعیت</span><strong>{{ invoice.get_status_display }}</strong></div>
     {% elif can_create_invoice %}

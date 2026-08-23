@@ -7,11 +7,17 @@ from django.core.exceptions import ValidationError
 from django.http import FileResponse, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from django.utils.dateparse import parse_date
 from django.utils.http import content_disposition_header
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_http_methods, require_POST
 
-from apps.businesses.decorators import business_login_required, require_capability
+from apps.businesses.decorators import (
+    business_login_required,
+    require_business_entitlement,
+    require_capability,
+)
+from apps.businesses.entitlements import ISSUE_INVOICES, has_entitlement
 from apps.businesses.permissions import INVOICE_MANAGE, INVOICE_VIEW
 from apps.core.pagination import ROW_PAGE_SIZE, paginate
 
@@ -19,11 +25,13 @@ from .calculations import DISCOUNT_AMOUNT, to_display_amount
 from .documents import build_invoice_document, build_preview_document
 from .forms import (
     BusinessInvoiceSettingsForm,
+    InvoiceCancelForm,
     InvoiceLineFormSet,
     InvoiceTemplateNameForm,
     ManualInvoiceForm,
     invoice_initial,
     invoice_line_initials,
+    new_submission_id,
 )
 from .models import InvoiceTemplate, SalesInvoice
 from .rendering import (
@@ -33,21 +41,57 @@ from .rendering import (
     render_pdf,
     render_png,
 )
-from .selectors import filter_invoices, get_invoice, invoices_for
+from .selectors import filter_invoices, get_invoice, invoices_for, recent_customers
 from .services import (
     InvoiceError,
     _calculate,
     _clean_lines,
     cancel_invoice,
     create_manual_invoice,
+    create_replacement_invoice,
+    delete_draft_invoice,
     duplicate_invoice,
-    get_invoice_settings,
     issue_invoice,
     save_as_template,
     update_draft_invoice,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _can_manage_invoices(request: HttpRequest) -> bool:
+    return request.membership.has_capability(INVOICE_MANAGE) and has_entitlement(
+        request.business, ISSUE_INVOICES
+    )
+
+
+def _initial_step(form: ManualInvoiceForm, formset) -> int:
+    if not form.is_bound:
+        return 1
+    if formset.errors or formset.non_form_errors() or any(
+        form.errors.get(name)
+        for name in (
+            "invoice_discount_type",
+            "invoice_discount_value",
+            "tax_amount",
+            "shipping_amount",
+            "adjustment_amount",
+            "paid_amount",
+        )
+    ):
+        return 2
+    if any(
+        form.errors.get(name)
+        for name in (
+            "palette",
+            "primary_color",
+            "header_style",
+            "logo_size",
+            "buyer_signature",
+        )
+    ):
+        return 3
+    return 1
 
 
 def _invoice_or_redirect(request, invoice_id):
@@ -111,9 +155,22 @@ def _header_data(form: ManualInvoiceForm) -> dict:
 def invoice_list(request: HttpRequest) -> HttpResponse:
     status = request.GET.get("status", "")
     q = request.GET.get("q", "").strip()
+    direction = request.GET.get("direction", "")
+    origin = request.GET.get("origin", "")
+    date_from = request.GET.get("date_from", "")
+    date_to = request.GET.get("date_to", "")
     page = paginate(
         request,
-        filter_invoices(invoices_for(request.business), status=status, q=q),
+        filter_invoices(
+            invoices_for(request.business),
+            business=request.business,
+            status=status,
+            q=q,
+            direction=direction,
+            origin=origin,
+            date_from=parse_date(date_from),
+            date_to=parse_date(date_to),
+        ),
         per_page=ROW_PAGE_SIZE,
     )
     return render(
@@ -124,8 +181,12 @@ def invoice_list(request: HttpRequest) -> HttpResponse:
             "page": page,
             "status": status,
             "q": q,
+            "direction": direction,
+            "origin": origin,
+            "date_from": date_from,
+            "date_to": date_to,
             "status_choices": SalesInvoice.Status.choices,
-            "can_manage": request.membership.has_capability(INVOICE_MANAGE),
+            "can_manage": _can_manage_invoices(request),
         },
     )
 
@@ -143,7 +204,8 @@ def invoice_detail(request: HttpRequest, invoice_id) -> HttpResponse:
             "invoice": invoice,
             "document": build_invoice_document(invoice),
             "is_seller": invoice.seller_business_id == request.business.id,
-            "can_manage": request.membership.has_capability(INVOICE_MANAGE),
+            "can_manage": _can_manage_invoices(request),
+            "cancel_form": InvoiceCancelForm(),
             "template_form": InvoiceTemplateNameForm(
                 initial={"name": f"قالب {invoice.buyer_name}"}
             ),
@@ -170,6 +232,8 @@ def invoice_print(request: HttpRequest, invoice_id) -> HttpResponse:
 
 def _template_initial(template: InvoiceTemplate) -> tuple[dict, list[dict]]:
     payload = template.payload or {}
+    if template.schema_version != 1 or payload.get("schema_version", 1) != 1:
+        raise ValueError("Unsupported invoice template schema")
     currency = payload.get("currency", "IRR")
     display_unit = payload.get("display_unit", currency)
 
@@ -201,6 +265,17 @@ def _template_initial(template: InvoiceTemplate) -> tuple[dict, list[dict]]:
         "show_signature": appearance.get("show_signature", True),
     }
     lines = []
+    from apps.inventory.models import InventoryLot
+
+    requested_item_ids = [
+        source.get("item_id") for source in payload.get("lines", []) if source.get("item_id")
+    ]
+    usable_item_ids = {
+        str(item_id)
+        for item_id in InventoryLot.objects.filter(
+            business=template.business, id__in=requested_item_ids
+        ).values_list("id", flat=True)
+    }
     for source in payload.get("lines", []):
         discount = source.get("discount_value", 0)
         if source.get("discount_type") == DISCOUNT_AMOUNT:
@@ -208,7 +283,13 @@ def _template_initial(template: InvoiceTemplate) -> tuple[dict, list[dict]]:
         lines.append(
             {
                 **source,
-                "item": source.get("item_id") or None,
+                # A deleted/unavailable lot becomes a free-text historical line
+                # instead of a hidden invalid identifier that blocks saving.
+                "item": (
+                    source.get("item_id")
+                    if str(source.get("item_id")) in usable_item_ids
+                    else None
+                ),
                 "unit_price": display(source.get("unit_price", 0)),
                 "discount_value": discount,
                 "ORDER": source.get("sort_order", len(lines)),
@@ -219,6 +300,7 @@ def _template_initial(template: InvoiceTemplate) -> tuple[dict, list[dict]]:
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_http_methods(["GET", "POST"])
 def invoice_create(request: HttpRequest) -> HttpResponse:
     initial = None
@@ -236,11 +318,14 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
                 initial, line_initial = _template_initial(template)
             except (TypeError, ValueError):
                 messages.warning(request, "داده‌های این قالب معتبر نیست؛ فرم خالی باز شد.")
+    form_initial = {**(initial or {})}
+    if request.method == "GET":
+        form_initial["submission_id"] = new_submission_id()
     form = ManualInvoiceForm(
         request.POST or None,
         request.FILES or None,
         business=request.business,
-        initial=initial,
+        initial=form_initial,
     )
     formset = InvoiceLineFormSet(
         request.POST or None,
@@ -256,6 +341,7 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
                 membership=request.membership,
                 lines=_submitted_lines(formset),
                 issue=action == "issue",
+                submission_id=form.cleaned_data.get("submission_id"),
                 **_header_data(form),
             )
         except InvoiceError as exc:
@@ -274,12 +360,15 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
             "formset": formset,
             "invoice": None,
             "templates": InvoiceTemplate.objects.filter(business=request.business),
+            "recent_customers": recent_customers(request.business),
+            "initial_step": _initial_step(form, formset),
         },
     )
 
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_http_methods(["GET", "POST"])
 def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
     invoice = SalesInvoice.objects.filter(
@@ -292,7 +381,7 @@ def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
         request.POST or None,
         request.FILES or None,
         business=request.business,
-        initial=invoice_initial(invoice),
+        initial={**invoice_initial(invoice), "version": invoice.version},
     )
     formset = InvoiceLineFormSet(
         request.POST or None,
@@ -307,6 +396,7 @@ def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
                 invoice=invoice,
                 membership=request.membership,
                 lines=_submitted_lines(formset),
+                expected_version=form.cleaned_data.get("version"),
                 **_header_data(form),
             )
             if action == "issue":
@@ -322,12 +412,19 @@ def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
     return render(
         request,
         "invoicing/form.html",
-        {"form": form, "formset": formset, "invoice": invoice, "templates": []},
+        {
+            "form": form,
+            "formset": formset,
+            "invoice": invoice,
+            "templates": [],
+            "initial_step": _initial_step(form, formset),
+        },
     )
 
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def invoice_preview(request: HttpRequest) -> HttpResponse:
     form = ManualInvoiceForm(request.POST, request.FILES, business=request.business)
@@ -372,6 +469,7 @@ def invoice_preview(request: HttpRequest) -> HttpResponse:
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def invoice_issue(request: HttpRequest, invoice_id) -> HttpResponse:
     invoice = SalesInvoice.objects.filter(
@@ -391,6 +489,7 @@ def invoice_issue(request: HttpRequest, invoice_id) -> HttpResponse:
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def invoice_cancel(request: HttpRequest, invoice_id) -> HttpResponse:
     invoice = SalesInvoice.objects.filter(
@@ -399,13 +498,69 @@ def invoice_cancel(request: HttpRequest, invoice_id) -> HttpResponse:
     if invoice is None:
         messages.error(request, "فاکتور یافت نشد.")
         return redirect("invoicing:list")
+    form = InvoiceCancelForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "علت ابطال را وارد کنید.")
+        return redirect("invoicing:detail", invoice_id=invoice.id)
     try:
-        cancel_invoice(invoice=invoice, membership=request.membership)
+        cancel_invoice(
+            invoice=invoice,
+            membership=request.membership,
+            reason=form.cleaned_data["reason"],
+        )
     except InvoiceError as exc:
         messages.error(request, exc.message)
     else:
         messages.success(request, "فاکتور باطل شد؛ مانده حساب تغییر نکرد.")
     return redirect("invoicing:detail", invoice_id=invoice.id)
+
+
+@business_login_required
+@require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
+@require_POST
+def invoice_delete_draft(request: HttpRequest, invoice_id) -> HttpResponse:
+    invoice = SalesInvoice.objects.filter(
+        seller_business=request.business, pk=invoice_id
+    ).first()
+    if invoice is None:
+        messages.error(request, "پیش‌نویس یافت نشد.")
+        return redirect("invoicing:list")
+    try:
+        delete_draft_invoice(invoice=invoice, membership=request.membership)
+    except InvoiceError as exc:
+        messages.error(request, exc.message)
+        return redirect("invoicing:detail", invoice_id=invoice.id)
+    messages.success(request, "پیش‌نویس حذف شد.")
+    return redirect("invoicing:list")
+
+
+@business_login_required
+@require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
+@require_POST
+def invoice_create_replacement(request: HttpRequest, invoice_id) -> HttpResponse:
+    invoice = SalesInvoice.objects.filter(
+        seller_business=request.business, pk=invoice_id
+    ).first()
+    if invoice is None:
+        messages.error(request, "فاکتور یافت نشد.")
+        return redirect("invoicing:list")
+    form = InvoiceCancelForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "علت اصلاح را وارد کنید.")
+        return redirect("invoicing:detail", invoice_id=invoice.id)
+    try:
+        replacement = create_replacement_invoice(
+            invoice=invoice,
+            membership=request.membership,
+            reason=form.cleaned_data["reason"],
+        )
+    except InvoiceError as exc:
+        messages.error(request, exc.message)
+        return redirect("invoicing:detail", invoice_id=invoice.id)
+    messages.success(request, "اصل فاکتور باطل و پیش‌نویس جایگزین ساخته شد.")
+    return redirect("invoicing:edit", invoice_id=replacement.id)
 
 
 def _export(request, invoice_id, kind: str) -> HttpResponse:
@@ -450,6 +605,7 @@ def invoice_image(request: HttpRequest, invoice_id) -> HttpResponse:
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def invoice_duplicate(request: HttpRequest, invoice_id) -> HttpResponse:
     invoice = SalesInvoice.objects.filter(
@@ -469,6 +625,7 @@ def invoice_duplicate(request: HttpRequest, invoice_id) -> HttpResponse:
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def invoice_save_template(request: HttpRequest, invoice_id) -> HttpResponse:
     invoice = SalesInvoice.objects.filter(
@@ -493,9 +650,14 @@ def invoice_save_template(request: HttpRequest, invoice_id) -> HttpResponse:
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_http_methods(["GET", "POST"])
 def invoice_settings(request: HttpRequest) -> HttpResponse:
-    settings_row = get_invoice_settings(request.business)
+    settings_row = getattr(request.business, "invoice_settings", None)
+    if settings_row is None:
+        from .models import BusinessInvoiceSettings
+
+        settings_row = BusinessInvoiceSettings(business=request.business)
     form = BusinessInvoiceSettingsForm(
         request.POST or None, request.FILES or None, instance=settings_row
     )
@@ -517,7 +679,9 @@ def invoice_settings(request: HttpRequest) -> HttpResponse:
 @business_login_required
 @require_capability(INVOICE_MANAGE)
 def invoice_asset(request: HttpRequest, kind: str) -> HttpResponse:
-    settings_row = get_invoice_settings(request.business)
+    settings_row = getattr(request.business, "invoice_settings", None)
+    if settings_row is None:
+        return HttpResponse(status=404)
     field = {"logo": settings_row.logo, "stamp": settings_row.stamp, "signature": settings_row.signature}.get(kind)
     if not field:
         return HttpResponse(status=404)
@@ -531,6 +695,7 @@ def invoice_asset(request: HttpRequest, kind: str) -> HttpResponse:
 
 @business_login_required
 @require_capability(INVOICE_MANAGE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def invoice_template_delete(request: HttpRequest, template_id) -> HttpResponse:
     template = InvoiceTemplate.objects.filter(

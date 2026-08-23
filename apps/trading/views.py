@@ -9,7 +9,12 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from apps.businesses.decorators import business_login_required, require_capability
+from apps.businesses.decorators import (
+    business_login_required,
+    require_business_entitlement,
+    require_capability,
+)
+from apps.businesses.entitlements import ISSUE_INVOICES, has_entitlement
 from apps.businesses.permissions import SALE_FINALIZE, TRADE_CONFIRM, TRADE_PROPOSE
 from apps.core.pagination import ROW_PAGE_SIZE, paginate
 from apps.inventory.policy import eligible_items, get_eligible_item
@@ -455,13 +460,18 @@ def trade_detail(request: HttpRequest, trade_id) -> HttpResponse:
             "trade": trade,
             "is_seller": is_seller,
             "invoice": trade.invoices.first(),
-            "can_create_invoice": is_seller and request.membership.has_capability(SALE_FINALIZE),
+            "can_create_invoice": (
+                is_seller
+                and request.membership.has_capability(SALE_FINALIZE)
+                and has_entitlement(request.business, ISSUE_INVOICES)
+            ),
         },
     )
 
 
 @business_login_required
 @require_capability(SALE_FINALIZE)
+@require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def trade_create_invoice(request: HttpRequest, trade_id) -> HttpResponse:
     """Recovery path for historical finalized trades that have no invoice."""
@@ -474,5 +484,8 @@ def trade_create_invoice(request: HttpRequest, trade_id) -> HttpResponse:
     except InvoiceError as exc:
         messages.error(request, exc.message)
     else:
-        messages.success(request, f"فاکتور {invoice.number} ساخته شد.")
+        if invoice.status == invoice.Status.DRAFT:
+            messages.success(request, "پیش‌نویس فاکتور ساخته شد و مدیر می‌تواند آن را صادر کند.")
+        else:
+            messages.success(request, f"فاکتور {invoice.number} ساخته شد.")
     return redirect("trading:trade_detail", trade_id=trade.id)

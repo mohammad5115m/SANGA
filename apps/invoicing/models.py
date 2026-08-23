@@ -115,8 +115,10 @@ class SalesInvoice(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     seller_business = models.ForeignKey(
-        "businesses.Business", on_delete=models.CASCADE, related_name="sales_invoices"
+        "businesses.Business", on_delete=models.PROTECT, related_name="sales_invoices"
     )
+    submission_id = models.UUIDField(null=True, blank=True, editable=False)
+    version = models.PositiveIntegerField(default=1, editable=False)
     number = models.CharField("شماره فاکتور", max_length=32, blank=True, default="")
     counterparty_type = models.CharField(
         max_length=20, choices=Counterparty.choices, default=Counterparty.BUSINESS
@@ -197,6 +199,32 @@ class SalesInvoice(models.Model):
         blank=True,
         related_name="invoices_created",
     )
+    issued_at = models.DateTimeField(null=True, blank=True, editable=False)
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invoices_issued",
+        editable=False,
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True, editable=False)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invoices_cancelled",
+        editable=False,
+    )
+    cancel_reason = models.CharField("علت ابطال", max_length=250, blank=True)
+    replaces_invoice = models.OneToOneField(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="replacement_invoice",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -214,6 +242,11 @@ class SalesInvoice(models.Model):
                 fields=["trade"],
                 condition=models.Q(trade__isnull=False),
                 name="uniq_invoice_per_trade",
+            ),
+            models.UniqueConstraint(
+                fields=["seller_business", "submission_id"],
+                condition=models.Q(submission_id__isnull=False),
+                name="uniq_invoice_submission_per_seller",
             ),
             models.CheckConstraint(
                 condition=(
@@ -248,6 +281,24 @@ class SalesInvoice(models.Model):
                 ),
                 name="invoice_included_balance_same_currency",
             ),
+            models.CheckConstraint(
+                condition=models.Q(status="draft") | ~models.Q(number=""),
+                name="invoice_finalized_has_number",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status="draft") | models.Q(issued_at__isnull=False),
+                name="invoice_finalized_has_issued_at",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status="cancelled")
+                    | (
+                        models.Q(cancelled_at__isnull=False)
+                        & ~models.Q(cancel_reason="")
+                    )
+                ),
+                name="invoice_cancelled_has_audit",
+            ),
         ]
         indexes = [
             models.Index(fields=["seller_business", "-issue_date"]),
@@ -262,6 +313,14 @@ class SalesInvoice(models.Model):
         return f"{self.number or 'پیش‌نویس'} — {self.buyer_name}"
 
     def save(self, *args, **kwargs):
+        if self.status != self.Status.DRAFT and (
+            not self.number or self.issued_at is None or not self.seller_snapshot
+        ):
+            raise ValidationError("سند نهایی باید شماره، زمان صدور و اطلاعات ثابت فروشنده داشته باشد.")
+        if self.status == self.Status.CANCELLED and (
+            self.cancelled_at is None or not self.cancel_reason.strip()
+        ):
+            raise ValidationError("برای ابطال سند، زمان و علت ابطال الزامی است.")
         if self.pk and not self._state.adding:
             original = SalesInvoice.objects.filter(pk=self.pk).first()
             if original and original.status != self.Status.DRAFT:
@@ -300,9 +359,22 @@ class SalesInvoice(models.Model):
                     "seller_snapshot",
                     "appearance_snapshot",
                     "buyer_signature",
+                    "issued_at",
+                    "issued_by_id",
+                    "replaces_invoice_id",
                 ]
                 if any(getattr(self, field) != getattr(original, field) for field in immutable):
                     raise ValidationError("محتوای فاکتور صادرشده تغییرناپذیر است.")
+                cancellation_audit = (
+                    "cancelled_at",
+                    "cancelled_by_id",
+                    "cancel_reason",
+                )
+                if original.status == self.Status.CANCELLED and any(
+                    getattr(self, field) != getattr(original, field)
+                    for field in cancellation_audit
+                ):
+                    raise ValidationError("تاریخچه ابطال فاکتور تغییرناپذیر است.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -419,6 +491,7 @@ class InvoiceTemplate(models.Model):
     )
     name = models.CharField("نام قالب", max_length=120)
     payload = models.JSONField(default=dict)
+    schema_version = models.PositiveSmallIntegerField(default=1, editable=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )

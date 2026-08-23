@@ -18,8 +18,12 @@
   <form method="get" class="panel filter-bar">
     <label class="field field-grow">
       <span class="field-label">جست‌وجو</span>
-      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="شماره فاکتور یا نام خریدار">
+      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="شماره فاکتور یا نام طرف حساب">
     </label>
+    <label class="field"><span class="field-label">جهت</span><select class="field-input" name="direction"><option value="">همه</option><option value="sent" {% if direction == 'sent' %}selected{% endif %}>صادرشده</option><option value="received" {% if direction == 'received' %}selected{% endif %}>دریافتی</option></select></label>
+    <label class="field"><span class="field-label">مبدأ</span><select class="field-input" name="origin"><option value="">همه</option><option value="manual" {% if origin == 'manual' %}selected{% endif %}>دستی</option><option value="trade" {% if origin == 'trade' %}selected{% endif %}>معامله</option></select></label>
+    <label class="field"><span class="field-label">از تاریخ</span><input class="field-input" type="date" name="date_from" value="{{ date_from }}"></label>
+    <label class="field"><span class="field-label">تا تاریخ</span><input class="field-input" type="date" name="date_to" value="{{ date_to }}"></label>
     <label class="field">
       <span class="field-label">وضعیت</span>
       <select class="field-input" name="status">
@@ -37,7 +41,8 @@
       <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
         <div>
           <div class="list-title" dir="ltr">{{ invoice.display_number }}</div>
-          <div class="muted">{{ invoice.buyer_name }} · {{ invoice.issue_date }}</div>
+          <div class="muted">{% if invoice.seller_business_id == current_business.id %}{{ invoice.buyer_name }}{% else %}{{ invoice.seller_business.name }}{% endif %} · {{ invoice.issue_date }}</div>
+          <div class="btn-row"><span class="badge">{% if invoice.seller_business_id == current_business.id %}صادرشده{% else %}دریافتی{% endif %}</span><span class="badge">{% if invoice.trade_id %}از معامله{% else %}دستی{% endif %}</span></div>
         </div>
         <div class="ledger-amounts">
           <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>
@@ -45,7 +50,7 @@
         </div>
       </a>
     {% empty %}
-      <div class="empty-state">فاکتوری ثبت نشده است.</div>
+      <div class="empty-state">{% if q or status or direction or origin or date_from or date_to %}فاکتوری مطابق فیلترها پیدا نشد. فیلترها را پاک کنید یا بازه دیگری انتخاب کنید.{% else %}{% if can_manage %}هنوز فاکتوری ندارید. برای مشتری عمومی «فاکتور جدید» بسازید؛ فاکتور همکار پس از نهایی‌شدن توافق ایجاد می‌شود.{% else %}هنوز فاکتور صادرشده یا دریافتی ندارید.{% endif %}{% endif %}</div>
     {% endfor %}
   </div>
 
