@@ -4,6 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from apps.accounts.models import OTPChallenge
+from apps.businesses.models import Business, BusinessMembership
 from apps.accounts.services import (
     OTPValidationError,
     request_login_otp,
@@ -146,7 +147,14 @@ def test_explicitly_allowlisted_demo_phone_is_provisioned_and_can_login(client, 
     result = request_login_otp(phone)
 
     user = User.objects.get(phone=phone)
+    membership = BusinessMembership.objects.select_related("business").get(
+        user=user,
+        role=BusinessMembership.Role.OWNER,
+    )
     assert user.is_active is True
+    assert membership.status == BusinessMembership.Status.ACTIVE
+    assert membership.business.status == Business.Status.ACTIVE
+    assert membership.business.is_onboarded is True
     session = client.session
     session["otp_phone"] = phone
     session.save()
@@ -157,20 +165,39 @@ def test_explicitly_allowlisted_demo_phone_is_provisioned_and_can_login(client, 
     )
     assert response.wsgi_request.user.is_authenticated
     assert response.wsgi_request.user.phone == phone
+    assert response.request["PATH_INFO"] == "/app/"
 
 
 @pytest.mark.django_db
-def test_allowlisted_login_reactivates_an_existing_user(settings):
+def test_allowlisted_login_reactivates_an_existing_user_and_business(settings):
     settings.SMS_PROVIDER = "console"
+    settings.OTP_REQUEST_COOLDOWN_SECONDS = 0
     settings.SANGA_LOGIN_PHONE_ALLOWLIST = ["09121111111"]
-    user = _provision("09121111111")
+    request_login_otp("09121111111")
+    user = User.objects.get(phone="09121111111")
+    membership = BusinessMembership.objects.select_related("business").get(
+        user=user,
+        role=BusinessMembership.Role.OWNER,
+    )
+    business = membership.business
+
     user.is_active = False
     user.save(update_fields=["is_active"])
+    membership.status = BusinessMembership.Status.SUSPENDED
+    membership.save(update_fields=["status"])
+    business.status = Business.Status.SUSPENDED
+    business.verification_status = Business.VerificationStatus.SUSPENDED
+    business.save(update_fields=["status", "verification_status", "updated_at"])
 
     request_login_otp(user.phone)
 
     user.refresh_from_db()
+    membership.refresh_from_db()
+    business.refresh_from_db()
     assert user.is_active is True
+    assert membership.status == BusinessMembership.Status.ACTIVE
+    assert business.status == Business.Status.ACTIVE
+    assert business.verification_status == Business.VerificationStatus.VERIFIED
 
 
 # --- Platform provisioning boundary (P0) ------------------------------------
