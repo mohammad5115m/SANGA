@@ -202,6 +202,10 @@ OTP_LENGTH = env.int("OTP_LENGTH", default=6)
 OTP_MAX_ATTEMPTS = env.int("OTP_MAX_ATTEMPTS", default=5)
 OTP_REQUEST_COOLDOWN_SECONDS = env.int("OTP_REQUEST_COOLDOWN_SECONDS", default=60)
 OTP_MAX_REQUESTS_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_HOUR", default=10)
+# Phones listed here may be provisioned as active Users when they request a login
+# OTP. Empty by default so production remains closed unless its operator makes an
+# explicit choice; development supplies the two fictional demo accounts.
+SANGA_LOGIN_PHONE_ALLOWLIST = env.list("SANGA_LOGIN_PHONE_ALLOWLIST", default=[])
 # Every other limit keys on the phone number, so a caller with a list of numbers
 # could request a code for each and never touch one — SANGA paying the gateway
 # for each, and each recipient getting an unexplained message. An address is not
