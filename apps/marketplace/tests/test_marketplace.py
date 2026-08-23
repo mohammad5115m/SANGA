@@ -203,7 +203,7 @@ def test_shared_product_prefills_the_exact_invoice_line(network, client):
     line = response.context["formset"].forms[0]
     assert form.initial["counterparty_mode"] == "business"
     assert line.initial["item"] == network["item"].id
-    assert line.initial["product_name"] == "تراورتن عباس‌آباد"
+    assert line.initial["product_name"] == network["item"].product.commercial_name
     assert line.initial["unit_price"] == Decimal("1000000.00")
 
 
