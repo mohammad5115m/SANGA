@@ -332,6 +332,22 @@
     return Boolean(document.querySelector('form[data-unsaved-warning][data-dirty="true"]'));
   }
 
+  function isEditableControl(element) {
+    return element instanceof Element && element.matches("input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']), textarea, select");
+  }
+
+  function updateMobileInputState(element) {
+    if (!window.matchMedia("(pointer: coarse)").matches) return;
+    document.body.classList.toggle("has-mobile-input-focus", isEditableControl(element));
+  }
+
+  document.addEventListener("focusin", function (event) {
+    updateMobileInputState(event.target);
+  });
+  document.addEventListener("focusout", function () {
+    window.setTimeout(function () { updateMobileInputState(document.activeElement); }, 0);
+  });
+
   document.addEventListener("click", function (event) {
     if (!(event.target instanceof Element)) return;
     var printButton = event.target.closest("[data-print-action]");

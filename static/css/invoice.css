@@ -66,8 +66,30 @@
   .invoice-product-field, .field-buyer_address { grid-column: auto; }
   .invoice-preview-canvas { min-height: 520px; }
   .invoice-preview-panel iframe { height: 620px; }
-  .invoice-submit-row { position: sticky; bottom: 0; z-index: 2; padding: .65rem; background: var(--color-bg-elevated); border-top: 1px solid var(--color-line); }
+  .invoice-submit-row {
+    position: sticky;
+    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-2));
+    z-index: 8;
+    padding: .65rem;
+    background: rgba(255, 255, 255, .96);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
   .invoice-submit-row .btn { min-height: 44px; flex: 1 1 10rem; }
+  body.has-mobile-input-focus .invoice-submit-row { position: static; }
+}
+@media (max-width: 520px) {
+  .invoice-editor-heading > .btn, .invoice-lines-heading > .btn { width: 100%; }
+  .invoice-preview-head { align-items: flex-start; flex-wrap: wrap; }
+  .invoice-preview-head .btn-row { width: 100%; }
+  .invoice-preview-head .btn { flex: 1 1 8rem; }
+  .invoice-preview-canvas { min-height: 430px; }
+  .invoice-preview-panel iframe { height: 520px; }
+  .invoice-color-options { grid-template-columns: 1fr; }
+  .invoice-editor-line { padding: var(--space-3); }
+  .invoice-line-toolbar { align-items: flex-start; flex-wrap: wrap; }
+  .invoice-live-total { align-items: flex-start; flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) {
   .invoice-editor * { scroll-behavior: auto !important; }
