@@ -70,18 +70,86 @@ def _configured_login_allowlist() -> set[str]:
     return phones
 
 
-def _ensure_allowlisted_login_user(phone: str) -> None:
-    """Provision only a deployment-approved phone; unknown phones stay closed."""
+def _ensure_allowlisted_login_account(phone: str) -> None:
+    """Provision/repair the complete approved login account, including its Business."""
     if phone not in _configured_login_allowlist():
         return
-    user, created = User.objects.get_or_create(phone=phone, defaults={"is_active": True})
-    if not created and not user.is_active:
-        user.is_active = True
-        user.save(update_fields=["is_active"])
-    if created:
-        logger.info("Provisioned an explicitly allowlisted OTP login phone")
-    elif user.is_active:
-        logger.info("Confirmed an explicitly allowlisted OTP login phone is active")
+
+    # Import lazily: businesses depends on the accounts model, so importing it at
+    # module load time would create a circular application dependency.
+    from apps.businesses.models import Business, BusinessMembership
+    from apps.businesses.services import complete_onboarding, create_business_for_owner
+
+    profile = getattr(settings, "SANGA_LOGIN_ACCOUNT_DEFAULTS", {}).get(phone, {})
+    with transaction.atomic():
+        user, created = User.objects.get_or_create(
+            phone=phone,
+            defaults={
+                "is_active": True,
+                "full_name": str(profile.get("full_name", "")).strip(),
+            },
+        )
+        # Serialize account repair on the User row. Without this lock, two first
+        # OTP requests could both observe no membership and create two businesses.
+        user = User.objects.select_for_update().get(pk=user.pk)
+        user_updates: list[str] = []
+        if not user.is_active:
+            user.is_active = True
+            user_updates.append("is_active")
+        configured_name = str(profile.get("full_name", "")).strip()
+        if configured_name and not user.full_name:
+            user.full_name = configured_name
+            user_updates.append("full_name")
+        if user_updates:
+            user.save(update_fields=user_updates)
+
+        membership = (
+            BusinessMembership.objects.select_for_update()
+            .select_related("business")
+            .filter(user=user, role=BusinessMembership.Role.OWNER)
+            .first()
+        )
+        if membership is None:
+            business = create_business_for_owner(
+                owner=user,
+                name=str(profile.get("business_name") or f"کسب‌وکار {phone[-4:]}"),
+                city=str(profile.get("city", "")),
+                province=str(profile.get("province", "")),
+                phone=phone,
+            )
+            complete_onboarding(business)
+        else:
+            business = membership.business
+            membership_updates: list[str] = []
+            if membership.status != BusinessMembership.Status.ACTIVE:
+                membership.status = BusinessMembership.Status.ACTIVE
+                membership_updates.append("status")
+            if membership_updates:
+                membership.save(update_fields=membership_updates)
+
+            business_updates: list[str] = []
+            if business.status != Business.Status.ACTIVE:
+                business.status = Business.Status.ACTIVE
+                business_updates.append("status")
+            if business.verification_status != Business.VerificationStatus.VERIFIED:
+                business.verification_status = Business.VerificationStatus.VERIFIED
+                business_updates.append("verification_status")
+            if business.plan != Business.Plan.SELLER:
+                business.plan = Business.Plan.SELLER
+                business_updates.append("plan")
+            if business.active_until is not None:
+                business.active_until = None
+                business_updates.append("active_until")
+            if business_updates:
+                business_updates.append("updated_at")
+                business.save(update_fields=business_updates)
+            if not business.is_onboarded:
+                complete_onboarding(business)
+
+    logger.info(
+        "Provisioned or repaired an explicitly allowlisted OTP account%s",
+        " (new user)" if created else "",
+    )
 
 
 def _client_ip(request: HttpRequest | None) -> str | None:
@@ -284,7 +352,7 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
 
-    _ensure_allowlisted_login_user(phone)
+    _ensure_allowlisted_login_account(phone)
 
     now = timezone.now()
     cooldown = settings.OTP_REQUEST_COOLDOWN_SECONDS
