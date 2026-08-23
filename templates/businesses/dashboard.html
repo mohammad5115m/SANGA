@@ -19,7 +19,7 @@ numbers and history come after. No charts.{% endcomment %}
       {% if can_issue_invoices %}
         <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
       {% endif %}
-      <a class="btn btn-secondary" href="{% url 'marketplace:home' %}">استعلام از بازار</a>
+      <a class="btn btn-secondary" href="{% url 'marketplace:home' %}">مشاهده بازار</a>
     </div>
   </div>
 
@@ -38,7 +38,7 @@ numbers and history come after. No charts.{% endcomment %}
       {% if 'invoice.view' in capabilities %}<a class="metric metric-link" href="{% url 'invoicing:list' %}?status=awaiting_confirmation"><div class="metric-label">فاکتورهای در انتظار تأیید</div><div class="metric-value">مشاهده</div></a>{% endif %}
       {% if 'leads.view' in capabilities %}
         <a class="metric metric-link" href="{% url 'inquiries:inbox' %}?status=open">
-          <div class="metric-label">استعلام بی‌پاسخ</div>
+          <div class="metric-label">درخواست خرید جدید</div>
           <div class="metric-value">{{ unanswered_inquiry_count }}</div>
         </a>
       {% endif %}
@@ -94,7 +94,7 @@ numbers and history come after. No charts.{% endcomment %}
   {% if unanswered_inquiries %}
     <section class="stack-md">
       <div class="toolbar">
-        <h2 class="section-title">استعلام‌های مشتریان</h2>
+        <h2 class="section-title">درخواست‌های خرید مشتریان</h2>
         <a class="btn btn-ghost btn-sm" href="{% url 'inquiries:inbox' %}">همه</a>
       </div>
       <div class="list-stack">

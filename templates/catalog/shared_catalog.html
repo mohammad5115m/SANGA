@@ -29,10 +29,10 @@
   {% comment %}A catalog inquiry with no products and no quantities told the seller almost
   nothing. Selecting first is what makes the request answerable.{% endcomment %}
   <section class="panel stack-sm">
-    <h2 class="section-title">استعلام از این کاتالوگ</h2>
+    <h2 class="section-title">درخواست خرید از این کاتالوگ</h2>
     {% if selection_count %}
       <p class="muted">{{ selection_count }} محصول انتخاب کرده‌اید.</p>
-      <a class="btn btn-primary" href="{% url 'catalog:inquiry_review' %}">ادامه استعلام</a>
+      <a class="btn btn-primary" href="{% url 'catalog:inquiry_review' %}">ادامه درخواست خرید</a>
     {% else %}
       <p class="muted">
         محصولی را که می‌خواهید درباره‌اش بپرسید انتخاب کنید، سپس متراژ مورد نیاز و

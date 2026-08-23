@@ -13,7 +13,7 @@
   </div>
 
   <section class="stack-md">
-    <h2 class="section-title">استعلام‌های قبلی</h2>
+    <h2 class="section-title">درخواست‌های خرید قبلی</h2>
     <div class="list-stack">
       {% for inquiry in inquiries %}
         <a class="list-item" href="{% url 'inquiries:detail' inquiry.id %}">
@@ -30,7 +30,7 @@
           <span class="badge">{{ inquiry.get_status_display }}</span>
         </a>
       {% empty %}
-        <div class="empty-state">استعلامی ثبت نشده است.</div>
+        <div class="empty-state">درخواست خریدی ثبت نشده است.</div>
       {% endfor %}
     </div>
   </section>

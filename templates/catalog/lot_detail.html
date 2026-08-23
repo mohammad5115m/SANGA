@@ -27,7 +27,7 @@
     {# One way in: select the product, say how much you need, verify your phone. #}
     <form method="post" action="{% url 'catalog:inquiry_start' lot.id %}">
       {% csrf_token %}
-      <button class="btn btn-primary" type="submit">درخواست استعلام</button>
+      <button class="btn btn-primary" type="submit">درخواست خرید</button>
     </form>
     <form method="post" action="{% url 'catalog:compare_toggle' business.slug lot.id %}">
       {% csrf_token %}
@@ -40,13 +40,13 @@
   </div>
 
   <section class="panel stack-sm">
-    <h2 class="section-title">چطور استعلام بگیرم؟</h2>
+    <h2 class="section-title">چطور درخواست خرید ثبت کنم؟</h2>
     <p class="muted">
       محصول را انتخاب کنید، متراژ مورد نیازتان را بنویسید و شماره موبایلتان را با کد
       تأیید مشخص کنید. می‌توانید چند محصول از چند فروشنده را با هم بفرستید.
     </p>
     {% if is_selected %}
-      <a class="btn btn-secondary" href="{% url 'catalog:inquiry_review' %}">ادامه استعلام</a>
+      <a class="btn btn-secondary" href="{% url 'catalog:inquiry_review' %}">ادامه درخواست خرید</a>
     {% endif %}
   </section>
 

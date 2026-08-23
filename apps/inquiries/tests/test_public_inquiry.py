@@ -479,7 +479,7 @@ def test_the_customer_page_lists_their_previous_inquiries(client, market):
 
     listing = client.get(reverse("inquiries:leads") + "?q=09121110000").content.decode()
     assert "آقای رضایی" in listing
-    assert "2 استعلام" in listing
+    assert "2 درخواست" in listing
 
 
 @pytest.mark.django_db

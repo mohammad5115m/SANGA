@@ -7,9 +7,9 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">مشتریان</h1>
-      <p class="page-lead">کسانی که از صفحات عمومی استعلام گرفته‌اند</p>
+      <p class="page-lead">کسانی که از صفحات عمومی درخواست خرید ثبت کرده‌اند</p>
     </div>
-    <a class="btn btn-ghost" href="{% url 'inquiries:inbox' %}">استعلام‌ها</a>
+    <a class="btn btn-ghost" href="{% url 'inquiries:inbox' %}">درخواست‌های خرید</a>
   </div>
 
   <form method="get" class="panel filter-bar">
@@ -28,12 +28,12 @@
           <div class="muted" dir="ltr">{{ lead.phone }}</div>
         </div>
         <div class="badge-row">
-          <span class="badge">{{ lead.inquiry_count }} استعلام</span>
+          <span class="badge">{{ lead.inquiry_count }} درخواست</span>
           {% if lead.is_verified %}<span class="badge badge-accent">تأیید شده</span>{% endif %}
         </div>
       </a>
     {% empty %}
-      <div class="empty-state">هنوز مشتری‌ای استعلام نگرفته است.</div>
+      <div class="empty-state">هنوز مشتری‌ای درخواست خرید ثبت نکرده است.</div>
     {% endfor %}
   </div>
 

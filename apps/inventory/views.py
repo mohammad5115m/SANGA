@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
+from apps.businesses.entitlements import ISSUE_INVOICES, has_entitlement
 from apps.businesses.models import BusinessMembership
 from apps.businesses.permissions import (
     CATALOG_MANAGE,
@@ -21,6 +22,7 @@ from apps.businesses.permissions import (
     INVENTORY_MEDIA,
     INVENTORY_PUBLISH,
     INVENTORY_VIEW,
+    INVOICE_CREATE,
     INVOICE_MANAGE,
     PRICES_EDIT,
     PRICES_VIEW,
@@ -179,6 +181,11 @@ def lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
         messages.error(request, "محصول یافت نشد.")
         return redirect("inventory:lot_list")
     can_view_prices = request.membership.has_capability(PRICES_VIEW)
+    from apps.marketplace.selectors import marketplace_ready_items_for_owner
+
+    is_partner_shareable = marketplace_ready_items_for_owner(
+        request.business
+    ).filter(pk=lot.pk).exists()
     return render(
         request,
         "inventory/lot_detail.html",
@@ -191,9 +198,17 @@ def lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
             "is_owner": request.membership.role == BusinessMembership.Role.OWNER,
             "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
+            "partner_share_url": request.build_absolute_uri(
+                reverse("marketplace:shared_item", args=[lot.public_token])
+            ),
             "is_publicly_shareable": eligible_items(
                 audience="public", seller_business=request.business
             ).filter(pk=lot.pk).exists(),
+            "is_partner_shareable": is_partner_shareable,
+            "can_issue_invoice": (
+                request.membership.has_capability(INVOICE_CREATE)
+                and has_entitlement(request.business, ISSUE_INVOICES)
+            ),
             "has_history": item_has_commercial_history(lot),
         },
     )

@@ -82,7 +82,7 @@ def test_no_page_says_mahmoule(client, shop, url_name):
 def test_the_more_hub_links_to_the_secondary_screens(client, shop):
     _login(client, shop)
     body = client.get(reverse("businesses:more")).content.decode()
-    for label in ("لیست همکاران", "دفتر حساب", "فاکتورها", "استعلام‌ها", "مشتریان", "گزارش‌ها", "تیم", "تنظیمات"):
+    for label in ("لیست همکاران", "دفتر حساب", "فاکتورها", "درخواست‌های خرید", "مشتریان", "گزارش‌ها", "تیم", "تنظیمات"):
         assert label in body, label
 
 

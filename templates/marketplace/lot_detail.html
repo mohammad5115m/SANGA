@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+
 {% block title %}{{ product.commercial_name }} | بازار همکاران{% endblock %}
 
 {% block content %}
@@ -9,29 +10,27 @@
     <h1 class="page-title">{{ product.commercial_name }}</h1>
     <p class="page-lead">{{ supplier.name }}{% if supplier.city %} · {{ supplier.city }}{% endif %}</p>
     <div class="catalog-price catalog-price-lg">{{ price.label }}</div>
-    <div class="muted">قیمت همکار</div>
+    <div class="muted">قیمت همکار معتبر</div>
     {% if price.is_special and price.special_until %}
       <div class="badge badge-special">فروش ویژه تا {{ price.special_until|date:"Y/m/d" }}</div>
     {% endif %}
   </div>
 
   <section class="panel stack-sm">
-    <div class="kv">
-      <span>موجودی</span>
-      <strong>{{ stock.label }}</strong>
-    </div>
+    <div class="kv"><span>موجودی تأییدشده</span><strong>{{ stock.label }}</strong></div>
     {% if stock.confirmed_at %}
       <div class="kv"><span>آخرین تأیید موجودی</span><strong>{{ stock.human_confirmed }}</strong></div>
     {% endif %}
     <div class="kv"><span>کد محصول</span><strong dir="ltr">{{ lot.lot_code }}</strong></div>
     <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone.name|default:"—" }}</strong></div>
     <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
-    {% if lot.thickness_cm %}<div class="kv"><span>ضخامت</span><strong>{{ lot.thickness_cm }} سانتی‌متر</strong></div>{% endif %}
-    {# City only: the exact address is the seller's private information. #}
+    {% if lot.thickness_cm %}
+      <div class="kv"><span>ضخامت</span><strong>{{ lot.thickness_cm }} سانتی‌متر</strong></div>
+    {% endif %}
     {% if product.applications.all %}
       <div class="kv">
         <span>کاربردها</span>
-        <strong>{% for a in product.applications.all %}{{ a.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong>
+        <strong>{% for application in product.applications.all %}{{ application.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong>
       </div>
     {% endif %}
   </section>
@@ -60,11 +59,20 @@
     </section>
   {% endif %}
 
+  <section class="panel stack-md">
+    <h2 class="section-title">اشتراک‌گذاری برای صدور فاکتور</h2>
+    <p class="muted">
+      این لینک فقط برای کاربران واردشده سنگا باز می‌شود. فروشنده با بازکردن آن
+      مستقیماً به همین محصول در موجودی خود می‌رسد.
+    </p>
+    <div class="field">
+      <input class="field-input" dir="ltr" readonly value="{{ share_url }}">
+    </div>
+    {% include "catalog/_share_actions.html" %}
+  </section>
+
   <div class="btn-row">
-    {% if 'trade.propose' in capabilities %}
-      <form method="post" action="{% url 'marketplace:inquiry_create' %}" class="btn-row">{% csrf_token %}<input type="hidden" name="submission_id" value="{{ submission_id }}"><input type="hidden" name="lot" value="{{ lot.id }}"><input class="field-input" type="number" min="0.001" step="0.001" name="quantity_{{ lot.id }}" value="1" aria-label="مقدار درخواستی"><button class="btn btn-primary" type="submit">افزودن و ارسال استعلام</button></form>
-    {% endif %}
-    <a class="btn btn-ghost" href="{% url 'businesses:colleague_detail' supplier.id %}">صفحه همکار</a>
+    <a class="btn btn-secondary" href="{% url 'businesses:colleague_detail' supplier.id %}">صفحه همکار</a>
   </div>
 
   <section class="panel stack-md">

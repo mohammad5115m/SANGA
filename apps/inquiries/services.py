@@ -281,7 +281,7 @@ def _notify_seller(inquiry: Inquiry) -> None:
     notify_business(
         inquiry.business,
         capability=LEADS_MANAGE,
-        title="استعلام جدید مشتری",
+        title="درخواست خرید جدید مشتری",
         body=body,
         link=f"/app/leads/inquiries/{inquiry.id}/",
     )

@@ -60,7 +60,7 @@ def inquiry_inbox(request: HttpRequest) -> HttpResponse:
 def inquiry_detail(request: HttpRequest, inquiry_id) -> HttpResponse:
     inquiry = get_inquiry(request.business, inquiry_id)
     if inquiry is None:
-        messages.error(request, "استعلام یافت نشد.")
+        messages.error(request, "درخواست خرید یافت نشد.")
         return redirect("inquiries:inbox")
     mark_inquiry_viewed(inquiry=inquiry)
     return render(
@@ -80,7 +80,7 @@ def inquiry_detail(request: HttpRequest, inquiry_id) -> HttpResponse:
 def inquiry_set_status(request: HttpRequest, inquiry_id) -> HttpResponse:
     inquiry = get_inquiry(request.business, inquiry_id)
     if inquiry is None:
-        messages.error(request, "استعلام یافت نشد.")
+        messages.error(request, "درخواست خرید یافت نشد.")
         return redirect("inquiries:inbox")
     try:
         set_inquiry_status(
@@ -91,7 +91,7 @@ def inquiry_set_status(request: HttpRequest, inquiry_id) -> HttpResponse:
     except InquiryError as exc:
         messages.error(request, exc.message)
     else:
-        messages.success(request, "وضعیت استعلام به‌روزرسانی شد.")
+        messages.success(request, "وضعیت درخواست خرید به‌روزرسانی شد.")
     return redirect("inquiries:detail", inquiry_id=inquiry.id)
 
 

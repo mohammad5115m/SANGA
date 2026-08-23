@@ -1,5 +1,5 @@
 {% extends "layouts/app_shell.html" %}
-{% load static %}
+
 {% block title %}بازار همکاران | سنگا{% endblock %}
 
 {% block content %}
@@ -7,39 +7,45 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">بازار</h1>
-      <p class="page-lead">محصولات همکاران، با قیمت همکار</p>
+      <p class="page-lead">محصولات آماده معامله با قیمت همکار و موجودی تأییدشده</p>
     </div>
-    <a class="btn btn-secondary" href="{% url 'marketplace:inquiries' %}">استعلام‌های همکاران</a>
+  </div>
+
+  <div class="alert alert-info">
+    فقط محصولاتی نمایش داده می‌شوند که قیمت همکار و موجودی آن‌ها هنوز معتبر است.
+    برای جلوگیری از اشتباه، لینک همان محصول را مستقیماً برای فروشنده بفرستید.
   </div>
 
   {% include "inventory/_filter_bar.html" %}
 
-  <form method="post" action="{% url 'marketplace:inquiry_create' %}" class="stack-md" data-partner-inquiry-selection>
-    {% csrf_token %}<input type="hidden" name="submission_id" value="{{ submission_id }}">
-    <div class="alert alert-info">چند محصول، حتی از چند فروشنده، انتخاب کنید. هنگام ارسال برای هر فروشنده یک استعلام مستقل ساخته می‌شود.</div>
   <div class="catalog-grid">
     {% for card in cards %}
       {% url 'marketplace:lot_detail' card.lot.id as card_url %}
-      <article class="panel stack-sm">
+      <div class="panel stack-sm">
         {% include "inventory/_product_card.html" %}
-        <label><input type="checkbox" name="lot" value="{{ card.lot.id }}" data-inquiry-lot> افزودن به استعلام</label>
-        <label class="field"><span class="field-label">مقدار درخواستی</span><input class="field-input" type="number" min="0.001" step="0.001" name="quantity_{{ card.lot.id }}" value="1" data-inquiry-quantity disabled></label>
-        <div class="muted">موجودی {{ card.stock.label }}{% if card.lot.stock_confirmed_at %} · تأیید {{ card.lot.stock_confirmed_at }}{% endif %}</div>
-      </article>
+        <div class="kv">
+          <span>کد محصول</span>
+          <strong dir="ltr">{{ card.lot.lot_code }}</strong>
+        </div>
+        <div class="muted">
+          موجودی تأییدشده: {{ card.stock.label }}
+          {% if card.stock.confirmed_at %} · {{ card.stock.human_confirmed }}{% endif %}
+        </div>
+        <div class="btn-row">
+          <a class="btn btn-secondary btn-sm" href="{{ card_url }}">جزئیات</a>
+          {% with share_url=card.share_url product=card.product %}
+            {% include "catalog/_share_actions.html" %}
+          {% endwith %}
+        </div>
+      </div>
     {% empty %}
       <div class="empty-state">
-        محصولی با این فیلترها پیدا نشد. فیلترها را ساده‌تر کنید یا بعداً دوباره سر بزنید.
+        محصول آماده معامله‌ای با این فیلترها پیدا نشد. محصولاتی که قیمت یا موجودی
+        آن‌ها منقضی شده باشد تا زمان تأیید مجدد در بازار نمایش داده نمی‌شوند.
       </div>
     {% endfor %}
   </div>
-    <label class="field"><span class="field-label">یادداشت مشترک برای فروشندگان</span><textarea class="field-input" name="note" rows="2"></textarea></label>
-    <div class="selection-bar" role="status" aria-live="polite">
-      <strong><span data-inquiry-count>۰</span> محصول انتخاب شده</strong>
-      <button class="btn btn-primary" type="submit" data-inquiry-submit disabled>ارسال استعلام‌های انتخاب‌شده</button>
-    </div>
-  </form>
 
   {% include "_pager.html" %}
 </section>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'js/marketplace_inquiry.js' %}"></script>{% endblock %}

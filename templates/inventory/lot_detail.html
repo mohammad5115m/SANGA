@@ -11,6 +11,9 @@
       <p class="page-lead" dir="ltr">{{ lot.lot_code }}</p>
     </div>
     <div class="btn-row">
+      {% if can_issue_invoice %}
+      <a class="btn btn-primary" href="{% url 'invoicing:create' %}?item={{ lot.id }}">صدور فاکتور با این محصول</a>
+      {% endif %}
       {% if 'inventory.edit' in capabilities %}
       <a class="btn btn-secondary" href="{% url 'inventory:lot_edit' lot.id %}">ویرایش</a>
       {% endif %}
@@ -79,13 +82,34 @@
 
   <section class="panel stack-md">
     <h2 class="section-title">اشتراک‌گذاری</h2>
-    {% if is_publicly_shareable %}
-    <p class="muted">این لینک اطلاعات مشتری‌پسند را نشان می‌دهد و قیمت همکار در آن دیده نمی‌شود.</p>
-    <div class="field"><input class="field-input" dir="ltr" readonly value="{{ share_url }}"></div>
-    {% with product=lot.product %}{% include "catalog/_share_actions.html" %}{% endwith %}
-    {% else %}
-      <div class="alert-warn">این محصول اکنون عمومی نیست. برای فعال‌شدن لینک، محصول باید فعال، موجود و منتشرشده باشد و کسب‌وکار امکان فروش داشته باشد.</div>
-    {% endif %}
+
+    <div class="stack-sm">
+      <h3>برای همکار</h3>
+      {% if is_partner_shareable %}
+        <p class="muted">
+          این لینک ورود به سنگا می‌خواهد و قیمت همکار را نمایش می‌دهد. اگر خودتان
+          آن را باز کنید، همین صفحه برای صدور دقیق فاکتور باز می‌شود.
+        </p>
+        <div class="field"><input class="field-input" dir="ltr" readonly value="{{ partner_share_url }}"></div>
+        {% with share_url=partner_share_url product=lot.product %}{% include "catalog/_share_actions.html" %}{% endwith %}
+      {% else %}
+        <div class="alert alert-warn">
+          برای اشتراک با همکار، محصول باید منتشر و موجود باشد و قیمت همکار و
+          موجودی تأییدشده و معتبر داشته باشد.
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="stack-sm">
+      <h3>برای مشتری</h3>
+      {% if is_publicly_shareable %}
+        <p class="muted">این لینک فقط اطلاعات مشتری‌پسند را نشان می‌دهد و قیمت همکار در آن دیده نمی‌شود.</p>
+        <div class="field"><input class="field-input" dir="ltr" readonly value="{{ share_url }}"></div>
+        {% with product=lot.product %}{% include "catalog/_share_actions.html" %}{% endwith %}
+      {% else %}
+        <div class="alert alert-warn">این محصول اکنون عمومی نیست. برای فعال‌شدن لینک، محصول باید فعال، موجود و منتشرشده باشد و کسب‌وکار امکان فروش داشته باشد.</div>
+      {% endif %}
+    </div>
   </section>
 
   <section class="panel stack-sm">

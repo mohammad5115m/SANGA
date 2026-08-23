@@ -1,12 +1,12 @@
 {% extends "layouts/app_shell.html" %}
 
-{% block title %}استعلام‌ها | سنگا{% endblock %}
+{% block title %}درخواست‌های خرید | سنگا{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar">
     <div>
-      <h1 class="page-title">استعلام‌های مشتریان</h1>
+      <h1 class="page-title">درخواست‌های خرید مشتریان</h1>
       <p class="page-lead">درخواست‌هایی که از صفحات عمومی رسیده‌اند</p>
     </div>
     <a class="btn btn-ghost" href="{% url 'inquiries:leads' %}">مشتریان</a>
@@ -39,7 +39,7 @@
         <span class="badge">{{ inquiry.get_status_display }}</span>
       </a>
     {% empty %}
-      <div class="empty-state">استعلامی با این فیلتر وجود ندارد.</div>
+      <div class="empty-state">درخواست خریدی با این فیلتر وجود ندارد.</div>
     {% endfor %}
   </div>
 

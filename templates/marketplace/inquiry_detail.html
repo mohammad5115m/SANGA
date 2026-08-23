@@ -1,14 +1,45 @@
 {% extends "layouts/app_shell.html" %}
-{% block title %}جزئیات استعلام | سنگا{% endblock %}
+
+{% block title %}سابقه درخواست همکار | سنگا{% endblock %}
+
 {% block content %}
 <section class="stack-lg">
-  <div><h1 class="page-title">استعلام {{ inquiry.id|stringformat:"s"|slice:":8" }}</h1><p class="page-lead">{{ inquiry.buyer_business.name }} ← {{ inquiry.seller_business.name }} · {{ inquiry.get_status_display }}</p></div>
-  {% if inquiry.buyer_note %}<div class="alert alert-info">{{ inquiry.buyer_note }}</div>{% endif %}
-  <form method="post" class="panel stack-md">{% csrf_token %}
-    {% for item in inquiry.items.all %}<div class="list-item"><div><strong>{{ item.product_name }}</strong><div class="muted">درخواست {{ item.quantity_requested }} {{ item.unit }} · موجودی هنگام ارسال: {{ item.availability_snapshot }}{% if item.availability_checked_at %} ({{ item.availability_checked_at }}){% endif %}</div></div>{% if is_seller %}<div class="form-grid form-grid-compact"><label class="field"><span class="field-label">مقدار پیشنهادی</span><input class="field-input" name="quantity_{{ item.id }}" type="number" step="0.001" value="{{ item.offered_quantity|default:item.quantity_requested }}"></label><label class="field"><span class="field-label">قیمت واحد پیشنهادی</span><input class="field-input" name="price_{{ item.id }}" type="number" step="0.01" value="{{ item.offered_unit_price|default:item.price_snapshot|default:'' }}"></label><label class="field"><span class="field-label">یادداشت ردیف</span><input class="field-input" name="note_{{ item.id }}" value="{{ item.seller_note }}"></label></div>{% else %}<div><strong>{% if item.offered_unit_price %}{{ item.offered_unit_price }} {{ item.currency }}{% else %}در انتظار پیشنهاد{% endif %}</strong></div>{% endif %}</div>{% endfor %}
-    {% if is_seller %}<label class="field"><span class="field-label">یادداشت پاسخ</span><textarea class="field-input" name="seller_note" rows="2">{{ inquiry.seller_note }}</textarea></label><button class="btn btn-secondary" type="submit">ثبت پاسخ</button>{% endif %}
-  </form>
-  {% if is_seller and inquiry.status == 'responded' %}<form method="post" action="{% url 'marketplace:inquiry_convert' inquiry.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit">تبدیل پاسخ به پیش‌نویس فاکتور</button></form>{% endif %}
-  {% if inquiry.converted_invoice %}<a class="btn btn-primary" href="{% url 'invoicing:detail' inquiry.converted_invoice.id %}">مشاهده فاکتور</a>{% endif %}
+  <div>
+    <h1 class="page-title">سابقه قدیمی {{ inquiry.id|stringformat:"s"|slice:":8" }}</h1>
+    <p class="page-lead">{{ inquiry.buyer_business.name }} ← {{ inquiry.seller_business.name }}</p>
+  </div>
+
+  <div class="alert alert-info">
+    جریان استعلام همکاران متوقف شده است. این صفحه فقط برای حفظ سوابق قبلی نمایش
+    داده می‌شود و امکان پاسخ یا ایجاد استعلام جدید ندارد.
+  </div>
+
+  {% if inquiry.buyer_note %}<div class="panel">{{ inquiry.buyer_note }}</div>{% endif %}
+
+  <section class="panel stack-md">
+    {% for item in inquiry.items.all %}
+      <div class="list-item">
+        <div>
+          <strong>{{ item.product_name }}</strong>
+          <div class="muted">
+            {{ item.quantity_requested }} {{ item.unit }}
+            {% if item.availability_snapshot %} · موجودی ثبت‌شده: {{ item.availability_snapshot }}{% endif %}
+          </div>
+        </div>
+        {% if item.offered_unit_price %}
+          <strong>{{ item.offered_unit_price }} {{ item.currency }}</strong>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="empty-state">قلمی در این سابقه ثبت نشده است.</div>
+    {% endfor %}
+  </section>
+
+  <div class="btn-row">
+    {% if inquiry.converted_invoice %}
+      <a class="btn btn-primary" href="{% url 'invoicing:detail' inquiry.converted_invoice.id %}">مشاهده فاکتور مرتبط</a>
+    {% endif %}
+    <a class="btn btn-secondary" href="{% url 'marketplace:home' %}">بازگشت به بازار</a>
+  </div>
 </section>
 {% endblock %}

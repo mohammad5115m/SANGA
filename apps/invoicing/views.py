@@ -358,6 +358,47 @@ def _template_initial(template: InvoiceTemplate) -> tuple[dict, list[dict]]:
     return header, lines
 
 
+def _shared_item_initial(business, item_id):
+    """Build a safe invoice handoff from one product owned by the seller."""
+    from apps.inventory.selectors import get_business_lot
+    from apps.pricing.services import resolve_visible_prices
+
+    try:
+        lot = get_business_lot(business, item_id)
+    except (ValidationError, TypeError, ValueError):
+        lot = None
+    if lot is None:
+        return None, None
+
+    header = {"counterparty_mode": SalesInvoice.Counterparty.BUSINESS}
+    price = resolve_visible_prices(lot, "owner_staff").get("b2b")
+    unit_price = None
+    if price is not None and price.amount is not None:
+        currency = price.currency or SalesInvoice.Currency.IRR
+        settings_row = getattr(business, "invoice_settings", None)
+        display_unit = currency
+        if settings_row is not None and settings_row.default_currency == currency:
+            display_unit = settings_row.default_display_unit
+        header.update({"currency": currency, "display_unit": display_unit})
+        unit_price = to_display_amount(
+            price.amount,
+            currency=currency,
+            display_unit=display_unit,
+        )
+
+    return header, [
+        {
+            "item": lot.id,
+            "product_name": lot.product.commercial_name,
+            "stone_type": lot.product.stone.name,
+            "quantity": lot.min_sale_qty or 1,
+            "unit": "متر مربع",
+            "unit_price": unit_price,
+            "ORDER": 0,
+        }
+    ]
+
+
 @business_login_required
 @require_capability(INVOICE_CREATE)
 @require_business_entitlement(ISSUE_INVOICES)
@@ -376,6 +417,16 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
                 initial, line_initial = _template_initial(template)
             except (TypeError, ValueError):
                 messages.warning(request, "داده‌های این قالب معتبر نیست؛ فرم خالی باز شد.")
+    elif request.method == "GET" and request.GET.get("item"):
+        initial, line_initial = _shared_item_initial(
+            request.business,
+            request.GET.get("item"),
+        )
+        if line_initial:
+            messages.info(
+                request,
+                "محصول اشتراک‌گذاری‌شده دقیقاً در فاکتور قرار گرفت؛ خریدار و متراژ نهایی را بررسی کنید.",
+            )
     form_initial = {**(initial or {})}
     if request.method == "GET":
         form_initial["submission_id"] = new_submission_id()
