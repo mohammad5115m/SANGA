@@ -136,6 +136,43 @@ def test_invalid_phone_rejected():
         request_login_otp("123")
 
 
+@pytest.mark.parametrize("phone", ["09121111111", "09122222222"])
+@pytest.mark.django_db
+def test_explicitly_allowlisted_demo_phone_is_provisioned_and_can_login(client, settings, phone):
+    settings.SMS_PROVIDER = "console"
+    settings.SANGA_LOGIN_PHONE_ALLOWLIST = ["09121111111", "09122222222"]
+    assert not User.objects.filter(phone=phone).exists()
+
+    result = request_login_otp(phone)
+
+    user = User.objects.get(phone=phone)
+    assert user.is_active is True
+    session = client.session
+    session["otp_phone"] = phone
+    session.save()
+    response = client.post(
+        "/auth/verify/",
+        {"phone": phone, "code": result.dev_code},
+        follow=True,
+    )
+    assert response.wsgi_request.user.is_authenticated
+    assert response.wsgi_request.user.phone == phone
+
+
+@pytest.mark.django_db
+def test_allowlisted_login_reactivates_an_existing_user(settings):
+    settings.SMS_PROVIDER = "console"
+    settings.SANGA_LOGIN_PHONE_ALLOWLIST = ["09121111111"]
+    user = _provision("09121111111")
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+
+    request_login_otp(user.phone)
+
+    user.refresh_from_db()
+    assert user.is_active is True
+
+
 # --- Platform provisioning boundary (P0) ------------------------------------
 
 
