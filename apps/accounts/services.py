@@ -60,6 +60,30 @@ TOO_MANY_REQUESTS = "تعداد درخواست‌های شما بیش از حد 
 COOLDOWN_MESSAGE = "لطفاً کمی صبر کنید و دوباره تلاش کنید."
 
 
+def _configured_login_allowlist() -> set[str]:
+    """Return valid, normalized phones explicitly approved for OTP provisioning."""
+    phones: set[str] = set()
+    for raw_phone in getattr(settings, "SANGA_LOGIN_PHONE_ALLOWLIST", []):
+        phone = normalize_phone(str(raw_phone))
+        if phone.startswith("09") and len(phone) == 11:
+            phones.add(phone)
+    return phones
+
+
+def _ensure_allowlisted_login_user(phone: str) -> None:
+    """Provision only a deployment-approved phone; unknown phones stay closed."""
+    if phone not in _configured_login_allowlist():
+        return
+    user, created = User.objects.get_or_create(phone=phone, defaults={"is_active": True})
+    if not created and not user.is_active:
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+    if created:
+        logger.info("Provisioned an explicitly allowlisted OTP login phone")
+    elif user.is_active:
+        logger.info("Confirmed an explicitly allowlisted OTP login phone is active")
+
+
 def _client_ip(request: HttpRequest | None) -> str | None:
     """The address to rate-limit on, which is not simply whatever the client says.
 
@@ -259,6 +283,8 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
     phone = normalize_phone(phone)
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
+
+    _ensure_allowlisted_login_user(phone)
 
     now = timezone.now()
     cooldown = settings.OTP_REQUEST_COOLDOWN_SECONDS
