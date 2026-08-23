@@ -50,7 +50,7 @@
         </div>
       </a>
     {% empty %}
-      <div class="empty-state">{% if q or status or direction or origin or date_from or date_to %}فاکتوری مطابق فیلترها پیدا نشد. فیلترها را پاک کنید یا بازه دیگری انتخاب کنید.{% else %}{% if can_manage %}هنوز فاکتوری ندارید. برای مشتری عمومی «فاکتور جدید» بسازید؛ فاکتور همکار پس از نهایی‌شدن توافق ایجاد می‌شود.{% else %}هنوز فاکتور صادرشده یا دریافتی ندارید.{% endif %}{% endif %}</div>
+      <div class="empty-state">{% if q or status or direction or origin or date_from or date_to %}فاکتوری مطابق فیلترها پیدا نشد. فیلترها را پاک کنید یا بازه دیگری انتخاب کنید.{% else %}{% if can_manage %}هنوز فاکتوری ندارید. برای مشتری یا همکار «فاکتور جدید» بسازید.{% else %}هنوز فاکتور صادرشده یا دریافتی ندارید.{% endif %}{% endif %}</div>
     {% endfor %}
   </div>
 

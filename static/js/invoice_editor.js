@@ -18,6 +18,28 @@
   var customerName = form.elements.customer_name;
   var customerOptions = editor.querySelector("#invoice-customer-options");
 
+  function syncCounterpartyMode() {
+    var selected = form.querySelector('[name="counterparty_mode"]:checked');
+    var mode = selected ? selected.value : "customer";
+    editor.querySelectorAll("[data-counterparty-section]").forEach(function (section) {
+      section.hidden = section.dataset.counterpartySection !== mode;
+    });
+    var partnerSettlement = editor.querySelector("[data-partner-settlement]");
+    if (partnerSettlement) partnerSettlement.hidden = mode === "customer";
+    var customerPaid = form.elements.paid_amount && form.elements.paid_amount.closest("label");
+    if (customerPaid) customerPaid.hidden = mode !== "customer";
+    syncChequeFields();
+  }
+
+  function syncChequeFields() {
+    var chequeFields = editor.querySelector("[data-cheque-fields]");
+    if (!chequeFields) return;
+    var selected = form.querySelector('[name="counterparty_mode"]:checked');
+    var isPartner = selected && selected.value !== "customer";
+    var amount = Number((form.elements.cheque_amount && form.elements.cheque_amount.value) || 0);
+    chequeFields.hidden = !isPartner || amount <= 0;
+  }
+
   function field(row, suffix) {
     return row.querySelector('[name$="-' + suffix + '"]');
   }
@@ -286,7 +308,7 @@
     }
   });
   form.addEventListener("input", changed);
-  form.addEventListener("change", changed);
+  form.addEventListener("change", function () { syncCounterpartyMode(); syncChequeFields(); changed(); });
   if (previewRefresh) {
     previewRefresh.addEventListener("click", function () { requestPreview(true); });
   }
@@ -299,6 +321,7 @@
     });
   }
   lines.querySelectorAll("[data-invoice-line]").forEach(initRow);
+  syncCounterpartyMode();
   renumber();
   changed();
   var errorSummary = editor.querySelector("[data-error-summary]");

@@ -22,7 +22,7 @@ from apps.accounting.models import LedgerEntry
 from apps.accounting.selectors import describe_balance
 from apps.businesses.models import Business
 from apps.inventory.models import InventoryLot
-from apps.invoicing.models import SalesInvoice
+from apps.invoicing.models import ChequeReceivable, SalesInvoice
 from apps.pricing.models import LotPrice
 from apps.trading.models import Trade, TradeItem
 
@@ -306,35 +306,50 @@ def prices_needing_confirmation(business: Business) -> QuerySet[LotPrice]:
 
 
 def invoices_in_range(business: Business, window: DateRange) -> QuerySet[SalesInvoice]:
-    qs = SalesInvoice.objects.filter(seller_business=business).select_related("buyer_business")
-    return window.apply(qs, "issue_date").order_by("-issue_date")
+    visible_received = (
+        SalesInvoice.Status.AWAITING_CONFIRMATION,
+        SalesInvoice.Status.CONFIRMED,
+        SalesInvoice.Status.ISSUED,
+        SalesInvoice.Status.CANCELLED_BY_SENDER,
+        SalesInvoice.Status.CANCELLED,
+    )
+    qs = SalesInvoice.objects.filter(
+        Q(seller_business=business) | Q(buyer_business=business, status__in=visible_received)
+    ).select_related("seller_business", "buyer_business", "local_counterparty")
+    return window.apply(qs, "issue_date").order_by("-issue_date", "-created_at")
 
 
 def invoice_summary(business: Business, window: DateRange) -> dict:
     """Invoice counts and money, with each number meaning one thing.
 
-    ``total`` sums **issued** invoices only. It used to sum everything that was
-    not cancelled, which quietly included drafts — documents nobody has been sent,
-    that may still change and may never be issued at all. A figure labelled «مبلغ
-    فاکتورها» that moves while somebody is typing a draft is not a total of
-    anything the business can act on.
+    ``total`` sums finalized outgoing invoices only. Registered-business invoices
+    finalize as ``confirmed`` while customer and imported legacy documents use
+    ``issued``. Drafts and pending documents never enter a financial total.
 
     Drafts and cancelled documents are still counted, and drafts get their own
     subtotal, so a voided or unfinished document is visible rather than missing —
     without any single number doing two jobs.
     """
     qs = invoices_in_range(business, window)
+    finalized = (SalesInvoice.Status.ISSUED, SalesInvoice.Status.CONFIRMED)
+    cancelled = (SalesInvoice.Status.CANCELLED, SalesInvoice.Status.CANCELLED_BY_SENDER)
     agg = qs.aggregate(
-        issued_count=Count("id", filter=Q(status=SalesInvoice.Status.ISSUED)),
+        issued_count=Count("id", filter=Q(status__in=finalized)),
+        pending_count=Count("id", filter=Q(status=SalesInvoice.Status.AWAITING_CONFIRMATION)),
         draft_count=Count("id", filter=Q(status=SalesInvoice.Status.DRAFT)),
-        cancelled_count=Count("id", filter=Q(status=SalesInvoice.Status.CANCELLED)),
+        cancelled_count=Count("id", filter=Q(status__in=cancelled)),
         total_count=Count("id"),
     )
     currency_labels = dict(SalesInvoice.Currency.choices)
 
-    def totals_for(status: str) -> list[dict]:
+    def totals_for(*, statuses: tuple[str, ...], direction: str = "") -> list[dict]:
+        totals_qs = qs.filter(status__in=statuses)
+        if direction == "sent":
+            totals_qs = totals_qs.filter(seller_business=business)
+        elif direction == "received":
+            totals_qs = totals_qs.filter(buyer_business=business).exclude(seller_business=business)
         rows = (
-            qs.filter(status=status)
+            totals_qs
             .values("currency")
             .annotate(total=Coalesce(Sum("total_amount"), Value(ZERO), output_field=MONEY))
             .order_by("currency")
@@ -348,8 +363,9 @@ def invoice_summary(business: Business, window: DateRange) -> dict:
             for row in rows
         ]
 
-    issued_totals = totals_for(SalesInvoice.Status.ISSUED)
-    draft_totals = totals_for(SalesInvoice.Status.DRAFT)
+    issued_totals = totals_for(statuses=finalized, direction="sent")
+    received_totals = totals_for(statuses=finalized, direction="received")
+    draft_totals = totals_for(statuses=(SalesInvoice.Status.DRAFT,), direction="sent")
 
     def scalar_total(rows: list[dict]) -> Decimal | None:
         if not rows:
@@ -362,12 +378,41 @@ def invoice_summary(business: Business, window: DateRange) -> dict:
         "total": scalar_total(issued_totals),
         "draft_total": scalar_total(draft_totals),
         "totals": issued_totals,
+        "received_totals": received_totals,
         "draft_totals": draft_totals,
         "issued_count": agg["issued_count"],
+        "pending_count": agg["pending_count"],
         "draft_count": agg["draft_count"],
         "cancelled_count": agg["cancelled_count"],
         "total_count": agg["total_count"],
     }
+
+
+def cheques_in_range(business: Business, window: DateRange) -> QuerySet[ChequeReceivable]:
+    """Cheque instruments attached to visible purchase or sale invoices."""
+    qs = ChequeReceivable.objects.filter(
+        Q(invoice__seller_business=business) | Q(invoice__buyer_business=business)
+    ).select_related("invoice", "invoice__seller_business", "invoice__buyer_business")
+    return window.apply(qs, "due_date").order_by("due_date", "reference_number")
+
+
+def cheque_summary(business: Business, window: DateRange) -> dict:
+    qs = cheques_in_range(business, window)
+    counts = qs.aggregate(
+        total_count=Count("id"),
+        pending_count=Count(
+            "id",
+            filter=Q(status__in=(ChequeReceivable.Status.RECEIVED, ChequeReceivable.Status.IN_COLLECTION)),
+        ),
+        cleared_count=Count("id", filter=Q(status=ChequeReceivable.Status.CLEARED)),
+        bounced_count=Count("id", filter=Q(status=ChequeReceivable.Status.BOUNCED)),
+    )
+    totals = list(
+        qs.values("currency")
+        .annotate(total=Coalesce(Sum("amount"), Value(ZERO), output_field=MONEY))
+        .order_by("currency")
+    )
+    return {**counts, "totals": totals}
 
 
 # --- 7. colleague statement is apps.accounting.selectors.counterparty_statement ---

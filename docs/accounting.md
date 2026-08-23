@@ -7,11 +7,10 @@ owed. It does not move money, connect to a bank, or settle anything: payments
 happen outside SANGA and are recorded after the fact, exactly as the trader
 already does on paper.
 
-Explicitly out of scope, and not "not yet": cheque management, bank
-reconciliation, instalment schedules, payment gateways, VAT engines, and
-tax-authority integration. A cheque number lives in the «مرجع» field if the user
-wants to remember it. Half-implementing any of these produces a second set of
-books that disagrees with the real one.
+Bank reconciliation, payment gateways, VAT engines, and tax-authority integration
+remain out of scope. Invoice settlement can be allocated to cash, credit and cheque;
+cheques have append-only status events. These allocations describe the commercial
+document and never claim that SANGA moved money through a bank.
 
 All amounts are **IRR**. Nothing converts to Toman anywhere.
 

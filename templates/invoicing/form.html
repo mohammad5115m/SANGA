@@ -21,7 +21,7 @@
   </div>
   {% endif %}
 
-  <div class="alert alert-info">فروش به همکار فقط از <a href="{% url 'trading:proposal_create' %}">توافق دوطرفه</a> انجام می‌شود تا دقیقاً یک معامله، دو سند دفتر حساب و یک فاکتور ایجاد شود.</div>
+  <div class="alert alert-info">فاکتور، نقطه شروع و سند مرجع فروش است. فروش مشتری با دریافت کامل، فروش همکار ثبت‌شده با تأیید خریدار و فروش همکار محلی با ثبت تأیید آفلاین نهایی می‌شود.</div>
 
   <div class="invoice-editor-layout">
     <form method="post" enctype="multipart/form-data" class="invoice-form stack-md" novalidate data-invoice-form data-unsaved-warning data-preview-url="{% url 'invoicing:preview' %}">
@@ -44,14 +44,25 @@
       <section class="panel stack-md invoice-section" aria-labelledby="invoice-party-title">
         <div>
           <h2 class="section-title" id="invoice-party-title">اطلاعات فاکتور و خریدار</h2>
-          <p class="muted">نام خریدار الزامی است؛ شماره تماس و آدرس برای تکمیل سند استفاده می‌شوند.</p>
+          <p class="muted">نوع خریدار را انتخاب کنید؛ فقط اطلاعات مرتبط همان مسیر ذخیره می‌شود.</p>
         </div>
+        <div class="invoice-counterparty-switch" data-counterparty-switch>{{ form.counterparty_mode }}</div>
+        {% if form.counterparty_mode.errors %}<span class="field-error">{{ form.counterparty_mode.errors|striptags }}</span>{% endif %}
         <div class="form-grid invoice-party-grid">
           {% for field in form %}
             {% if field.name in 'customer_name customer_phone buyer_address issue_date' %}
-            <label class="field field-{{ field.name }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+            <label class="field field-{{ field.name }}" {% if field.name != 'issue_date' %}data-counterparty-section="customer"{% endif %}><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
             {% endif %}
           {% endfor %}
+        </div>
+        <div class="form-grid" data-counterparty-section="business">
+          <label class="field"><span class="field-label">{{ form.buyer_business.label }}</span>{{ form.buyer_business }}{% if form.buyer_business.errors %}<span class="field-error">{{ form.buyer_business.errors|striptags }}</span>{% endif %}</label>
+        </div>
+        <div class="form-grid" data-counterparty-section="local">
+          <label class="field"><span class="field-label">{{ form.local_counterparty.label }}</span>{{ form.local_counterparty }}{% if form.local_counterparty.errors %}<span class="field-error">{{ form.local_counterparty.errors|striptags }}</span>{% endif %}</label>
+          <label class="field"><span class="field-label">{{ form.local_name.label }}</span>{{ form.local_name }}{% if form.local_name.errors %}<span class="field-error">{{ form.local_name.errors|striptags }}</span>{% endif %}</label>
+          <label class="field"><span class="field-label">{{ form.local_phone.label }}</span>{{ form.local_phone }}</label>
+          <label class="field"><span class="field-label">{{ form.local_address.label }}</span>{{ form.local_address }}</label>
         </div>
       </section>
 
@@ -80,11 +91,30 @@
           </div>
         </div>
 
+        <section class="stack-sm" data-partner-settlement>
+          <h3 class="section-subtitle">تسویه همکار</h3>
+          <p class="muted">جمع نقد، اعتبار و چک باید دقیقاً با مبلغ نهایی برابر باشد.</p>
+          <div class="form-grid form-grid-compact">
+            {% for field in form %}
+              {% if field.name in 'settlement_method cash_amount credit_amount cheque_amount' %}
+              <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <div class="form-grid form-grid-compact" data-cheque-fields>
+            {% for field in form %}
+              {% if field.name in 'cheque_reference cheque_bank cheque_due_date cheque_drawer' %}
+              <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </section>
+
         <div class="invoice-live-total" aria-live="polite"><span>برآورد قابل پرداخت</span><strong data-invoice-total>۰</strong></div>
         <p class="muted invoice-calculation-note">همه مبالغ هنگام ذخیره دوباره در سرور محاسبه می‌شوند.</p>
         <div class="invoice-submit-row">
           <button class="btn btn-secondary" name="action" value="draft" type="submit">ذخیره پیش‌نویس</button>
-          <button class="btn btn-primary" name="action" value="issue" type="submit" data-confirm="پس از صدور، اقلام و مبالغ تغییرناپذیر می‌شوند. ادامه می‌دهید؟">صدور فاکتور</button>
+          <button class="btn btn-primary" name="action" value="issue" type="submit" data-confirm="پس از نهایی‌شدن یا ارسال، نسخه ثبت‌شده تغییرناپذیر است. ادامه می‌دهید؟">صدور یا ارسال</button>
         </div>
       </section>
     </form>

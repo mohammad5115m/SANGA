@@ -40,9 +40,7 @@
       <a class="btn btn-ghost" href="{% url 'invoicing:list' %}">فاکتورها</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'marketplace:home' %}">بازار همکاران</a>
-    {% if 'trade.propose' in capabilities or 'trade.confirm' in capabilities %}
-      <a class="btn btn-ghost" href="{% url 'trading:proposal_list' %}">توافق‌های خرید و فروش</a>
-    {% endif %}
+    <a class="btn btn-ghost" href="{% url 'marketplace:inquiries' %}">استعلام‌های همکاران</a>
     <a class="btn btn-ghost" href="{% url 'notifications:list' %}">اعلان‌ها</a>
     {% if current_business %}
       <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین عمومی</a>

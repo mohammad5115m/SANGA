@@ -62,7 +62,7 @@
 
   <div class="btn-row">
     {% if 'trade.propose' in capabilities %}
-      <a class="btn btn-primary" href="{% url 'trading:request_create' lot.id %}">ثبت توافق برای این محصول</a>
+      <form method="post" action="{% url 'marketplace:inquiry_create' %}" class="btn-row">{% csrf_token %}<input type="hidden" name="submission_id" value="{{ submission_id }}"><input type="hidden" name="lot" value="{{ lot.id }}"><input class="field-input" type="number" min="0.001" step="0.001" name="quantity_{{ lot.id }}" value="1" aria-label="مقدار درخواستی"><button class="btn btn-primary" type="submit">افزودن و ارسال استعلام</button></form>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'businesses:colleague_detail' supplier.id %}">صفحه همکار</a>
   </div>

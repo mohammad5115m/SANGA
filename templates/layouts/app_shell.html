@@ -33,11 +33,7 @@ hourly, so the primary bar stays short enough to read on a phone.
       <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
          href="{% url 'marketplace:home' %}"
          {% if request.resolver_match.app_name == 'marketplace' %}aria-current="page"{% endif %}>بازار</a>
-      {% if 'trade.propose' in capabilities or 'trade.confirm' in capabilities %}
-        <a class="topbar-link {% if request.resolver_match.app_name == 'trading' %}is-active{% endif %}"
-           href="{% url 'trading:proposal_list' %}"
-           {% if request.resolver_match.app_name == 'trading' %}aria-current="page"{% endif %}>خرید و فروش</a>
-      {% endif %}
+      {% if 'invoice.view' in capabilities %}<a class="topbar-link {% if request.resolver_match.app_name == 'invoicing' %}is-active{% endif %}" href="{% url 'invoicing:list' %}" {% if request.resolver_match.app_name == 'invoicing' %}aria-current="page"{% endif %}>فاکتورها</a>{% endif %}
       {% if can_manage_catalogs %}
         <a class="topbar-link {% if request.resolver_match.app_name == 'catalog_manage' %}is-active{% endif %}"
            href="{% url 'catalog_manage:list' %}"

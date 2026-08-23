@@ -42,6 +42,16 @@ SALE_FINALIZE: Final = TRADE_CONFIRM
 # --- invoicing ----------------------------------------------------------------
 INVOICE_VIEW: Final = "invoice.view"
 INVOICE_MANAGE: Final = "invoice.manage"
+INVOICE_CREATE: Final = "invoice.create"
+INVOICE_SEND: Final = "invoice.send"
+INVOICE_CONFIRM: Final = "invoice.confirm"
+INVOICE_OFFLINE_APPROVE: Final = "invoice.offline_approve"
+BUSINESS_SIGNATURE_MANAGE: Final = "invoice.business_signature.manage"
+LOCAL_COUNTERPARTY_MANAGE: Final = "counterparty.local.manage"
+COUNTERPARTY_LINK_PROPOSE: Final = "counterparty.link.propose"
+COUNTERPARTY_LINK_APPROVE: Final = "counterparty.link.approve"
+CHEQUE_MANAGE: Final = "cheque.manage"
+REPORT_VIEW: Final = "report.view"
 
 # --- money --------------------------------------------------------------------
 LEDGER_VIEW: Final = "ledger.view"
@@ -70,6 +80,16 @@ ALL_CAPABILITIES: Final[tuple[str, ...]] = (
     TRADE_CONFIRM,
     INVOICE_VIEW,
     INVOICE_MANAGE,
+    INVOICE_CREATE,
+    INVOICE_SEND,
+    INVOICE_CONFIRM,
+    INVOICE_OFFLINE_APPROVE,
+    BUSINESS_SIGNATURE_MANAGE,
+    LOCAL_COUNTERPARTY_MANAGE,
+    COUNTERPARTY_LINK_PROPOSE,
+    COUNTERPARTY_LINK_APPROVE,
+    CHEQUE_MANAGE,
+    REPORT_VIEW,
     LEDGER_VIEW,
     LEDGER_MANAGE,
     LEADS_VIEW,
@@ -95,6 +115,16 @@ CAPABILITY_LABELS: Final[dict[str, str]] = {
     TRADE_CONFIRM: "تأیید معامله",
     INVOICE_VIEW: "دیدن فاکتورها",
     INVOICE_MANAGE: "صدور و مدیریت فاکتور",
+    INVOICE_CREATE: "ساخت و ویرایش پیش‌نویس فاکتور",
+    INVOICE_SEND: "ارسال فاکتور همکار",
+    INVOICE_CONFIRM: "تأیید یا رد فاکتور دریافتی",
+    INVOICE_OFFLINE_APPROVE: "ثبت تأیید آفلاین همکار محلی",
+    BUSINESS_SIGNATURE_MANAGE: "مدیریت امضای رسمی کسب‌وکار",
+    LOCAL_COUNTERPARTY_MANAGE: "مدیریت همکاران محلی",
+    COUNTERPARTY_LINK_PROPOSE: "پیشنهاد اتصال همکار محلی",
+    COUNTERPARTY_LINK_APPROVE: "تأیید انتقال سابقه همکار محلی",
+    CHEQUE_MANAGE: "مدیریت وضعیت چک‌ها",
+    REPORT_VIEW: "مشاهده گزارش‌ها",
     LEDGER_VIEW: "دیدن دفتر حساب",
     LEDGER_MANAGE: "ثبت سند مالی",
     LEADS_VIEW: "دیدن استعلام مشتریان",
@@ -121,6 +151,14 @@ ROLE_DEFAULTS: Final[dict[str, tuple[str, ...]]] = {
         TRADE_PROPOSE,
         TRADE_CONFIRM,
         INVOICE_VIEW,
+        INVOICE_CREATE,
+        INVOICE_SEND,
+        INVOICE_CONFIRM,
+        INVOICE_OFFLINE_APPROVE,
+        LOCAL_COUNTERPARTY_MANAGE,
+        COUNTERPARTY_LINK_PROPOSE,
+        CHEQUE_MANAGE,
+        REPORT_VIEW,
         LEADS_VIEW,
         LEADS_MANAGE,
         CATALOG_MANAGE,

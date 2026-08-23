@@ -5,11 +5,14 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
+from apps.accounting.models import LedgerEntry
 from apps.businesses.models import Business
-from apps.core.testing import expire_price, expire_stock, make_business, make_item, make_product
+from apps.core.testing import expire_price, expire_stock, make_business, make_item, make_product, owner_membership
 from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
+from apps.marketplace.models import PartnerInquiry
 from apps.marketplace.selectors import filter_marketplace_lots, get_marketplace_lot, marketplace_lots_for
+from apps.marketplace.services import convert_inquiry_to_invoice, create_grouped_inquiries, respond_to_inquiry
 from apps.pricing.services import ensure_default_tiers
 
 
@@ -203,3 +206,48 @@ def test_filter_spec_ignores_unusable_input():
     )
     assert spec.price_min is None
     assert spec.sort == "recent"
+
+
+@pytest.mark.django_db
+def test_multi_seller_selection_creates_one_inquiry_per_seller():
+    buyer = make_business(name="خریدار گروهی", owner_phone="09123330101")
+    first = make_business(name="فروشنده اول", owner_phone="09123330102")
+    second = make_business(name="فروشنده دوم", owner_phone="09123330103")
+    first_item = make_item(first, lot_code="GROUP-1", b2b="100")
+    second_item = make_item(second, lot_code="GROUP-2", b2b="200")
+    batch = create_grouped_inquiries(
+        buyer_business=buyer,
+        user=buyer.memberships.get(role="owner").user,
+        selections=[
+            {"lot_id": first_item.id, "quantity": "2"},
+            {"lot_id": second_item.id, "quantity": "3"},
+        ],
+    )
+    assert batch.inquiries.count() == 2
+    assert set(batch.inquiries.values_list("seller_business_id", flat=True)) == {first.id, second.id}
+    assert PartnerInquiry.objects.get(seller_business=first).items.get().quantity_requested == Decimal("2")
+
+
+@pytest.mark.django_db
+def test_responded_inquiry_converts_to_one_financially_inert_invoice(network):
+    batch = create_grouped_inquiries(
+        buyer_business=network["buyer"],
+        user=owner_membership(network["buyer"]).user,
+        selections=[{"lot_id": network["item"].id, "quantity": "2"}],
+    )
+    inquiry = batch.inquiries.get()
+    item = inquiry.items.get()
+    seller_member = owner_membership(network["supplier"])
+    respond_to_inquiry(
+        inquiry=inquiry,
+        membership=seller_member,
+        offers={str(item.id): {"quantity": "2", "unit_price": "900000", "note": "موجود"}},
+    )
+    invoice = convert_inquiry_to_invoice(inquiry=inquiry, membership=seller_member)
+    repeated = convert_inquiry_to_invoice(inquiry=inquiry, membership=seller_member)
+    assert invoice.id == repeated.id
+    assert invoice.status == "draft"
+    assert invoice.buyer_business_id == network["buyer"].id
+    assert invoice.items.get().quantity == Decimal("2")
+    assert invoice.trade_id is None
+    assert not LedgerEntry.objects.filter(related_invoice=invoice).exists()

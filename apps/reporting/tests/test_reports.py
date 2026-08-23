@@ -257,12 +257,14 @@ def test_cancelled_invoices_are_counted_but_not_totalled(books):
         membership=books["membership"],
         lines=[line],
         customer_name="مشتری نقدی",
+        paid_amount=Decimal("10000000"),
     )
     doomed = create_manual_invoice(
         business=books["seller"],
         membership=books["membership"],
         lines=[line],
         customer_name="مشتری نقدی",
+        paid_amount=Decimal("10000000"),
     )
     cancel_invoice(
         invoice=doomed, membership=books["membership"], reason="ابطال آزمون"

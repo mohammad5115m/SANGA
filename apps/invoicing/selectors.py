@@ -13,7 +13,13 @@ from .models import SalesInvoice
 #: been sent, and watch it change. A cancelled document stays visible because a
 #: buyer who was sent one needs to see that it was voided rather than find it
 #: missing.
-BUYER_VISIBLE_STATUSES = (SalesInvoice.Status.ISSUED, SalesInvoice.Status.CANCELLED)
+BUYER_VISIBLE_STATUSES = (
+    SalesInvoice.Status.AWAITING_CONFIRMATION,
+    SalesInvoice.Status.CONFIRMED,
+    SalesInvoice.Status.ISSUED,
+    SalesInvoice.Status.CANCELLED_BY_SENDER,
+    SalesInvoice.Status.CANCELLED,
+)
 
 
 def invoices_for(business: Business) -> QuerySet[SalesInvoice]:
@@ -26,18 +32,17 @@ def invoices_for(business: Business) -> QuerySet[SalesInvoice]:
     """
     return (
         SalesInvoice.objects.filter(
-            Q(seller_business=business)
-            | Q(buyer_business=business, status__in=BUYER_VISIBLE_STATUSES)
+            Q(seller_business=business) | Q(buyer_business=business, status__in=BUYER_VISIBLE_STATUSES)
         )
-        .select_related("seller_business", "buyer_business", "trade")
+        .select_related("seller_business", "buyer_business", "local_counterparty", "trade")
+        .prefetch_related("revisions", "settlement_events", "cheques")
     )
 
 
 def invoices_between(business: Business, colleague: Business) -> QuerySet[SalesInvoice]:
     """Everything exchanged with one colleague, in either direction."""
     return invoices_for(business).filter(
-        Q(seller_business=business, buyer_business=colleague)
-        | Q(seller_business=colleague, buyer_business=business)
+        Q(seller_business=business, buyer_business=colleague) | Q(seller_business=colleague, buyer_business=business)
     )
 
 
@@ -90,11 +95,7 @@ def filter_invoices(
     if status:
         qs = qs.filter(status=status)
     if q:
-        qs = qs.filter(
-            Q(number__icontains=q)
-            | Q(buyer_name__icontains=q)
-            | Q(seller_business__name__icontains=q)
-        )
+        qs = qs.filter(Q(number__icontains=q) | Q(buyer_name__icontains=q) | Q(seller_business__name__icontains=q))
     if direction == "sent":
         qs = qs.filter(seller_business=business)
     elif direction == "received":

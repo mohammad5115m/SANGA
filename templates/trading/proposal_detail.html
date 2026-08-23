@@ -36,22 +36,8 @@
     </div>
   </section>
 
-  {% if can_answer %}
-    <div class="alert alert-warn">با تأیید شما، معامله، دو سند دفتر حساب و فاکتور نهایی در یک مرحله ثبت می‌شوند.</div>
-    <div class="btn-row">
-      <form method="post" action="{% url 'trading:proposal_confirm' proposal.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="با تأیید، معامله نهایی و اسناد مالی و فاکتور ثبت می‌شوند. ادامه می‌دهید؟">تأیید و نهایی‌کردن معامله</button></form>
-      <form method="post" action="{% url 'trading:proposal_reject' proposal.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این توافق رد شود؟">رد توافق</button></form>
-    </div>
-  {% elif is_initiator and proposal.status == 'draft' %}
-    <div class="btn-row">
-      <a class="btn btn-primary" href="{% url 'trading:proposal_edit' proposal.id %}">ویرایش پیش‌نویس</a>
-      <form method="post" action="{% url 'trading:proposal_submit' proposal.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">ارسال برای تأیید</button></form>
-      <form method="post" action="{% url 'trading:proposal_cancel' proposal.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit" data-confirm="این پیش‌نویس لغو شود؟">لغو</button></form>
-    </div>
-  {% elif is_initiator and proposal.status == 'pending' %}
-    <div class="alert alert-info">این توافق در انتظار تأیید {{ other_business.name }} است و هنوز اثر مالی ندارد.</div>
-    <form method="post" action="{% url 'trading:proposal_cancel' proposal.id %}">{% csrf_token %}<button class="btn btn-ghost" type="submit" data-confirm="توافق ارسال‌شده لغو شود؟">لغو توافق</button></form>
-  {% elif proposal.status == 'confirmed' and proposal.trade_id %}
+  <div class="alert alert-info">این صفحه فقط سابقه روند بازنشسته‌شده توافق است. فروش و تأیید جدید از مسیر فاکتور انجام می‌شود.</div>
+  {% if proposal.status == 'confirmed' and proposal.trade_id %}
     <a class="btn btn-primary" href="{% url 'trading:trade_detail' proposal.trade_id %}">مشاهده معامله و فاکتور</a>
   {% endif %}
 </section>

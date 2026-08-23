@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from apps.businesses.entitlements import ISSUE_INVOICES, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import INVOICE_MANAGE, TRADE_CONFIRM
+from apps.businesses.permissions import INVOICE_CREATE, INVOICE_MANAGE, TRADE_CONFIRM
 
 from .calculations import (
     DISCOUNT_AMOUNT,
@@ -47,18 +47,15 @@ def _readable_on_white(color: str) -> bool:
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
         return False
     channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
-    linear = [
-        channel / 12.92
-        if channel <= 0.04045
-        else ((channel + 0.055) / 1.055) ** 2.4
-        for channel in channels
-    ]
+    linear = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
     luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
     return 1.05 / (luminance + 0.05) >= 4.5
 
 
 def _require_manage(business: Business, membership: BusinessMembership) -> None:
-    if membership is None or not membership.has_capability(INVOICE_MANAGE):
+    if membership is None or not (
+        membership.has_capability(INVOICE_CREATE) or membership.has_capability(INVOICE_MANAGE)
+    ):
         raise InvoiceError("اجازه مدیریت فاکتور را ندارید.")
     _require_seller_may_invoice(business, membership)
 
@@ -89,9 +86,7 @@ def seller_snapshot(business: Business, settings_row: BusinessInvoiceSettings) -
     }
 
 
-def appearance_snapshot(
-    settings_row: BusinessInvoiceSettings, overrides: dict | None = None
-) -> dict:
+def appearance_snapshot(settings_row: BusinessInvoiceSettings, overrides: dict | None = None) -> dict:
     asset_prefix = f"invoice-assets/{settings_row.business_id}/"
 
     def safe_asset(field) -> str:
@@ -101,14 +96,8 @@ def appearance_snapshot(
     configured_color = str(settings_row.primary_color or "")
     result = {
         "palette": settings_row.palette if settings_row.palette in PALETTES else "forest",
-        "primary_color": (
-            configured_color.lower()
-            if _readable_on_white(configured_color)
-            else "#1f513c"
-        ),
-        "header_style": (
-            settings_row.header_style if settings_row.header_style in HEADER_STYLES else "modern"
-        ),
+        "primary_color": (configured_color.lower() if _readable_on_white(configured_color) else "#1f513c"),
+        "header_style": (settings_row.header_style if settings_row.header_style in HEADER_STYLES else "modern"),
         "logo_size": settings_row.logo_size if settings_row.logo_size in LOGO_SIZES else "medium",
         "show_bank_information": bool(settings_row.show_bank_information),
         "show_stamp": bool(settings_row.show_stamp),
@@ -161,9 +150,7 @@ def _clean_lines(
 ) -> list[dict]:
     def storage_amount(value, label: str):
         try:
-            return to_storage_amount(
-                value, currency=currency, display_unit=display_unit, label=label
-            )
+            return to_storage_amount(value, currency=currency, display_unit=display_unit, label=label)
         except InvoiceCalculationError as exc:
             raise InvoiceError(str(exc)) from exc
 
@@ -207,10 +194,9 @@ def _clean_lines(
             {
                 "item": item,
                 "product_name": name,
-                "stone_type": str(
-                    source.get("stone_type")
-                    or (item.product.stone.name if item is not None else "")
-                )[:100],
+                "stone_type": str(source.get("stone_type") or (item.product.stone.name if item is not None else ""))[
+                    :100
+                ],
                 "grade": str(source.get("grade") or "")[:50],
                 "description": str(source.get("description") or "").strip(),
                 "quantity": source.get("quantity"),
@@ -328,15 +314,11 @@ def create_invoice_for_trade(
     _require_seller_may_invoice(business, membership)
     if issue is None:
         issue = membership.has_capability(INVOICE_MANAGE)
-    return _create_invoice_for_trade(
-        trade=trade, created_by=membership.user, notes=notes, issue=issue
-    )
+    return _create_invoice_for_trade(trade=trade, created_by=membership.user, notes=notes, issue=issue)
 
 
 @transaction.atomic
-def create_invoice_for_confirmed_trade(
-    *, trade, membership: BusinessMembership, notes: str = ""
-) -> SalesInvoice:
+def create_invoice_for_confirmed_trade(*, trade, membership: BusinessMembership, notes: str = "") -> SalesInvoice:
     if membership is None or not membership.has_capability(TRADE_CONFIRM):
         raise InvoiceError("اجازه تأیید معامله را ندارید.")
     if membership.business_id not in {trade.seller_business_id, trade.buyer_business_id}:
@@ -348,9 +330,7 @@ def create_invoice_for_confirmed_trade(
         require_entitlement(trade.seller_business, ISSUE_INVOICES)
     except EntitlementError as exc:
         raise InvoiceError(exc.message) from exc
-    return _create_invoice_for_trade(
-        trade=trade, created_by=membership.user, notes=notes, issue=True
-    )
+    return _create_invoice_for_trade(trade=trade, created_by=membership.user, notes=notes, issue=True)
 
 
 def _create_invoice_for_trade(*, trade, created_by, notes: str, issue: bool) -> SalesInvoice:
@@ -413,14 +393,8 @@ def _create_invoice_for_trade(*, trade, created_by, notes: str, issue: bool) -> 
                 customer_name=trade.customer_name,
                 customer_phone=trade.customer_phone,
                 buyer_name=trade.counterparty_label,
-                buyer_phone=(
-                    trade.buyer_business.phone
-                    if trade.buyer_business_id
-                    else trade.customer_phone
-                ),
-                buyer_address=(
-                    trade.buyer_business.address if trade.buyer_business_id else ""
-                ),
+                buyer_phone=(trade.buyer_business.phone if trade.buyer_business_id else trade.customer_phone),
+                buyer_address=(trade.buyer_business.address if trade.buyer_business_id else ""),
                 trade=trade,
                 issue_date=timezone.localdate(),
                 status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
@@ -480,16 +454,18 @@ def create_manual_invoice(
     submission_id: uuid.UUID | None = None,
 ) -> SalesInvoice:
     _require_manage(business, membership)
+    requested_issue = issue
+    issue = False
     if submission_id is not None:
-        existing = SalesInvoice.objects.filter(
-            seller_business=business, submission_id=submission_id
-        ).first()
+        existing = SalesInvoice.objects.filter(seller_business=business, submission_id=submission_id).first()
         if existing is not None:
+            if requested_issue and existing.status == SalesInvoice.Status.DRAFT:
+                from .partner_services import finalize_customer_invoice
+
+                return finalize_customer_invoice(invoice=existing, membership=membership)
             return existing
     if buyer_business is not None:
-        raise InvoiceError(
-            "فروش به همکار باید از «توافق معامله» ثبت شود تا حساب‌ها به‌روز شوند."
-        )
+        raise InvoiceError("فروش به همکار باید از حالت «همکار» همین فرم فاکتور ثبت شود.")
     customer_name = str(customer_name or "").strip()
     if not customer_name:
         raise InvoiceError("نام خریدار را وارد کنید.")
@@ -518,18 +494,10 @@ def create_manual_invoice(
         adjustment_amount=adjustment_amount,
         paid_amount=paid_amount,
     )
-    if issue:
-        Business.objects.select_for_update().get(pk=business.pk)
-        if submission_id is not None:
-            existing = SalesInvoice.objects.filter(
-                seller_business=business, submission_id=submission_id
-            ).first()
-            if existing is not None:
-                return existing
     invoice = SalesInvoice(
         seller_business=business,
         submission_id=submission_id,
-        number=allocate_number(business) if issue else "",
+        number="",
         counterparty_type=SalesInvoice.Counterparty.CUSTOMER,
         buyer_business=None,
         customer_name=customer_name,
@@ -538,18 +506,16 @@ def create_manual_invoice(
         buyer_phone=customer_phone,
         buyer_address=(buyer_address or "").strip(),
         issue_date=issue_date or timezone.localdate(),
-        status=SalesInvoice.Status.ISSUED if issue else SalesInvoice.Status.DRAFT,
-        issued_at=timezone.now() if issue else None,
-        issued_by=membership.user if issue else None,
+        status=SalesInvoice.Status.DRAFT,
+        issued_at=None,
+        issued_by=None,
         currency=currency,
         display_unit=display_unit,
         notes=(notes or "").strip(),
         payment_terms=(payment_terms or settings_row.payment_terms).strip(),
-        seller_snapshot=seller_snapshot(business, settings_row) if issue else {},
+        seller_snapshot={},
         appearance_snapshot=appearance_snapshot(settings_row, appearance),
-        buyer_signature=(
-            None if remove_buyer_signature and not buyer_signature else buyer_signature
-        ),
+        buyer_signature=(None if remove_buyer_signature and not buyer_signature else buyer_signature),
         created_by=membership.user,
     )
     _assign_totals(invoice, totals)
@@ -560,13 +526,15 @@ def create_manual_invoice(
     except IntegrityError:
         if submission_id is None:
             raise
-        winner = SalesInvoice.objects.filter(
-            seller_business=business, submission_id=submission_id
-        ).first()
+        winner = SalesInvoice.objects.filter(seller_business=business, submission_id=submission_id).first()
         if winner is None:
             raise
         logger.info("Duplicate manual invoice submission resolved to %s", winner.pk)
-        return winner
+        invoice = winner
+    if requested_issue:
+        from .partner_services import finalize_customer_invoice
+
+        return finalize_customer_invoice(invoice=invoice, membership=membership)
     return invoice
 
 
@@ -584,9 +552,7 @@ def update_draft_invoice(
     if invoice.status != SalesInvoice.Status.DRAFT:
         raise InvoiceError("فقط پیش‌نویس قابل ویرایش است.")
     if expected_version is not None and invoice.version != expected_version:
-        raise InvoiceError(
-            "این پیش‌نویس پس از باز شدن صفحه تغییر کرده است. صفحه را تازه‌سازی کنید."
-        )
+        raise InvoiceError("این پیش‌نویس پس از باز شدن صفحه تغییر کرده است. صفحه را تازه‌سازی کنید.")
     business = invoice.seller_business
     currency = header.get("currency", invoice.currency)
     display_unit = header.get("display_unit", invoice.display_unit)
@@ -628,12 +594,8 @@ def update_draft_invoice(
     invoice.currency = currency
     invoice.display_unit = display_unit
     invoice.notes = (header.get("notes") or "").strip()
-    invoice.payment_terms = (
-        header.get("payment_terms") or settings_row.payment_terms
-    ).strip()
-    invoice.appearance_snapshot = appearance_snapshot(
-        settings_row, header.get("appearance")
-    )
+    invoice.payment_terms = (header.get("payment_terms") or settings_row.payment_terms).strip()
+    invoice.appearance_snapshot = appearance_snapshot(settings_row, header.get("appearance"))
     if header.get("buyer_signature"):
         invoice.buyer_signature = header["buyer_signature"]
     elif header.get("remove_buyer_signature"):
@@ -647,18 +609,17 @@ def update_draft_invoice(
 
 @transaction.atomic
 def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
-    invoice = SalesInvoice.objects.select_for_update().select_related("seller_business").get(
-        pk=invoice.pk
-    )
+    invoice = SalesInvoice.objects.select_for_update().select_related("seller_business").get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
+    if invoice.counterparty_type == SalesInvoice.Counterparty.CUSTOMER:
+        from .partner_services import finalize_customer_invoice
+
+        return finalize_customer_invoice(invoice=invoice, membership=membership)
     if invoice.status == SalesInvoice.Status.ISSUED:
         return invoice
     if invoice.status == SalesInvoice.Status.CANCELLED:
         raise InvoiceError("فاکتور باطل‌شده قابل صدور نیست.")
-    if (
-        invoice.previous_balance_included
-        and invoice.previous_balance_currency != invoice.currency
-    ):
+    if invoice.previous_balance_included and invoice.previous_balance_currency != invoice.currency:
         raise InvoiceError("مانده با ارز متفاوت را نمی‌توان در مبلغ قابل پرداخت جمع کرد.")
     stored_lines = [
         {
@@ -718,9 +679,7 @@ def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> S
 
 
 @transaction.atomic
-def cancel_invoice(
-    *, invoice: SalesInvoice, membership: BusinessMembership, reason: str
-) -> SalesInvoice:
+def cancel_invoice(*, invoice: SalesInvoice, membership: BusinessMembership, reason: str) -> SalesInvoice:
     invoice = SalesInvoice.objects.select_for_update().get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     if invoice.status == SalesInvoice.Status.DRAFT:
@@ -747,9 +706,7 @@ def cancel_invoice(
 
 
 @transaction.atomic
-def delete_draft_invoice(
-    *, invoice: SalesInvoice, membership: BusinessMembership
-) -> None:
+def delete_draft_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> None:
     invoice = SalesInvoice.objects.select_for_update().get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     if invoice.status != SalesInvoice.Status.DRAFT:
@@ -758,14 +715,8 @@ def delete_draft_invoice(
 
 
 @transaction.atomic
-def create_replacement_invoice(
-    *, invoice: SalesInvoice, membership: BusinessMembership, reason: str
-) -> SalesInvoice:
-    invoice = (
-        SalesInvoice.objects.select_for_update()
-        .prefetch_related("items")
-        .get(pk=invoice.pk)
-    )
+def create_replacement_invoice(*, invoice: SalesInvoice, membership: BusinessMembership, reason: str) -> SalesInvoice:
+    invoice = SalesInvoice.objects.select_for_update().prefetch_related("items").get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     existing = SalesInvoice.objects.filter(replaces_invoice=invoice).first()
     if existing is not None:
@@ -773,9 +724,7 @@ def create_replacement_invoice(
     if invoice.status != SalesInvoice.Status.ISSUED:
         raise InvoiceError("فقط فاکتور صادرشده قابل اصلاح است.")
     if invoice.counterparty_type != SalesInvoice.Counterparty.CUSTOMER:
-        raise InvoiceError(
-            "اصلاح فاکتور معامله باید از مسیر همان توافق انجام شود تا اسناد متناقض نشوند."
-        )
+        raise InvoiceError("اصلاح فاکتور معامله باید از مسیر همان توافق انجام شود تا اسناد متناقض نشوند.")
     replacement = duplicate_invoice(invoice=invoice, membership=membership)
     replacement.replaces_invoice = invoice
     replacement.save(update_fields=["replaces_invoice", "updated_at"])
@@ -848,9 +797,7 @@ def duplicate_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) 
     return copy
 
 
-def save_as_template(
-    *, invoice: SalesInvoice, name: str, membership: BusinessMembership
-) -> InvoiceTemplate:
+def save_as_template(*, invoice: SalesInvoice, name: str, membership: BusinessMembership) -> InvoiceTemplate:
     _require_manage(invoice.seller_business, membership)
     if invoice.counterparty_type == SalesInvoice.Counterparty.BUSINESS:
         raise InvoiceError("فاکتور همکار فقط از توافق دوطرفه ساخته می‌شود و قالب دستی ندارد.")

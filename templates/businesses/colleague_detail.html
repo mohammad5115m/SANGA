@@ -24,8 +24,8 @@
 
   {% if can_propose %}
     <div class="btn-row">
-      <a class="btn btn-primary" href="{% url 'trading:proposal_create' %}?direction=buy&amp;counterparty={{ colleague.id }}">ثبت خرید از این همکار</a>
-      <a class="btn btn-secondary" href="{% url 'trading:proposal_create' %}?direction=sell&amp;counterparty={{ colleague.id }}">ثبت فروش به این همکار</a>
+      <a class="btn btn-primary" href="{% url 'marketplace:home' %}?q={{ colleague.name|urlencode }}">انتخاب محصول و ارسال استعلام</a>
+      <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید برای همکار</a>
     </div>
   {% elif not colleague_is_current %}
     <div class="alert alert-info">این همکار اکنون در شبکه فعال نیست؛ سوابق مالی همچنان قابل مشاهده است.</div>

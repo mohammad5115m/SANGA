@@ -1,0 +1,8 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}استعلام‌های همکاران | سنگا{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar"><div><h1 class="page-title">استعلام‌های همکاران</h1><p class="page-lead">درخواست‌های چندمحصولی، جداشده بر اساس فروشنده</p></div><a class="btn btn-primary" href="{% url 'marketplace:home' %}">استعلام جدید</a></div>
+  <div class="stack-sm">{% for inquiry in inquiries %}<a class="list-item" href="{% url 'marketplace:inquiry_detail' inquiry.id %}"><div><strong>{% if inquiry.seller_business_id == business.id %}از {{ inquiry.buyer_business.name }}{% else %}برای {{ inquiry.seller_business.name }}{% endif %}</strong><div class="muted">{{ inquiry.items.count }} قلم · {{ inquiry.sent_at }}</div></div><span class="badge">{{ inquiry.get_status_display }}</span></a>{% empty %}<div class="empty-state">هنوز استعلامی ثبت نشده است.</div>{% endfor %}</div>
+</section>
+{% endblock %}

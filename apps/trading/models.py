@@ -355,6 +355,7 @@ class Trade(models.Model):
 
     class Counterparty(models.TextChoices):
         BUSINESS = "business", "همکار"
+        LOCAL = "local", "همکار محلی"
         CUSTOMER = "customer", "مشتری"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -393,6 +394,8 @@ class Trade(models.Model):
     # For a walk-in customer who has no SANGA account. Never a platform User.
     customer_name = models.CharField("نام مشتری", max_length=150, blank=True)
     customer_phone = models.CharField("موبایل مشتری", max_length=20, blank=True)
+    local_counterparty_id_snapshot = models.UUIDField(null=True, blank=True, editable=False)
+    local_counterparty_name = models.CharField(max_length=200, blank=True)
 
     item = models.ForeignKey(
         "inventory.InventoryLot",
@@ -457,7 +460,16 @@ class Trade(models.Model):
             models.CheckConstraint(
                 condition=(
                     models.Q(counterparty_type="business", buyer_business__isnull=False)
-                    | models.Q(counterparty_type="customer", buyer_business__isnull=True)
+                    | models.Q(
+                        counterparty_type="local",
+                        buyer_business__isnull=True,
+                        local_counterparty_id_snapshot__isnull=False,
+                    )
+                    | models.Q(
+                        counterparty_type="customer",
+                        buyer_business__isnull=True,
+                        local_counterparty_id_snapshot__isnull=True,
+                    )
                 ),
                 name="trade_counterparty_matches_type",
             ),
@@ -487,6 +499,8 @@ class Trade(models.Model):
     def counterparty_label(self) -> str:
         if self.counterparty_type == self.Counterparty.BUSINESS and self.buyer_business_id:
             return self.buyer_business.name
+        if self.counterparty_type == self.Counterparty.LOCAL:
+            return self.local_counterparty_name or "همکار محلی"
         return self.customer_name or "مشتری"
 
     @property

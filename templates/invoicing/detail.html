@@ -18,20 +18,50 @@
     <div><span class="muted">قابل پرداخت</span><strong>{{ document.amount_due }} {{ document.unit_label }}</strong></div>
     <div><span class="muted">اقلام</span><strong>{% for line in document.lines %}{{ line.product_name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong></div>
     <div><span class="muted">مبدأ</span><strong>{% if invoice.trade_id %}معامله ثبت‌شده{% else %}فاکتور دستی{% endif %}</strong></div>
+    <div><span class="muted">نوع خریدار</span><strong>{{ invoice.get_counterparty_type_display }}</strong></div>
+    <div><span class="muted">روش تسویه</span><strong>{{ invoice.get_settlement_method_display }}</strong></div>
     {% if invoice.issued_at %}<div><span class="muted">صدور نهایی</span><strong>{{ invoice.issued_at }}{% if invoice.issued_by %} · {{ invoice.issued_by }}{% endif %}</strong></div>{% endif %}
   </div>
   {% if invoice.replaces_invoice %}<div class="alert alert-info">این سند جایگزین فاکتور <a href="{% url 'invoicing:detail' invoice.replaces_invoice.id %}">{{ invoice.replaces_invoice.display_number }}</a> است.</div>{% endif %}
   {% if invoice.status == 'cancelled' %}<div class="alert alert-error"><strong>علت ابطال:</strong> {{ invoice.cancel_reason }}{% if invoice.cancelled_at %} · {{ invoice.cancelled_at }}{% endif %}{% if invoice.replacement_invoice %} · <a href="{% url 'invoicing:detail' invoice.replacement_invoice.id %}">مشاهده سند جایگزین</a>{% endif %}</div>{% endif %}
+  {% if invoice.status == 'cancelled_by_sender' %}<div class="alert alert-error"><strong>لغوشده توسط فرستنده:</strong> {{ invoice.cancel_reason }}</div>{% endif %}
+  {% if invoice.counterparty_type == 'business' and invoice.status == 'draft' and is_seller and can_send %}
+    {% if not has_business_signature %}<div class="alert alert-warning">امضای رسمی کسب‌وکار فروشنده ثبت نشده است. <a href="{% url 'invoicing:settings' %}">تنظیمات امضای رسمی</a></div>{% endif %}
+    {% if not has_personal_signature %}<div class="alert alert-warning">امضای شخصی فرستنده ثبت نشده است. <a href="{% url 'invoicing:settings' %}#personal-signature">ثبت امضای شخصی</a></div>{% endif %}
+  {% endif %}
+  {% if invoice.counterparty_type == 'business' and invoice.status == 'awaiting_confirmation' and not is_seller and can_confirm %}
+    {% if not has_business_signature %}<div class="alert alert-warning">امضای رسمی کسب‌وکار خریدار ثبت نشده است. <a href="{% url 'invoicing:settings' %}">تنظیمات امضای رسمی</a></div>{% endif %}
+    {% if not has_personal_signature %}<div class="alert alert-warning">امضای شخصی تأییدکننده ثبت نشده است. <a href="{% url 'invoicing:settings' %}#personal-signature">ثبت امضای شخصی</a></div>{% endif %}
+  {% endif %}
+  {% if not is_seller and invoice.status == 'awaiting_confirmation' and can_confirm %}
+  <section class="panel stack-md" id="personal-signature">
+    <h2 class="section-title">تصمیم خریدار</h2>
+    <div class="alert alert-info">با تأیید، امضای رسمی کسب‌وکار و امضای شخصی شما روی همین نسخه ثابت می‌شود و فروش نهایی اثر مالی می‌گذارد.</div>
+    <form method="post" action="{% url 'invoicing:confirm' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="این نسخه فاکتور تأیید شود؟">تأیید فاکتور</button></form>
+    <form class="stack-sm" method="post" action="{% url 'invoicing:reject' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">{{ decision_form.reason.label }}</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit">رد و بازگرداندن برای اصلاح</button></form>
+  </section>
+  {% endif %}
   <iframe class="invoice-document-frame" title="نسخه نهایی فاکتور" src="{% url 'invoicing:print' invoice.id %}?embedded=1"></iframe>
 
-  {% if is_seller and can_manage %}
+  {% if is_seller and can_manage or is_seller and can_cancel or is_seller and can_send or is_seller and can_offline_approve %}
   <section class="panel stack-md">
     <h2 class="section-title">اقدامات فاکتور</h2>
     <div class="invoice-action-grid">
       {% if invoice.status == 'draft' %}
-      <form method="post" action="{% url 'invoicing:issue' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="پس از صدور، اقلام و مبالغ تغییرناپذیر می‌شوند. ادامه می‌دهید؟">صدور نهایی</button></form>
-      <form method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>
-      {% elif invoice.status == 'issued' %}
+      {% if invoice.counterparty_type == 'customer' and can_manage or invoice.counterparty_type == 'business' and can_send %}<form method="post" action="{% url 'invoicing:issue' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="پس از صدور یا ارسال، نسخه ثبت‌شده تغییرناپذیر می‌شود. ادامه می‌دهید؟">{% if invoice.counterparty_type == 'business' %}ارسال برای تأیید{% else %}صدور نهایی{% endif %}</button></form>{% endif %}
+      {% if invoice.counterparty_type == 'local' and can_offline_approve %}
+      <form class="stack-sm" method="post" enctype="multipart/form-data" action="{% url 'invoicing:offline_confirm' invoice.id %}">
+        {% csrf_token %}
+        <div class="alert alert-warning">این ثبت ادعای تأیید خارج از سنگا است؛ تصویر باید امضای همین فاکتور باشد.</div>
+        <div class="form-grid"><label class="field"><span class="field-label">{{ offline_form.signer_name.label }}</span>{{ offline_form.signer_name }}</label><label class="field"><span class="field-label">{{ offline_form.confirmed_at.label }}</span>{{ offline_form.confirmed_at }}</label><label class="field"><span class="field-label">{{ offline_form.signature.label }}</span>{{ offline_form.signature }}</label></div>
+        <label>{{ offline_form.attested }} {{ offline_form.attested.label }}</label>
+        <button class="btn btn-primary" type="submit" data-confirm="تأیید آفلاین ثبت و فروش نهایی شود؟">ثبت تأیید آفلاین و نهایی‌سازی</button>
+      </form>
+      {% endif %}
+      {% if can_manage %}<form method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>{% endif %}
+      {% elif invoice.status == 'awaiting_confirmation' %}
+      {% if can_send %}<form class="stack-sm" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit">لغو فاکتور در انتظار</button></form>{% endif %}
+      {% elif invoice.status == 'issued' and can_cancel %}
       <form class="stack-sm" method="post">
         {% csrf_token %}
         <label class="field"><span class="field-label">علت ابطال یا اصلاح</span>{{ cancel_form.reason }}</label>
@@ -50,7 +80,17 @@
     {% endif %}
   </section>
   {% endif %}
-  <p class="muted">صدور، خروجی‌گرفتن یا ابطال فاکتور ledger entry جدید ایجاد نمی‌کند. اصلاح مانده فقط از workflow دفتر حساب انجام می‌شود.</p>
-  {% if invoice.trade %}<a class="btn btn-ghost" href="{% url 'trading:trade_detail' invoice.trade.id %}">مشاهده معامله</a>{% endif %}
+  {% if invoice.revisions.all %}
+  <section class="panel stack-md">
+    <h2 class="section-title">تاریخچه نسخه‌ها و امضاها</h2>
+    {% for revision in invoice.revisions.all %}
+    <article class="list-item"><div><strong>نسخه {{ revision.revision_number }} · {{ revision.get_state_display }}</strong><div class="muted">ارسال: {{ revision.sent_at }}{% if revision.decided_at %} · تصمیم: {{ revision.decided_at }}{% endif %}{% if revision.rejection_reason %} · {{ revision.rejection_reason }}{% endif %}</div></div><div class="btn-row">{% if revision.seller_business_signature %}<a class="btn btn-ghost btn-sm" href="{% url 'invoicing:revision_signature' revision.id 'seller-business' %}">امضای کسب‌وکار فروشنده</a>{% endif %}{% if revision.seller_user_signature %}<a class="btn btn-ghost btn-sm" href="{% url 'invoicing:revision_signature' revision.id 'seller-user' %}">امضای نماینده فروشنده</a>{% endif %}{% if revision.buyer_business_signature %}<a class="btn btn-ghost btn-sm" href="{% url 'invoicing:revision_signature' revision.id 'buyer-business' %}">امضای کسب‌وکار خریدار</a>{% endif %}{% if revision.buyer_user_signature %}<a class="btn btn-ghost btn-sm" href="{% url 'invoicing:revision_signature' revision.id 'buyer-user' %}">امضای نماینده خریدار</a>{% endif %}{% if revision.offline_buyer_signature %}<a class="btn btn-ghost btn-sm" href="{% url 'invoicing:revision_signature' revision.id 'offline-buyer' %}">امضای آفلاین خریدار</a>{% endif %}</div></article>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% if invoice.cheques.all %}
+  <section class="panel stack-md"><h2 class="section-title">چرخه چک‌ها</h2>{% for cheque in invoice.cheques.all %}<div class="list-item"><div><strong>{{ cheque.reference_number }} · {{ cheque.amount }} {{ cheque.currency }}</strong><div class="muted">سررسید {{ cheque.due_date }} · {{ cheque.get_status_display }}</div></div>{% if is_seller and can_manage_cheques %}<form method="post" action="{% url 'invoicing:cheque_status' cheque.id %}" class="btn-row">{% csrf_token %}{{ cheque_form.status }}{{ cheque_form.reason }}<button class="btn btn-secondary btn-sm" type="submit">ثبت وضعیت</button></form>{% endif %}</div>{% endfor %}</section>
+  {% endif %}
+  <p class="muted">اثر مالی فقط هنگام نهایی‌شدن فاکتور ثبت می‌شود؛ رویدادهای چک و برگشت‌ها نیز بدون ویرایش تاریخچه، سند مستقل می‌سازند.</p>
 </section>
 {% endblock %}

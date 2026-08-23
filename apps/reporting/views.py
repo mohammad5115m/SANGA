@@ -8,7 +8,7 @@ from django.utils.dateparse import parse_date
 
 from apps.accounting.reports import business_aging
 from apps.businesses.decorators import business_login_required, require_capability
-from apps.businesses.permissions import LEDGER_VIEW
+from apps.businesses.permissions import REPORT_VIEW
 
 from . import reports
 from .reports import DateRange
@@ -25,6 +25,7 @@ REPORTS: tuple[tuple[str, str], ...] = (
     ("debtors", "بدهکاران"),
     ("creditors", "بستانکاران"),
     ("invoices", "فاکتورها"),
+    ("cheques", "چک‌ها"),
     ("aging", "گزارش سنی بدهی"),
     ("stock_check", "نیازمند تأیید موجودی"),
     ("price_check", "نیازمند بررسی قیمت"),
@@ -48,7 +49,7 @@ def _window(request: HttpRequest) -> DateRange:
 
 
 @business_login_required
-@require_capability(LEDGER_VIEW)
+@require_capability(REPORT_VIEW)
 def report_view(request: HttpRequest, key: str = "summary") -> HttpResponse:
     """One view, one template per report body.
 
@@ -82,6 +83,9 @@ def report_view(request: HttpRequest, key: str = "summary") -> HttpResponse:
     elif key == "invoices":
         context["invoices"] = reports.invoices_in_range(business, window)[:200]
         context["invoice_summary"] = reports.invoice_summary(business, window)
+    elif key == "cheques":
+        context["cheques"] = reports.cheques_in_range(business, window)[:200]
+        context["cheque_summary"] = reports.cheque_summary(business, window)
     elif key == "aging":
         context["aging"] = business_aging(business)
     elif key == "stock_check":

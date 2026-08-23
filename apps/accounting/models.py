@@ -59,6 +59,14 @@ class LedgerEntry(models.Model):
         related_name="counterparty_ledger_entries",
         verbose_name="همکار",
     )
+    local_counterparty = models.ForeignKey(
+        "invoicing.LocalCounterparty",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ledger_entries",
+        verbose_name="همکار محلی",
+    )
     # Legacy only. Kept so pre-V2 rows whose Contact had no linked Business stay
     # queryable under the name they were filed under; guessing a Business for
     # them would corrupt a real balance.
@@ -102,6 +110,14 @@ class LedgerEntry(models.Model):
         blank=True,
         related_name="ledger_entries",
     )
+    related_invoice = models.ForeignKey(
+        "invoicing.SalesInvoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ledger_entries",
+    )
+    idempotency_key = models.CharField(max_length=140, blank=True, default="", editable=False)
     # Legacy: set when a trade was recorded from an accepted demand-board offer.
     # The workflow is gone but the rows and their idempotency slot remain.
     related_offer = models.ForeignKey(
@@ -177,6 +193,11 @@ class LedgerEntry(models.Model):
                 ),
                 name="uniq_trade_entry_per_trade",
             ),
+            models.UniqueConstraint(
+                fields=["idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="uniq_ledger_idempotency_key",
+            ),
         ]
         indexes = [
             models.Index(
@@ -184,6 +205,7 @@ class LedgerEntry(models.Model):
                 name="accounting__biz_cpty_idx",
             ),
             models.Index(fields=["business", "contact", "created_at"]),
+            models.Index(fields=["business", "local_counterparty", "created_at"]),
             models.Index(fields=["business", "occurred_on"]),
         ]
 
@@ -204,6 +226,8 @@ class LedgerEntry(models.Model):
         """Who this entry is against, however the row was filed."""
         if self.counterparty_business_id:
             return self.counterparty_business.name
+        if self.local_counterparty_id:
+            return self.local_counterparty.name
         return self.legacy_counterparty_name or "—"
 
     @property

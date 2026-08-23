@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 from django.contrib import messages
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.businesses.decorators import (
@@ -36,11 +33,8 @@ from .selectors import (
 )
 from .services import (
     TradingError,
-    cancel_trade_proposal,
     confirm_trade_proposal,
-    reject_trade_proposal,
     save_trade_proposal,
-    submit_trade_proposal,
 )
 
 STATUS_FILTERS = (
@@ -73,15 +67,14 @@ def _proposal_form_context(*, form, lines, proposal=None):
 @require_GET
 def proposal_product_options(request: HttpRequest) -> JsonResponse:
     """Return only products the selected proposal seller may expose."""
+    return JsonResponse({"items": []})
     direction = request.GET.get("direction")
     seller = request.business
     if direction == TradeProposalForm.Direction.BUY:
         from apps.businesses.directory import colleague_businesses
 
         try:
-            seller = colleague_businesses(request.business).filter(
-                pk=request.GET.get("counterparty")
-            ).first()
+            seller = colleague_businesses(request.business).filter(pk=request.GET.get("counterparty")).first()
         except (DjangoValidationError, TypeError, ValueError):
             seller = None
         if seller is None:
@@ -95,8 +88,7 @@ def proposal_product_options(request: HttpRequest) -> JsonResponse:
 
 def _trade_view_allowed(request) -> bool:
     return request.membership is not None and (
-        request.membership.has_capability(TRADE_PROPOSE)
-        or request.membership.has_capability(TRADE_CONFIRM)
+        request.membership.has_capability(TRADE_PROPOSE) or request.membership.has_capability(TRADE_CONFIRM)
     )
 
 
@@ -127,9 +119,7 @@ def proposal_list(request: HttpRequest) -> HttpResponse:
         qs = qs.filter(status__in=(TradeProposal.Status.REJECTED, TradeProposal.Status.CANCELLED))
     else:
         tab = "action"
-        qs = qs.filter(status=TradeProposal.Status.PENDING).exclude(
-            initiated_by_business=request.business
-        )
+        qs = qs.filter(status=TradeProposal.Status.PENDING).exclude(initiated_by_business=request.business)
     page = paginate(request, qs, per_page=ROW_PAGE_SIZE)
     return render(
         request,
@@ -142,6 +132,8 @@ def proposal_list(request: HttpRequest) -> HttpResponse:
 @require_capability(TRADE_PROPOSE)
 @require_http_methods(["GET", "POST"])
 def proposal_create(request: HttpRequest) -> HttpResponse:
+    messages.info(request, "روند توافق بازنشسته شده است؛ فروش از فاکتور و خرید از استعلام بازار آغاز می‌شود.")
+    return redirect("invoicing:create")
     initial = {}
     item_initial = []
     counterparty_id = request.GET.get("counterparty")
@@ -205,23 +197,20 @@ def proposal_create(request: HttpRequest) -> HttpResponse:
 @require_capability(TRADE_PROPOSE)
 @require_http_methods(["GET", "POST"])
 def proposal_edit(request: HttpRequest, proposal_id) -> HttpResponse:
+    messages.info(request, "توافق‌های قدیمی فقط برای مشاهده سابقه نگه‌داری می‌شوند.")
+    return redirect("trading:proposal_detail", proposal_id=proposal_id)
     proposal = get_proposal(request.business, proposal_id)
     if proposal is None:
         messages.error(request, "توافق یافت نشد.")
         return redirect("trading:proposal_list")
-    if (
-        proposal.initiated_by_business_id != request.business.id
-        or proposal.status != TradeProposal.Status.DRAFT
-    ):
+    if proposal.initiated_by_business_id != request.business.id or proposal.status != TradeProposal.Status.DRAFT:
         messages.error(request, "فقط پیش‌نویس خودتان قابل ویرایش است.")
         return redirect("trading:proposal_detail", proposal_id=proposal.id)
 
     is_seller = proposal.seller_business_id == request.business.id
     initial = {
         "submission_id": proposal.submission_id,
-        "direction": (
-            TradeProposalForm.Direction.SELL if is_seller else TradeProposalForm.Direction.BUY
-        ),
+        "direction": (TradeProposalForm.Direction.SELL if is_seller else TradeProposalForm.Direction.BUY),
         "counterparty": proposal.buyer_business if is_seller else proposal.seller_business,
         "note": proposal.note,
     }
@@ -326,28 +315,32 @@ def _proposal_action(request, proposal_id, action):
 @require_capability(TRADE_PROPOSE)
 @require_POST
 def proposal_submit(request: HttpRequest, proposal_id) -> HttpResponse:
-    return _proposal_action(request, proposal_id, submit_trade_proposal)
+    messages.info(request, "توافق‌های قدیمی فقط خواندنی هستند.")
+    return redirect("trading:proposal_detail", proposal_id=proposal_id)
 
 
 @business_login_required
 @require_capability(TRADE_CONFIRM)
 @require_POST
 def proposal_confirm(request: HttpRequest, proposal_id) -> HttpResponse:
-    return _proposal_action(request, proposal_id, confirm_trade_proposal)
+    messages.info(request, "تأیید تجاری اکنون روی نسخه فاکتور انجام می‌شود.")
+    return redirect("trading:proposal_detail", proposal_id=proposal_id)
 
 
 @business_login_required
 @require_capability(TRADE_CONFIRM)
 @require_POST
 def proposal_reject(request: HttpRequest, proposal_id) -> HttpResponse:
-    return _proposal_action(request, proposal_id, reject_trade_proposal)
+    messages.info(request, "توافق‌های قدیمی فقط خواندنی هستند.")
+    return redirect("trading:proposal_detail", proposal_id=proposal_id)
 
 
 @business_login_required
 @require_capability(TRADE_PROPOSE)
 @require_POST
 def proposal_cancel(request: HttpRequest, proposal_id) -> HttpResponse:
-    return _proposal_action(request, proposal_id, cancel_trade_proposal)
+    messages.info(request, "توافق‌های قدیمی فقط خواندنی هستند.")
+    return redirect("trading:proposal_detail", proposal_id=proposal_id)
 
 
 # --- retired purchase-request history ---------------------------------------
@@ -361,8 +354,8 @@ def request_create(request: HttpRequest, item_id) -> HttpResponse:
     if item is None:
         messages.error(request, "این محصول برای معامله در دسترس نیست.")
         return redirect("marketplace:home")
-    query = urlencode({"direction": "buy", "counterparty": item.business_id, "item": item.id})
-    return redirect(f"{reverse('trading:proposal_create')}?{query}")
+    messages.info(request, "محصول را در بازار انتخاب و استعلام چندمحصولی ارسال کنید.")
+    return redirect("marketplace:lot_detail", lot_id=item.id)
 
 
 def _legacy_request_list(request, *, sent):
@@ -429,8 +422,8 @@ def finalize(request: HttpRequest, request_id) -> HttpResponse:
 @business_login_required
 @require_capability(TRADE_PROPOSE)
 def direct_sale(request: HttpRequest) -> HttpResponse:
-    messages.info(request, "معامله همکار اکنون با توافق و تأیید دوطرفه ثبت می‌شود.")
-    return redirect("trading:proposal_create")
+    messages.info(request, "ثبت فروش اکنون فقط از مسیر فاکتور انجام می‌شود.")
+    return redirect("invoicing:create")
 
 
 # --- finalized trades --------------------------------------------------------
@@ -475,6 +468,8 @@ def trade_detail(request: HttpRequest, trade_id) -> HttpResponse:
 @require_POST
 def trade_create_invoice(request: HttpRequest, trade_id) -> HttpResponse:
     """Recovery path for historical finalized trades that have no invoice."""
+    messages.info(request, "معاملات قدیمی فقط خواندنی هستند؛ برای سند جدید از فاکتور استفاده کنید.")
+    return redirect("trading:trade_detail", trade_id=trade_id)
     trade = get_trade(request.business, trade_id)
     if trade is None or trade.seller_business_id != request.business.id:
         messages.error(request, "معامله یافت نشد.")

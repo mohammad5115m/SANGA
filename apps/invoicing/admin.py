@@ -2,7 +2,19 @@ from django.contrib import admin
 
 from apps.core.admin import HistoricalRecordAdmin
 
-from .models import BusinessInvoiceSettings, InvoiceTemplate, SalesInvoice, SalesInvoiceItem
+from .models import (
+    BusinessInvoiceSettings,
+    ChequeEvent,
+    ChequeReceivable,
+    CounterpartyLinkProposal,
+    InvoiceRevision,
+    InvoiceTemplate,
+    LocalCounterparty,
+    SalesInvoice,
+    SalesInvoiceItem,
+    SettlementEvent,
+    UserInvoiceSignature,
+)
 
 
 class SalesInvoiceItemInline(admin.TabularInline):
@@ -48,3 +60,23 @@ class InvoiceTemplateAdmin(admin.ModelAdmin):
     list_filter = ("business",)
     search_fields = ("name", "business__name")
     readonly_fields = ("created_at", "updated_at")
+
+
+for immutable_model in (InvoiceRevision, SettlementEvent, ChequeEvent):
+    admin.site.register(
+        immutable_model,
+        type(
+            f"{immutable_model.__name__}Admin",
+            (admin.ModelAdmin,),
+            {
+                "readonly_fields": tuple(field.name for field in immutable_model._meta.fields),
+                "has_add_permission": lambda self, request: False,
+                "has_delete_permission": lambda self, request, obj=None: False,
+            },
+        ),
+    )
+
+admin.site.register(LocalCounterparty)
+admin.site.register(UserInvoiceSignature)
+admin.site.register(ChequeReceivable)
+admin.site.register(CounterpartyLinkProposal)

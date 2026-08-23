@@ -1,5 +1,9 @@
 # Bilateral colleague trades
 
+> این گردش برای تاریخچه فقط‌خواندنی نگه داشته شده است. مسیر جاری از فاکتور شروع می‌شود؛ رجوع کنید به
+> [invoice-first-workflows.md](invoice-first-workflows.md). هیچ صفحهٔ جاری `TradeProposal` یا
+> `PurchaseRequest` جدیدی نمی‌سازد.
+
 SANGA records deals that were already negotiated by phone or in person. It no
 longer asks a buyer to start the commercial conversation with an in-app purchase
 request.

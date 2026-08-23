@@ -3,8 +3,10 @@
 {% block title %}تنظیمات فاکتور | سنگا{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
 {% block content %}
+  <p><a class="button button-secondary" href="{% url 'invoicing:counterparty_links' %}">همکاران محلی و اتصال سابقه</a></p>
 <section class="stack-lg">
   <div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div>
+  {% if can_manage_business_signature %}
   <form method="post" enctype="multipart/form-data" class="stack-lg" novalidate data-invoice-settings>
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
@@ -64,10 +66,23 @@
     </section>
     <button class="btn btn-primary" type="submit">ذخیره تنظیمات</button>
   </form>
-  <section class="panel stack-md">
+  {% else %}
+  <div class="alert alert-info">مدیریت هویت و امضای رسمی کسب‌وکار فقط برای مالک یا مدیر فعال است. امضای شخصی خودتان را در بخش زیر مدیریت کنید.</div>
+  {% endif %}
+  <section class="panel stack-md" id="personal-signature">
+    <div><h2 class="section-title">امضای شخصی</h2><p class="muted">این فایل خصوصی است و هنگام ارسال یا تأیید فاکتور همکار، یک نسخه ثابت از آن در همان بازبینی نگهداری می‌شود.</p></div>
+    <form method="post" enctype="multipart/form-data" action="{% url 'invoicing:personal_signature' %}" class="stack-sm">
+      {% csrf_token %}
+      {% if personal_signature and personal_signature.image %}<div class="alert alert-success">امضای شخصی ثبت شده است.</div>{% endif %}
+      <label class="field"><span class="field-label">{{ personal_signature_form.image.label }}</span>{{ personal_signature_form.image }}</label>
+      <label>{{ personal_signature_form.remove_signature }} {{ personal_signature_form.remove_signature.label }}</label>
+      <button class="btn btn-secondary" type="submit">ذخیره امضای شخصی</button>
+    </form>
+  </section>
+  {% if can_manage_business_signature %}<section class="panel stack-md">
     <h2 class="section-title">قالب‌های پرکاربرد</h2>
     {% for saved in templates %}<div class="list-item"><a href="{% url 'invoicing:create' %}?template={{ saved.id }}"><strong>{{ saved.name }}</strong></a><form method="post" action="{% url 'invoicing:template_delete' saved.id %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit" data-confirm="این قالب حذف شود؟">حذف</button></form></div>{% empty %}<div class="empty-state">هنوز قالبی ذخیره نشده است.</div>{% endfor %}
-  </section>
+  </section>{% endif %}
 </section>
 {% endblock %}
 {% block extra_js %}<script src="{% static 'js/invoice_settings.js' %}"></script>{% endblock %}

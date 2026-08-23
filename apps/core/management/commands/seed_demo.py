@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
@@ -10,6 +11,7 @@ from apps.accounts.models import User
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import complete_onboarding, create_business_for_owner
 from apps.inventory.models import Application, InventoryLot, Product, VocabularyTerm
+from apps.marketplace.services import create_grouped_inquiries
 from apps.pricing.services import ensure_default_tiers, set_lot_price
 
 #: name, stone, colour, quarry, sqm, b2b, b2c, application codes
@@ -144,13 +146,22 @@ class Command(BaseCommand):
             inquiry_item.stock_confirmed_at = None
             inquiry_item.save(update_fields=["available_sqm", "stock_confirmed_at", "stock_expires_at", "updated_at"])
 
-        partner_owner, _partner_business = _restore_demo_business(
+        partner_owner, partner_business = _restore_demo_business(
             phone="09122222222",
             full_name="شریک دمو (فرضی)",
             name="بازرگانی سنگ پارس (دمو ـ فرضی)",
             city="تهران",
             province="تهران",
         )
+        demo_market_item = InventoryLot.objects.filter(business=business, lot_code="DEMO-001").first()
+        if demo_market_item is not None:
+            create_grouped_inquiries(
+                buyer_business=partner_business,
+                user=partner_owner,
+                selections=[{"lot_id": demo_market_item.id, "quantity": "12"}],
+                submission_id=uuid.UUID("8f57ef4f-6e7e-4ebf-a6fd-59f7c59da001"),
+                note="استعلام فرضی دمو برای مرور گردش چندمحصولی",
+            )
 
         self.stdout.write(self.style.SUCCESS("Demo seed complete (fictional SANGA data)."))
         self.stdout.write(f"Seller login phone: {owner.phone}")

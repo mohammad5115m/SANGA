@@ -19,9 +19,7 @@ numbers and history come after. No charts.{% endcomment %}
       {% if can_issue_invoices %}
         <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید</a>
       {% endif %}
-      {% if 'trade.propose' in capabilities %}
-        <a class="btn btn-secondary" href="{% url 'trading:proposal_create' %}">ثبت توافق معامله</a>
-      {% endif %}
+      <a class="btn btn-secondary" href="{% url 'marketplace:home' %}">استعلام از بازار</a>
     </div>
   </div>
 
@@ -37,12 +35,7 @@ numbers and history come after. No charts.{% endcomment %}
         <div class="metric-label">قیمت نیازمند بررسی</div>
         <div class="metric-value">{{ lot_totals.stale_price|add:lot_totals.no_price }}</div>
       </a>
-      {% if 'trade.confirm' in capabilities %}
-        <a class="metric metric-link" href="{% url 'trading:proposal_list' %}?tab=action">
-          <div class="metric-label">توافق نیازمند تأیید من</div>
-          <div class="metric-value">{{ pending_confirmation_count }}</div>
-        </a>
-      {% endif %}
+      {% if 'invoice.view' in capabilities %}<a class="metric metric-link" href="{% url 'invoicing:list' %}?status=awaiting_confirmation"><div class="metric-label">فاکتورهای در انتظار تأیید</div><div class="metric-value">مشاهده</div></a>{% endif %}
       {% if 'leads.view' in capabilities %}
         <a class="metric metric-link" href="{% url 'inquiries:inbox' %}?status=open">
           <div class="metric-label">استعلام بی‌پاسخ</div>
@@ -77,7 +70,7 @@ numbers and history come after. No charts.{% endcomment %}
   {% endif %}
 
   {# --- agreements waiting for this business --- #}
-  {% if pending_confirmations %}
+  {% if False and pending_confirmations %}
     <section class="stack-md">
       <div class="toolbar">
         <h2 class="section-title">توافق‌های نیازمند تأیید</h2>

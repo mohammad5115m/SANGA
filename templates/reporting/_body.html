@@ -91,10 +91,15 @@ prices the view populated.
 
 {% elif active == 'invoices' %}
   <div class="metric-row">
-    {% for total in invoice_summary.totals %}<div class="metric"><div class="metric-label">جمع صادرشده · {{ total.label }}</div><div class="metric-value">{{ total.total|rial }}</div></div>{% empty %}<div class="metric"><div class="metric-label">جمع صادرشده</div><div class="metric-value">۰</div></div>{% endfor %}
+    {% for total in invoice_summary.totals %}<div class="metric"><div class="metric-label">فروش قطعی · {{ total.label }}</div><div class="metric-value">{{ total.total|rial }}</div></div>{% empty %}<div class="metric"><div class="metric-label">فروش قطعی</div><div class="metric-value">۰</div></div>{% endfor %}
+    {% for total in invoice_summary.received_totals %}<div class="metric"><div class="metric-label">خرید قطعی · {{ total.label }}</div><div class="metric-value">{{ total.total|rial }}</div></div>{% endfor %}
     <div class="metric">
-      <div class="metric-label">صادرشده</div>
+      <div class="metric-label">قطعی‌شده</div>
       <div class="metric-value">{{ invoice_summary.issued_count }}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">در انتظار تأیید</div>
+      <div class="metric-value">{{ invoice_summary.pending_count }}</div>
     </div>
     <div class="metric">
       <div class="metric-label">باطل‌شده</div>
@@ -103,19 +108,41 @@ prices the view populated.
   </div>
   <table class="table">
     <thead>
-      <tr><th scope="col">شماره</th><th scope="col">تاریخ</th><th scope="col">خریدار</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ</th></tr>
+      <tr><th scope="col">شماره</th><th scope="col">تاریخ</th><th scope="col">جهت</th><th scope="col">طرف مقابل</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ</th></tr>
     </thead>
     <tbody>
       {% for invoice in invoices %}
         <tr>
           <td dir="ltr">{{ invoice.number }}</td>
           <td>{{ invoice.issue_date }}</td>
-          <td>{{ invoice.buyer_name }}</td>
+          {% if invoice.seller_business_id == current_business.id %}
+            <td>فروش</td><td>{{ invoice.buyer_name }}</td>
+          {% else %}
+            <td>خرید</td><td>{{ invoice.seller_business.name }}</td>
+          {% endif %}
           <td>{{ invoice.get_status_display }}</td>
           <td class="num">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="5" class="empty-state">فاکتوری در این بازه صادر نشده است.</td></tr>
+        <tr><td colspan="6" class="empty-state">فاکتوری در این بازه ثبت نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+{% elif active == 'cheques' %}
+  <div class="metric-row">
+    {% for total in cheque_summary.totals %}<div class="metric"><div class="metric-label">جمع چک · {{ total.currency }}</div><div class="metric-value">{{ total.total|rial }}</div></div>{% empty %}<div class="metric"><div class="metric-label">جمع چک</div><div class="metric-value">۰</div></div>{% endfor %}
+    <div class="metric"><div class="metric-label">در جریان</div><div class="metric-value">{{ cheque_summary.pending_count }}</div></div>
+    <div class="metric"><div class="metric-label">وصول‌شده</div><div class="metric-value">{{ cheque_summary.cleared_count }}</div></div>
+    <div class="metric"><div class="metric-label">برگشتی</div><div class="metric-value">{{ cheque_summary.bounced_count }}</div></div>
+  </div>
+  <table class="table">
+    <thead><tr><th scope="col">شماره</th><th scope="col">سررسید</th><th scope="col">فاکتور</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ</th></tr></thead>
+    <tbody>
+      {% for cheque in cheques %}
+        <tr><td dir="ltr">{{ cheque.reference_number }}</td><td>{{ cheque.due_date }}</td><td dir="ltr">{{ cheque.invoice.display_number }}</td><td>{{ cheque.get_status_display }}</td><td class="num">{{ cheque.amount|rial }} {{ cheque.currency }}</td></tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty-state">چکی در این بازه ثبت نشده است.</td></tr>
       {% endfor %}
     </tbody>
   </table>
