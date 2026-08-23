@@ -25,8 +25,8 @@ logged-in colleague, so a B2B price can never appear on this page.{% endcomment 
 
   {% include "catalog/_public_specs.html" %}
 
-  {% if lot.description %}
-    <section class="panel"><p>{{ lot.description|linebreaksbr }}</p></section>
+  {% if product.description_public %}
+    <section class="panel"><p>{{ product.description_public|linebreaksbr }}</p></section>
   {% endif %}
 
   <div class="btn-row">

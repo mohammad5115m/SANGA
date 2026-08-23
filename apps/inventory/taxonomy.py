@@ -63,7 +63,7 @@ def canonical(kind: str, value: str) -> str:
 def normalize_searchable(value: str) -> str:
     """For the free-text dimensions with no controlled list.
 
-    Seller-specific suffixes, patterns and processing descriptions remain open
+    Seller-specific suffixes and processing descriptions remain open
     text, but still have to be spelled consistently to be searchable.
     """
     return normalize_persian_text(value or "")

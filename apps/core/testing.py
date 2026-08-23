@@ -107,9 +107,8 @@ def make_item(
             business=business,
             stone=original.stone,
             name_suffix=original.name_suffix,
-            pattern=original.pattern,
             description_public=original.description_public,
-            description_professional=original.description_professional,
+            description_colleague=original.description_colleague,
         )
         product.applications.set(original.applications.all())
     if not lot_code:

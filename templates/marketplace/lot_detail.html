@@ -36,8 +36,28 @@
     {% endif %}
   </section>
 
-  {% if lot.description %}
-    <section class="panel"><p>{{ lot.description|linebreaksbr }}</p></section>
+  {% if product.description_public or product.description_colleague %}
+    <section class="panel stack-md">
+      <h2 class="section-title">توضیحات محصول</h2>
+      {% if product.description_public %}
+        <div class="description-view stack-sm">
+          <div class="audience-heading">
+            <strong>توضیح مشتری</strong>
+            <span class="audience-badge audience-public">تمام خریداران</span>
+          </div>
+          <p>{{ product.description_public|linebreaksbr }}</p>
+        </div>
+      {% endif %}
+      {% if product.description_colleague %}
+        <div class="description-view stack-sm">
+          <div class="audience-heading">
+            <strong>توضیح تکمیلی همکار</strong>
+            <span class="audience-badge audience-colleague">فقط B2B</span>
+          </div>
+          <p>{{ product.description_colleague|linebreaksbr }}</p>
+        </div>
+      {% endif %}
+    </section>
   {% endif %}
 
   <div class="btn-row">

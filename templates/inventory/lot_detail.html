@@ -105,11 +105,50 @@
         <strong>{% for a in lot.product.applications.all %}{{ a.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong>
       </div>
     {% endif %}
-    {% if lot.description %}<p>{{ lot.description|linebreaksbr }}</p>{% endif %}
-    {% if lot.defect_notes %}
-      <div class="kv"><span>یادداشت ایراد (داخلی)</span><strong>{{ lot.defect_notes }}</strong></div>
-    {% endif %}
   </section>
+
+  {% if lot.product.description_public or lot.product.description_colleague or is_owner and lot.description_private %}
+    <section class="panel stack-md">
+      <h2 class="section-title">توضیحات</h2>
+      {% if lot.product.description_public %}
+        <div class="description-view stack-sm">
+          <div class="audience-heading">
+            <strong>توضیح مشتری</strong>
+            <span class="audience-badge audience-public">تمام خریداران</span>
+          </div>
+          <p>{{ lot.product.description_public|linebreaksbr }}</p>
+        </div>
+      {% endif %}
+      {% if lot.product.description_colleague %}
+        <div class="description-view stack-sm">
+          <div class="audience-heading">
+            <strong>توضیح همکار</strong>
+            <span class="audience-badge audience-colleague">فقط B2B</span>
+          </div>
+          <p>{{ lot.product.description_colleague|linebreaksbr }}</p>
+        </div>
+      {% endif %}
+      {% if is_owner and lot.description_private %}
+        <div class="description-view description-view-private stack-sm">
+          <div class="audience-heading">
+            <strong>توضیح شخصی</strong>
+            <span class="audience-badge audience-private">فقط مالک</span>
+          </div>
+          <p>{{ lot.description_private|linebreaksbr }}</p>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if is_owner and lot.private_address %}
+    <section class="panel stack-sm private-address-panel">
+      <div class="audience-heading">
+        <h2 class="section-title">آدرس محصول</h2>
+        <span class="audience-badge audience-private">فقط مالک</span>
+      </div>
+      <p>{{ lot.private_address|linebreaksbr }}</p>
+    </section>
+  {% endif %}
 
   {% if can_view_prices %}
   <section class="panel stack-sm">

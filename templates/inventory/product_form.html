@@ -21,11 +21,27 @@
       <h2 class="section-title" id="product-identity-title">هویت محصول</h2>
       <p class="muted">نام با ساختار «سنگ + نوع سنگ + نام تکمیلی» ساخته می‌شود. فروشنده فقط نام تکمیلی را تغییر می‌دهد.</p>
       <div class="form-grid">
-        {% for field in form %}
-          {% if field.name == 'stone' or field.name == 'name_suffix' or field.name == 'applications' or field.name == 'pattern' %}
-            {% include "components/form_field.html" %}
-          {% endif %}
-        {% endfor %}
+        {% with field=form.stone %}{% include "components/form_field.html" %}{% endwith %}
+        {% with field=form.name_suffix %}{% include "components/form_field.html" %}{% endwith %}
+
+        <fieldset class="field application-picker form-span-full">
+          <legend class="field-heading fieldset-heading">
+            <span class="field-label">{{ form.applications.label }}</span>
+            <span class="field-requirement">اختیاری · چندانتخابی</span>
+          </legend>
+          {% if form.applications.help_text %}<p class="field-help">{{ form.applications.help_text }}</p>{% endif %}
+          <div class="application-options">
+            {% for choice in form.applications %}
+              <label class="application-option">
+                {{ choice.tag }}
+                <span>{{ choice.choice_label }}</span>
+              </label>
+            {% empty %}
+              <p class="muted">کاربرد فعالی تعریف نشده است.</p>
+            {% endfor %}
+          </div>
+          {% if form.applications.errors %}<div class="field-error">{{ form.applications.errors|striptags }}</div>{% endif %}
+        </fieldset>
       </div>
     </section>
 
@@ -34,28 +50,67 @@
         <h2 class="section-title" id="product-specs-title">مشخصات و موجودی</h2>
         <p class="muted">ابعاد را با سانتی‌متر و مقدار موجودی را با متر مربع وارد کنید.</p>
       </div>
-      <div class="form-grid">
-        {% for field in form %}
-          {% if field.name == 'processing_type' or field.name == 'dimension_mode' or field.name == 'length_cm' or field.name == 'width_cm' or field.name == 'thickness_cm' or field.name == 'available_sqm' or field.name == 'stock_valid_for_days' or field.name == 'min_sale_qty' %}
-            {% include "components/form_field.html" %}
-          {% endif %}
-        {% endfor %}
-      </div>
+      {% with field=form.processing_type %}{% include "components/form_field.html" %}{% endwith %}
+
+      <fieldset class="form-subsection stack-md">
+        <legend class="field-label">ابعاد محصول</legend>
+        <p class="field-help">عرض را وارد کنید؛ خالی‌بودن طول به‌معنای طول آزاد است.</p>
+        <div class="form-grid form-grid-3">
+          {% with field=form.length_cm %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.width_cm %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.thickness_cm %}{% include "components/form_field.html" %}{% endwith %}
+        </div>
+      </fieldset>
+
+      <fieldset class="form-subsection stack-md">
+        <legend class="field-label">موجودی و حداقل سفارش</legend>
+        <div class="form-grid form-grid-3">
+          {% with field=form.available_sqm %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.stock_valid_for_days %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.min_sale_qty %}{% include "components/form_field.html" %}{% endwith %}
+        </div>
+      </fieldset>
     </section>
 
-    <details class="panel form-disclosure" {% if form.description_public.errors or form.description_professional.errors or form.defect_notes.errors %}open{% endif %}>
+    <details class="panel form-disclosure" {% if form.description_public.errors or form.description_colleague.errors or form.description_private.errors or form.private_address.errors %}open{% endif %}>
       <summary>
         <span>
           <strong>توضیحات تکمیلی</strong>
-          <small>اختیاری؛ توضیح مشتری، توضیح حرفه‌ای و نکات داخلی</small>
+          <small>اختیاری؛ هر توضیح فقط برای مخاطب مشخص‌شده نمایش داده می‌شود</small>
         </span>
       </summary>
-      <div class="form-disclosure-body form-grid">
-        {% for field in form %}
-          {% if field.name == 'description_public' or field.name == 'description_professional' or field.name == 'defect_notes' %}
-            {% include "components/form_field.html" %}
-          {% endif %}
-        {% endfor %}
+      <div class="form-disclosure-body description-grid">
+        <section class="description-card stack-sm" aria-labelledby="description-customer-title">
+          <div class="audience-heading">
+            <h3 id="description-customer-title">توضیح مشتری</h3>
+            <span class="audience-badge audience-public">تمام خریداران</span>
+          </div>
+          <p class="field-help">در صفحات عمومی و بازار همکاران نمایش داده می‌شود.</p>
+          {% with field=form.description_public %}{% include "components/form_field.html" %}{% endwith %}
+        </section>
+
+        <section class="description-card stack-sm" aria-labelledby="description-colleague-title">
+          <div class="audience-heading">
+            <h3 id="description-colleague-title">توضیح همکار</h3>
+            <span class="audience-badge audience-colleague">فقط B2B</span>
+          </div>
+          <p class="field-help">در کنار توضیح مشتری، فقط برای همکاران تأییدشده نمایش داده می‌شود.</p>
+          {% with field=form.description_colleague %}{% include "components/form_field.html" %}{% endwith %}
+        </section>
+
+        {% if is_owner %}
+          <section class="description-card description-card-private stack-sm form-span-full" aria-labelledby="description-private-title">
+            <div class="audience-heading">
+              <h3 id="description-private-title">اطلاعات شخصی مالک</h3>
+              <span class="audience-badge audience-private">فقط مالک</span>
+            </div>
+            <p class="field-help">اعضای تیم، مشتریان و همکاران به این اطلاعات دسترسی ندارند.</p>
+            <div class="form-grid">
+              {% with field=form.description_private %}{% include "components/form_field.html" %}{% endwith %}
+              {% with field=form.private_address %}{% include "components/form_field.html" %}{% endwith %}
+            </div>
+          </section>
+        {% endif %}
       </div>
     </details>
 

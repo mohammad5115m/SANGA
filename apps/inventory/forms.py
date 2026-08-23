@@ -28,6 +28,13 @@ def active_stones():
     ).order_by("sort_order", "name")
 
 
+class StoneChoiceField(forms.ModelChoiceField):
+    """Render the value itself, without the model's admin-oriented kind prefix."""
+
+    def label_from_instance(self, obj):
+        return obj.name
+
+
 class ProductItemForm(PersianNumericFormMixin, forms.Form):
     """The single product form used for both creation and editing."""
 
@@ -42,7 +49,7 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
 
     submission_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
 
-    stone = forms.ModelChoiceField(
+    stone = StoneChoiceField(
         label="نوع سنگ",
         queryset=VocabularyTerm.objects.none(),
         widget=forms.Select(attrs=_TEXT),
@@ -58,10 +65,8 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
         label="کاربردها",
         queryset=Application.objects.none(),
         required=False,
-        widget=forms.CheckboxSelectMultiple(attrs=_CHECK),
-    )
-    pattern = forms.CharField(
-        label="طرح/بافت", required=False, max_length=150, widget=forms.TextInput(attrs=_TEXT)
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "application-checkbox"}),
+        help_text="می‌توانید چند کاربرد را انتخاب کنید.",
     )
     processing_type = forms.CharField(
         label="نوع فرآوری",
@@ -72,13 +77,6 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
             attrs={**_TEXT, "placeholder": "ساب خورده", "list": "seller-processing-suggestions"}
         ),
     )
-    dimension_mode = forms.ChoiceField(
-        label="نوع ابعاد",
-        choices=(("fixed", "ابعاد ثابت"), ("free", "طول آزاد")),
-        initial="fixed",
-        required=False,
-        widget=forms.Select(attrs=_TEXT),
-    )
     length_cm = forms.DecimalField(
         label="طول (سانتی‌متر)",
         required=False,
@@ -86,7 +84,7 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
         decimal_places=2,
         max_digits=8,
         widget=forms.NumberInput(attrs={**_TEXT, "step": "0.01", "placeholder": "خالی = آزاد"}),
-        help_text="اگر طول آزاد است، این فیلد را خالی بگذارید.",
+        help_text="برای محصول با طول آزاد، این فیلد را خالی بگذارید.",
     )
     width_cm = forms.DecimalField(
         label="عرض (سانتی‌متر)",
@@ -130,13 +128,33 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
         widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001"}),
     )
     description_public = forms.CharField(
-        label="توضیح برای مشتری", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 3})
+        label="توضیح برای مشتری",
+        required=False,
+        widget=forms.Textarea(
+            attrs={**_TEXT, "rows": 3, "placeholder": "ویژگی‌ها و اطلاعات مفید برای تمام خریداران"}
+        ),
     )
-    description_professional = forms.CharField(
-        label="توضیح حرفه‌ای", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 3})
+    description_colleague = forms.CharField(
+        label="توضیح برای همکار",
+        required=False,
+        widget=forms.Textarea(
+            attrs={**_TEXT, "rows": 3, "placeholder": "اطلاعات تکمیلی ویژه خریداران همکار"}
+        ),
     )
-    defect_notes = forms.CharField(
-        label="نکات و ایرادها", required=False, widget=forms.Textarea(attrs={**_TEXT, "rows": 2})
+    description_private = forms.CharField(
+        label="توضیح شخصی",
+        required=False,
+        widget=forms.Textarea(
+            attrs={**_TEXT, "rows": 3, "placeholder": "یادداشت خصوصی؛ فقط مالک کسب‌وکار"}
+        ),
+    )
+    private_address = forms.CharField(
+        label="آدرس محصول",
+        required=False,
+        widget=forms.Textarea(
+            attrs={**_TEXT, "rows": 2, "autocomplete": "street-address", "placeholder": "آدرس محل نگهداری یا بارگیری"}
+        ),
+        help_text="این آدرس فقط برای مالک کسب‌وکار نمایش داده می‌شود.",
     )
     availability_status = forms.ChoiceField(
         label="وضعیت موجود بودن",
@@ -151,10 +169,13 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
         label="فروش فوری", required=False, widget=forms.CheckboxInput(attrs=_CHECK)
     )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, include_private: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["stone"].queryset = active_stones()
         self.fields["applications"].queryset = active_applications()
+        if not include_private:
+            self.fields.pop("description_private", None)
+            self.fields.pop("private_address", None)
 
     def clean_name_suffix(self):
         return normalize_persian_text(self.cleaned_data["name_suffix"] or "")
@@ -162,23 +183,14 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
     def clean_processing_type(self):
         return normalize_persian_text(self.cleaned_data["processing_type"] or "ساب خورده")
 
-    def clean_pattern(self):
-        return normalize_persian_text(self.cleaned_data.get("pattern") or "")
-
     def clean(self):
         cleaned = super().clean()
-        dimension_mode = cleaned.get("dimension_mode")
-        length = cleaned.get("length_cm")
         width = cleaned.get("width_cm")
         quantity = cleaned.get("available_sqm")
         minimum = cleaned.get("min_sale_qty") or Decimal("0")
         availability = cleaned.get("availability_status")
 
-        if dimension_mode == "fixed" and length is None:
-            self.add_error("length_cm", "برای ابعاد ثابت، طول را وارد کنید.")
-        elif dimension_mode == "free":
-            cleaned["length_cm"] = None
-        if dimension_mode and width is None:
+        if width is None:
             self.add_error("width_cm", "عرض محصول را وارد کنید.")
         if quantity == 0 and availability == InventoryLot.Availability.AVAILABLE:
             self.add_error("available_sqm", "محصول با موجودی صفر باید «ناموجود» باشد.")
@@ -272,7 +284,7 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
         required=False, label="جست‌وجو",
         widget=forms.TextInput(attrs={**_TEXT, "placeholder": "نام، کد یا فرآوری..."}),
     )
-    stone = forms.ModelChoiceField(
+    stone = StoneChoiceField(
         required=False, label="نوع سنگ", queryset=VocabularyTerm.objects.none(),
         empty_label="همه", widget=forms.Select(attrs=_TEXT),
     )

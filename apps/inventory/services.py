@@ -86,6 +86,15 @@ def _require_owner(lot: InventoryLot, membership: BusinessMembership) -> None:
         raise InventoryError("دسترسی به این محصول وجود ندارد.")
 
 
+def _is_business_owner(membership: BusinessMembership) -> bool:
+    return membership.role == BusinessMembership.Role.OWNER
+
+
+def _require_private_access(membership: BusinessMembership) -> None:
+    if not _is_business_owner(membership):
+        raise InventoryError("فقط مالک کسب‌وکار به اطلاعات خصوصی محصول دسترسی دارد.")
+
+
 _CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
@@ -106,9 +115,8 @@ def create_product(
     membership: BusinessMembership,
     stone: VocabularyTerm,
     name_suffix: str = "",
-    pattern: str = "",
     description_public: str = "",
-    description_professional: str = "",
+    description_colleague: str = "",
     applications: list[Application] | None = None,
 ) -> Product:
     _require(membership, INVENTORY_CREATE)
@@ -119,9 +127,8 @@ def create_product(
         business=business,
         stone=stone,
         name_suffix=normalize_searchable(name_suffix),
-        pattern=normalize_searchable(pattern),
         description_public=(description_public or "").strip(),
-        description_professional=(description_professional or "").strip(),
+        description_colleague=(description_colleague or "").strip(),
     )
     if applications:
         product.applications.set(applications)
@@ -142,7 +149,8 @@ def create_draft_item(
     width_cm: Decimal | None = None,
     thickness_mm: Decimal | None = None,
     min_sale_qty: Decimal | None = None,
-    defect_notes: str = "",
+    description_private: str = "",
+    private_address: str = "",
     availability_status: str = InventoryLot.Availability.AVAILABLE,
     is_visible: bool = False,
     is_urgent_sale: bool = False,
@@ -163,6 +171,8 @@ def create_draft_item(
     _require_plan(business, CREATE_PRODUCTS)
     if product.business_id != business.id:
         raise InventoryError("محصول متعلق به این کسب‌وکار نیست.")
+    if description_private or private_address:
+        _require_private_access(membership)
 
     if hasattr(product, "lot"):
         raise InventoryError("برای این محصول قبلاً یک آیتم موجودی ساخته شده است.")
@@ -211,7 +221,8 @@ def create_draft_item(
                     width_cm=width_cm,
                     thickness_mm=thickness_mm,
                     min_sale_qty=minimum,
-                    defect_notes=(defect_notes or "").strip(),
+                    description_private=(description_private or "").strip(),
+                    private_address=(private_address or "").strip(),
                     is_urgent_sale=is_urgent_sale,
                 )
         except IntegrityError:
@@ -296,11 +307,13 @@ def update_product_item(
     stone = product_fields.get("stone", product.stone)
     if stone.kind != VocabularyTerm.Kind.STONE_TYPE or not stone.is_active:
         raise InventoryError("نوع سنگ انتخاب‌شده معتبر نیست.")
-    for key in ("stone", "name_suffix", "pattern", "description_public", "description_professional"):
+    for key in ("stone", "name_suffix", "description_public", "description_colleague"):
         if key in product_fields:
             value = product_fields[key]
-            if key in {"name_suffix", "pattern"}:
+            if key == "name_suffix":
                 value = normalize_searchable(value)
+            elif key in {"description_public", "description_colleague"}:
+                value = (value or "").strip()
             setattr(product, key, value)
     product.save()
     if applications is not None:
@@ -334,6 +347,9 @@ def update_item(
     _require_owner(lot, membership)
 
     fields = fields or {}
+    private_keys = {"description_private", "private_address"}
+    if private_keys.intersection(fields):
+        _require_private_access(membership)
 
     quantity_keys = {"available_sqm", "stock_valid_for_days"}
     changing_quantity = any(
@@ -352,7 +368,8 @@ def update_item(
     allowed = {
         "processing_type",
         "description",
-        "defect_notes",
+        "description_private",
+        "private_address",
         "available_sqm",
         "stock_valid_for_days",
         "length_cm",
@@ -371,6 +388,8 @@ def update_item(
     #: unsearchable spelling the create path exists to prevent.
     normalizers = {
         "processing_type": normalize_searchable,
+        "description_private": lambda value: (value or "").strip(),
+        "private_address": lambda value: (value or "").strip(),
     }
 
     stock_changed = False
@@ -380,7 +399,7 @@ def update_item(
         if key == "available_sqm" and getattr(lot, key) != value:
             stock_changed = True
         normalize = normalizers.get(key)
-        setattr(lot, key, normalize(value) if normalize and isinstance(value, str) else value)
+        setattr(lot, key, normalize(value) if normalize else value)
 
     if lot.available_sqm == 0 and lot.availability_status == InventoryLot.Availability.AVAILABLE:
         raise InventoryError("محصول با موجودی صفر باید ناموجود باشد.")
@@ -749,11 +768,10 @@ def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> Inve
         business=lot.business,
         stone=lot.product.stone,
         name_suffix=lot.product.name_suffix,
-        pattern=lot.product.pattern,
         vein_notes=lot.product.vein_notes,
         technical_notes=lot.product.technical_notes,
         description_public=lot.product.description_public,
-        description_professional=lot.product.description_professional,
+        description_colleague=lot.product.description_colleague,
         alt_names=lot.product.alt_names,
     )
     product.applications.set(lot.product.applications.all())
@@ -772,8 +790,9 @@ def duplicate_item(*, lot: InventoryLot, membership: BusinessMembership) -> Inve
         thickness_mm=lot.thickness_mm,
         processing_type=lot.processing_type,
         min_sale_qty=lot.min_sale_qty,
-        description=lot.description,
-        defect_notes=lot.defect_notes,
+        description="",
+        description_private=(lot.description_private if _is_business_owner(membership) else ""),
+        private_address=(lot.private_address if _is_business_owner(membership) else ""),
         is_featured=False,
         is_urgent_sale=False,
     )

@@ -103,7 +103,6 @@ class ItemFilterSpec:
                     Q(product__commercial_name__icontains=term)
                     | Q(product__name_suffix__icontains=term)
                     | Q(product__stone__name__icontains=term)
-                    | Q(product__pattern__icontains=term)
                     | Q(lot_code__icontains=term)
                     | Q(processing_type__icontains=term)
                 )

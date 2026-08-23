@@ -133,7 +133,6 @@ class Product(models.Model):
         limit_choices_to={"kind": VocabularyTerm.Kind.STONE_TYPE},
         verbose_name="نوع سنگ",
     )
-    pattern = models.CharField("طرح/بافت", max_length=150, blank=True)
     vein_notes = models.CharField(max_length=255, blank=True)
     applications = models.ManyToManyField(
         Application,
@@ -144,8 +143,8 @@ class Product(models.Model):
     interior_suitable = models.BooleanField(default=True)
     exterior_suitable = models.BooleanField(default=False)
     technical_notes = models.TextField(blank=True)
-    description_public = models.TextField("توضیح مشتری", blank=True)
-    description_professional = models.TextField("توضیح حرفه‌ای", blank=True)
+    description_public = models.TextField("توضیح برای مشتری", blank=True)
+    description_colleague = models.TextField("توضیح برای همکار", blank=True)
     alt_names = models.JSONField(default=list, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -260,7 +259,8 @@ class InventoryLot(models.Model):
     ready_for_loading_at = models.DateField(null=True, blank=True)
     photographed_at = models.DateField(null=True, blank=True)
     description = models.TextField(blank=True)
-    defect_notes = models.TextField(blank=True)
+    description_private = models.TextField("توضیح شخصی", blank=True)
+    private_address = models.TextField("آدرس خصوصی محصول", blank=True)
     is_featured = models.BooleanField(default=False)
     is_urgent_sale = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

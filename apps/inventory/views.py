@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
+from apps.businesses.models import BusinessMembership
 from apps.businesses.permissions import (
     CATALOG_MANAGE,
     INVENTORY_CONFIRM,
@@ -97,14 +98,13 @@ def _product_fields(form: ProductItemForm) -> dict:
     return {
         "stone": form.cleaned_data["stone"],
         "name_suffix": form.cleaned_data.get("name_suffix", ""),
-        "pattern": form.cleaned_data.get("pattern", ""),
         "description_public": form.cleaned_data.get("description_public", ""),
-        "description_professional": form.cleaned_data.get("description_professional", ""),
+        "description_colleague": form.cleaned_data.get("description_colleague", ""),
     }
 
 
-def _item_fields(form: ProductItemForm, *, may_publish: bool, lot=None) -> dict:
-    return {
+def _item_fields(form: ProductItemForm, *, may_publish: bool, may_use_private: bool, lot=None) -> dict:
+    fields = {
         "processing_type": form.cleaned_data.get("processing_type", "ساب خورده"),
         "available_sqm": form.cleaned_data.get("available_sqm"),
         "stock_valid_for_days": form.cleaned_data["stock_valid_for_days"],
@@ -112,8 +112,6 @@ def _item_fields(form: ProductItemForm, *, may_publish: bool, lot=None) -> dict:
         "width_cm": form.cleaned_data.get("width_cm"),
         "thickness_mm": form.thickness_mm,
         "min_sale_qty": form.cleaned_data.get("min_sale_qty") or Decimal("0"),
-        "description": form.cleaned_data.get("description_professional", ""),
-        "defect_notes": form.cleaned_data.get("defect_notes", ""),
         "availability_status": form.cleaned_data["availability_status"],
         "is_visible": (
             bool(form.cleaned_data.get("is_visible"))
@@ -122,6 +120,12 @@ def _item_fields(form: ProductItemForm, *, may_publish: bool, lot=None) -> dict:
         ),
         "is_urgent_sale": bool(form.cleaned_data.get("is_urgent_sale")),
     }
+    if may_use_private:
+        fields.update(
+            description_private=form.cleaned_data.get("description_private", ""),
+            private_address=form.cleaned_data.get("private_address", ""),
+        )
+    return fields
 
 
 def _seller_processing_suggestions(business) -> list[str]:
@@ -185,6 +189,7 @@ def lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             "media_items": lot.media.all(),
             "can_view_prices": can_view_prices,
             "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
+            "is_owner": request.membership.role == BusinessMembership.Role.OWNER,
             "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
             "is_publicly_shareable": eligible_items(
                 audience="public", seller_business=request.business
@@ -194,27 +199,30 @@ def lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
     )
 
 
-def _product_initial(lot) -> dict:
-    return {
+def _product_initial(lot, *, include_private: bool) -> dict:
+    initial = {
         "stone": lot.product.stone,
         "name_suffix": lot.product.name_suffix,
         "applications": lot.product.applications.all(),
-        "pattern": lot.product.pattern,
         "processing_type": lot.processing_type,
         "length_cm": lot.length_cm,
-        "dimension_mode": "free" if lot.length_cm is None else "fixed",
         "width_cm": lot.width_cm,
         "thickness_cm": lot.thickness_mm / Decimal("10") if lot.thickness_mm is not None else None,
         "available_sqm": lot.available_sqm,
         "stock_valid_for_days": lot.stock_valid_for_days,
         "min_sale_qty": lot.min_sale_qty,
         "description_public": lot.product.description_public,
-        "description_professional": lot.product.description_professional,
-        "defect_notes": lot.defect_notes,
+        "description_colleague": lot.product.description_colleague,
         "availability_status": lot.availability_status,
         "is_visible": lot.is_visible,
         "is_urgent_sale": lot.is_urgent_sale,
     }
+    if include_private:
+        initial.update(
+            description_private=lot.description_private,
+            private_address=lot.private_address,
+        )
+    return initial
 
 
 def _product_form_context(request, *, form, b2b_form, b2c_form, lot=None):
@@ -226,6 +234,7 @@ def _product_form_context(request, *, form, b2b_form, b2c_form, lot=None):
         "mode": "edit" if lot else "create",
         "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
         "can_publish": request.membership.has_capability(INVENTORY_PUBLISH),
+        "is_owner": request.membership.role == BusinessMembership.Role.OWNER,
         "processing_suggestions": _seller_processing_suggestions(request.business),
     }
 
@@ -235,9 +244,11 @@ def _product_form_context(request, *, form, b2b_form, b2c_form, lot=None):
 @require_http_methods(["GET", "POST"])
 def product_create(request: HttpRequest) -> HttpResponse:
     can_price = request.membership.has_capability(PRICES_EDIT)
+    is_owner = request.membership.role == BusinessMembership.Role.OWNER
     form = ProductItemForm(
         request.POST or None,
         initial={"is_visible": True, "submission_id": uuid.uuid4()},
+        include_private=is_owner,
     )
     b2b_form = TierPriceForm(request.POST or None, prefix="b2b", tier_label="قیمت همکار")
     b2c_form = TierPriceForm(request.POST or None, prefix="b2c", tier_label="قیمت مشتری")
@@ -251,6 +262,7 @@ def product_create(request: HttpRequest) -> HttpResponse:
                 item_fields=_item_fields(
                     form,
                     may_publish=request.membership.has_capability(INVENTORY_PUBLISH),
+                    may_use_private=is_owner,
                 ),
                 applications=list(form.cleaned_data.get("applications") or []),
                 b2b_price=_price_spec(b2b_form) if can_price else None,
@@ -278,7 +290,12 @@ def lot_edit(request: HttpRequest, lot_id) -> HttpResponse:
         messages.error(request, "محصول یافت نشد.")
         return redirect("inventory:lot_list")
     can_price = request.membership.has_capability(PRICES_EDIT)
-    form = ProductItemForm(request.POST or None, initial=_product_initial(lot))
+    is_owner = request.membership.role == BusinessMembership.Role.OWNER
+    form = ProductItemForm(
+        request.POST or None,
+        initial=_product_initial(lot, include_private=is_owner),
+        include_private=is_owner,
+    )
     b2b_form = TierPriceForm(
         request.POST or None, prefix="b2b", tier_label="قیمت همکار", initial=_price_initial(lot, "b2b")
     )
@@ -295,6 +312,7 @@ def lot_edit(request: HttpRequest, lot_id) -> HttpResponse:
                 item_fields=_item_fields(
                     form,
                     may_publish=request.membership.has_capability(INVENTORY_PUBLISH),
+                    may_use_private=is_owner,
                     lot=lot,
                 ),
                 applications=list(form.cleaned_data.get("applications") or []),

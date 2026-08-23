@@ -44,7 +44,6 @@ def test_product_form_accepts_persian_digits_and_decimal_centimetres():
         {
             "stone": stone.id,
             "name_suffix": "عباس‌آباد",
-            "dimension_mode": "free",
             "width_cm": "۴۰٫۵".replace("٫", "."),
             "thickness_cm": "۱.۷",
             "available_sqm": "۱۲.۵",
@@ -61,27 +60,29 @@ def test_product_form_accepts_persian_digits_and_decimal_centimetres():
 
 
 @pytest.mark.django_db
-def test_fixed_dimensions_require_length_and_width_but_legacy_posts_still_validate():
+def test_length_is_optional_for_free_stone_but_width_is_required():
     stone = VocabularyTerm.objects.get(name="تراورتن")
-    fixed = ProductItemForm(
+    missing_width = ProductItemForm(
         {
             "stone": stone.id,
-            "dimension_mode": "fixed",
+            "length_cm": "120",
             "stock_valid_for_days": "7",
             "availability_status": InventoryLot.Availability.UNAVAILABLE,
         }
     )
-    legacy = ProductItemForm(
+    free_length = ProductItemForm(
         {
             "stone": stone.id,
+            "width_cm": "40",
             "stock_valid_for_days": "7",
             "availability_status": InventoryLot.Availability.UNAVAILABLE,
         }
     )
 
-    assert not fixed.is_valid()
-    assert {"length_cm", "width_cm"} <= set(fixed.errors)
-    assert legacy.is_valid(), legacy.errors
+    assert not missing_width.is_valid()
+    assert set(missing_width.errors) == {"width_cm"}
+    assert free_length.is_valid(), free_length.errors
+    assert free_length.cleaned_data["length_cm"] is None
 
 
 @pytest.mark.django_db

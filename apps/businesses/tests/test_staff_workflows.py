@@ -58,6 +58,7 @@ def _product_payload():
         "stone": VocabularyTerm.objects.get(name="تراورتن").id,
         "name_suffix": "کارمند",
         "processing_type": "ساب خورده",
+        "width_cm": "40",
         "available_sqm": "150",
         "stock_valid_for_days": "7",
         "availability_status": InventoryLot.Availability.AVAILABLE,

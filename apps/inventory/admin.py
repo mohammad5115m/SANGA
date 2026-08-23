@@ -64,6 +64,7 @@ class InventoryLotAdmin(admin.ModelAdmin):
     list_filter = ("status", "is_visible", "availability_status", "is_urgent_sale")
     search_fields = ("lot_code", "product__commercial_name", "business__name", "public_token")
     readonly_fields = ("lot_code", "public_token", "stock_expires_at")
+    exclude = ("description_private", "private_address")
     inlines = [LotMediaInline]
 
 
