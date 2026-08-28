@@ -66,7 +66,7 @@
         </div>
         <div class="stack-sm invoice-choice-panel" id="invoice-local-fields" data-counterparty-section="local" data-counterparty-panel>
           <label class="field"><span class="field-label">{{ form.local_counterparty.label }}</span>{{ form.local_counterparty }}{% if form.local_counterparty.errors %}<span class="field-error">{{ form.local_counterparty.errors|striptags }}</span>{% endif %}</label>
-          <div class="form-grid invoice-local-new" data-local-new-fields>
+          <div class="form-grid invoice-local-new" id="invoice-local-new-fields" data-local-new-fields>
             <div class="invoice-local-new-heading">
               <strong>مشخصات همکار جدید</strong>
               <span class="muted">اگر همکار در فهرست بالا نیست، اطلاعات او را اینجا وارد کنید.</span>
@@ -97,7 +97,7 @@
           <div class="form-grid form-grid-compact">
             {% for field in form %}
               {% if field.name in 'tax_amount shipping_amount adjustment_amount paid_amount' %}
-              <label class="field" {% if field.name == 'paid_amount' %}data-customer-paid{% endif %}><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+              <label class="field" {% if field.name == 'paid_amount' %}id="invoice-customer-paid" data-customer-paid{% endif %}><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
               {% endif %}
             {% endfor %}
           </div>
@@ -140,7 +140,7 @@
         <div class="btn-row">
           <button class="btn btn-ghost btn-sm" type="button" data-preview-refresh>به‌روزرسانی</button>
           <button class="btn btn-secondary btn-sm invoice-preview-toggle" type="button" data-preview-toggle aria-expanded="false" aria-controls="invoice-preview-canvas">نمایش پیش‌نمایش</button>
-          <button class="btn btn-ghost btn-sm" type="button" data-preview-expand aria-expanded="false">نمایش بزرگ</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-preview-expand aria-expanded="false" aria-controls="invoice-preview-canvas">نمایش بزرگ</button>
         </div>
       </div>
       <div class="invoice-preview-canvas" id="invoice-preview-canvas">
