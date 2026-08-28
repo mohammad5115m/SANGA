@@ -545,7 +545,7 @@ def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
         action = request.POST.get("action", "draft")
         header = _header_data(form)
         try:
-            if invoice.counterparty_type == SalesInvoice.Counterparty.CUSTOMER:
+            if header["counterparty_mode"] == SalesInvoice.Counterparty.CUSTOMER:
                 invoice = update_draft_invoice(
                     invoice=invoice,
                     membership=request.membership,
@@ -554,10 +554,23 @@ def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
                     **header,
                 )
             else:
+                local = header.get("local_counterparty")
+                if header["counterparty_mode"] == SalesInvoice.Counterparty.LOCAL:
+                    local = resolve_local_counterparty(
+                        business=request.business,
+                        membership=request.membership,
+                        local_counterparty=local,
+                        name=header.get("local_name"),
+                        phone=header.get("local_phone"),
+                        address=header.get("local_address"),
+                    )
                 invoice = update_partner_draft(
                     invoice=invoice,
                     membership=request.membership,
                     lines=_submitted_lines(formset),
+                    buyer_business=header.get("buyer_business"),
+                    local_counterparty=local,
+                    expected_version=form.cleaned_data.get("version"),
                     **_partner_header(header),
                 )
             if action == "issue":
@@ -598,6 +611,11 @@ def invoice_preview(request: HttpRequest) -> HttpResponse:
     if not (form.is_valid() and formset.is_valid()):
         return HttpResponse("برای پیش‌نمایش، خطاهای فرم را برطرف کنید.", status=422)
     header = _header_data(form)
+    paid_amount = (
+        header["paid_amount"]
+        if header["counterparty_mode"] == SalesInvoice.Counterparty.CUSTOMER
+        else (header.get("cash_amount") or 0) + (header.get("cheque_amount") or 0)
+    )
     try:
         cleaned = _clean_lines(
             _submitted_lines(formset),
@@ -616,7 +634,7 @@ def invoice_preview(request: HttpRequest) -> HttpResponse:
             tax_amount=header["tax_amount"],
             shipping_amount=header["shipping_amount"],
             adjustment_amount=header["adjustment_amount"],
-            paid_amount=header["paid_amount"],
+            paid_amount=paid_amount,
         )
     except InvoiceError as exc:
         return HttpResponse(exc.message, status=422)

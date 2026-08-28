@@ -245,6 +245,17 @@ def update_partner_draft(
         _require_manage(invoice.seller_business, membership)
         if invoice.status != SalesInvoice.Status.DRAFT:
             raise InvoiceError("فقط پیش‌نویس قابل ویرایش است.")
+        expected_version = header.pop("expected_version", None)
+        if expected_version is not None and invoice.version != expected_version:
+            raise InvoiceError("این پیش‌نویس پس از باز شدن صفحه تغییر کرده است. صفحه را تازه‌سازی کنید.")
+        buyer_business = header.pop("buyer_business", invoice.buyer_business)
+        local_counterparty = header.pop("local_counterparty", invoice.local_counterparty)
+        if (buyer_business is None) == (local_counterparty is None):
+            raise InvoiceError("یک همکار ثبت‌شده یا محلی انتخاب کنید.")
+        if buyer_business is not None and buyer_business.id == invoice.seller_business_id:
+            raise InvoiceError("نمی‌توانید برای کسب‌وکار خودتان فاکتور بفرستید.")
+        if local_counterparty is not None and local_counterparty.owner_business_id != invoice.seller_business_id:
+            raise InvoiceError("همکار محلی متعلق به این کسب‌وکار نیست.")
         currency = header.get("currency", invoice.currency)
         display = header.get("display_unit", invoice.display_unit)
         cleaned = _clean_lines(
@@ -272,6 +283,20 @@ def update_partner_draft(
         invoice.currency = currency
         invoice.display_unit = display
         invoice.issue_date = header.get("issue_date") or invoice.issue_date
+        invoice.counterparty_type = (
+            SalesInvoice.Counterparty.BUSINESS
+            if buyer_business is not None
+            else SalesInvoice.Counterparty.LOCAL
+        )
+        invoice.buyer_business = buyer_business
+        invoice.local_counterparty = local_counterparty
+        invoice.customer_name = ""
+        invoice.customer_phone = ""
+        counterparty = buyer_business or local_counterparty
+        invoice.buyer_name = counterparty.name
+        invoice.buyer_phone = counterparty.phone
+        invoice.buyer_address = counterparty.address
+        invoice.buyer_signature = None
         invoice.settlement_method = header.get("settlement_method", invoice.settlement_method)
         invoice.cheque_details = header.get("cheque_details") or {}
         invoice.notes = str(header.get("notes", invoice.notes) or "").strip()

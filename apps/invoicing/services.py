@@ -593,6 +593,9 @@ def update_draft_invoice(
         previous_balance_state=invoice.previous_balance_state,
     )
     settings_row = get_invoice_settings(business)
+    invoice.counterparty_type = SalesInvoice.Counterparty.CUSTOMER
+    invoice.buyer_business = None
+    invoice.local_counterparty = None
     invoice.customer_name = str(header.get("customer_name") or "").strip()
     if not invoice.customer_name:
         raise InvoiceError("نام خریدار را وارد کنید.")
@@ -604,6 +607,11 @@ def update_draft_invoice(
         raise InvoiceError("شماره تماس خریدار حداکثر ۲۰ نویسه است.")
     invoice.buyer_phone = invoice.customer_phone
     invoice.buyer_address = (header.get("buyer_address") or "").strip()
+    invoice.settlement_method = SalesInvoice.SettlementMethod.CASH
+    invoice.cash_amount = Decimal("0")
+    invoice.credit_amount = Decimal("0")
+    invoice.cheque_amount = Decimal("0")
+    invoice.cheque_details = {}
     invoice.issue_date = header.get("issue_date") or invoice.issue_date
     invoice.currency = currency
     invoice.display_unit = display_unit

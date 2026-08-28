@@ -46,23 +46,30 @@
           <h2 class="section-title" id="invoice-party-title">اطلاعات فاکتور و خریدار</h2>
           <p class="muted">نوع خریدار را انتخاب کنید؛ فقط اطلاعات مرتبط همان مسیر ذخیره می‌شود.</p>
         </div>
-        <div class="invoice-counterparty-switch" data-counterparty-switch>{{ form.counterparty_mode }}</div>
+        <div class="invoice-counterparty-switch" data-counterparty-switch aria-describedby="invoice-party-help">{{ form.counterparty_mode }}</div>
         {% if form.counterparty_mode.errors %}<span class="field-error">{{ form.counterparty_mode.errors|striptags }}</span>{% endif %}
+        <p class="sr-only" id="invoice-party-help">با تغییر نوع خریدار، فقط فیلدهای مرتبط همان خریدار فعال می‌شوند.</p>
         <div class="form-grid invoice-party-grid">
           {% for field in form %}
             {% if field.name in 'customer_name customer_phone buyer_address issue_date' %}
-            <label class="field field-{{ field.name }}" {% if field.name != 'issue_date' %}data-counterparty-section="customer"{% endif %}><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+            <label class="field field-{{ field.name }}" {% if field.name != 'issue_date' %}data-counterparty-section="customer" data-counterparty-panel{% endif %}><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
             {% endif %}
           {% endfor %}
         </div>
-        <div class="form-grid" data-counterparty-section="business">
+        <div class="form-grid invoice-choice-panel" id="invoice-business-fields" data-counterparty-section="business" data-counterparty-panel>
           <label class="field"><span class="field-label">{{ form.buyer_business.label }}</span>{{ form.buyer_business }}{% if form.buyer_business.errors %}<span class="field-error">{{ form.buyer_business.errors|striptags }}</span>{% endif %}</label>
         </div>
-        <div class="form-grid" data-counterparty-section="local">
+        <div class="stack-sm invoice-choice-panel" id="invoice-local-fields" data-counterparty-section="local" data-counterparty-panel>
           <label class="field"><span class="field-label">{{ form.local_counterparty.label }}</span>{{ form.local_counterparty }}{% if form.local_counterparty.errors %}<span class="field-error">{{ form.local_counterparty.errors|striptags }}</span>{% endif %}</label>
-          <label class="field"><span class="field-label">{{ form.local_name.label }}</span>{{ form.local_name }}{% if form.local_name.errors %}<span class="field-error">{{ form.local_name.errors|striptags }}</span>{% endif %}</label>
-          <label class="field"><span class="field-label">{{ form.local_phone.label }}</span>{{ form.local_phone }}</label>
-          <label class="field"><span class="field-label">{{ form.local_address.label }}</span>{{ form.local_address }}</label>
+          <div class="form-grid invoice-local-new" data-local-new-fields>
+            <div class="invoice-local-new-heading">
+              <strong>مشخصات همکار جدید</strong>
+              <span class="muted">اگر همکار در فهرست بالا نیست، اطلاعات او را اینجا وارد کنید.</span>
+            </div>
+            <label class="field"><span class="field-label">{{ form.local_name.label }}</span>{{ form.local_name }}{% if form.local_name.errors %}<span class="field-error">{{ form.local_name.errors|striptags }}</span>{% endif %}</label>
+            <label class="field"><span class="field-label">{{ form.local_phone.label }}</span>{{ form.local_phone }}{% if form.local_phone.errors %}<span class="field-error">{{ form.local_phone.errors|striptags }}</span>{% endif %}</label>
+            <label class="field"><span class="field-label">{{ form.local_address.label }}</span>{{ form.local_address }}{% if form.local_address.errors %}<span class="field-error">{{ form.local_address.errors|striptags }}</span>{% endif %}</label>
+          </div>
         </div>
       </section>
 
@@ -85,13 +92,13 @@
           <div class="form-grid form-grid-compact">
             {% for field in form %}
               {% if field.name in 'tax_amount shipping_amount adjustment_amount paid_amount' %}
-              <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
+              <label class="field" {% if field.name == 'paid_amount' %}data-customer-paid{% endif %}><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
               {% endif %}
             {% endfor %}
           </div>
         </div>
 
-        <section class="stack-sm" data-partner-settlement>
+        <section class="stack-sm invoice-choice-panel" id="invoice-partner-settlement" data-partner-settlement>
           <h3 class="section-subtitle">تسویه همکار</h3>
           <p class="muted">جمع نقد، اعتبار و چک باید دقیقاً با مبلغ نهایی برابر باشد.</p>
           <div class="form-grid form-grid-compact">
@@ -127,10 +134,11 @@
         </div>
         <div class="btn-row">
           <button class="btn btn-ghost btn-sm" type="button" data-preview-refresh>به‌روزرسانی</button>
+          <button class="btn btn-secondary btn-sm invoice-preview-toggle" type="button" data-preview-toggle aria-expanded="false" aria-controls="invoice-preview-canvas">نمایش پیش‌نمایش</button>
           <button class="btn btn-ghost btn-sm" type="button" data-preview-expand aria-expanded="false">نمایش بزرگ</button>
         </div>
       </div>
-      <div class="invoice-preview-canvas">
+      <div class="invoice-preview-canvas" id="invoice-preview-canvas">
         <div class="invoice-preview-loading" data-preview-loading aria-hidden="true"><span></span><span></span><span></span></div>
         <iframe title="پیش‌نمایش زنده فاکتور" data-invoice-preview sandbox="allow-same-origin"></iframe>
       </div>
@@ -140,4 +148,3 @@
 {% endblock %}
 
 {% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}"></script><script src="{% static 'js/invoice_editor.js' %}"></script>{% endblock %}
-

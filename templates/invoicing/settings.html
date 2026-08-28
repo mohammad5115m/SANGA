@@ -3,9 +3,8 @@
 {% block title %}تنظیمات فاکتور | سنگا{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
 {% block content %}
-  <p><a class="button button-secondary" href="{% url 'invoicing:counterparty_links' %}">همکاران محلی و اتصال سابقه</a></p>
 <section class="stack-lg">
-  <div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div>
+  <div class="toolbar"><div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div><a class="btn btn-secondary" href="{% url 'invoicing:counterparty_links' %}">همکاران محلی و اتصال سابقه</a></div>
   {% if can_manage_business_signature %}
   <form method="post" enctype="multipart/form-data" class="stack-lg" novalidate data-invoice-settings>
     {% csrf_token %}

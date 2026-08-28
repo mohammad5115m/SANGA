@@ -56,6 +56,9 @@ def test_invoice_form_uses_lazy_product_picker(client):
     assert "نوع سنگ</span>" not in body
     assert "نوع تخفیف</span>" not in body
     assert "مقدار تخفیف</span>" not in body
+    assert "data-counterparty-panel" in body
+    assert "data-local-new-fields" in body
+    assert "data-preview-toggle" in body
 
 
 @pytest.mark.django_db

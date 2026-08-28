@@ -1,7 +1,9 @@
 {% extends "layouts/app_shell.html" %}
 {% load money %}
+{% load static %}
 
 {% block title %}فاکتورها | سنگا{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
@@ -15,7 +17,7 @@
     {% endif %}
   </div>
 
-  <form method="get" class="panel filter-bar">
+  <form method="get" class="panel filter-bar invoice-filter" aria-label="فیلتر فاکتورها">
     <label class="field field-grow">
       <span class="field-label">جست‌وجو</span>
       <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="شماره فاکتور یا نام طرف حساب">
@@ -33,12 +35,15 @@
         {% endfor %}
       </select>
     </label>
-    <button class="btn btn-secondary" type="submit">اعمال</button>
+    <div class="invoice-filter-actions">
+      <button class="btn btn-secondary" type="submit">اعمال فیلتر</button>
+      {% if q or status or direction or origin or date_from or date_to %}<a class="btn btn-ghost" href="{% url 'invoicing:list' %}">پاک‌کردن فیلترها</a>{% endif %}
+    </div>
   </form>
 
   <div class="list-stack">
     {% for invoice in invoices %}
-      <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
+      <a class="list-item invoice-list-item" href="{% url 'invoicing:detail' invoice.id %}">
         <div>
           <div class="list-title" dir="ltr">{{ invoice.display_number }}</div>
           <div class="muted">{% if invoice.seller_business_id == current_business.id %}{{ invoice.buyer_name }}{% else %}{{ invoice.seller_business.name }}{% endif %} · {{ invoice.issue_date }}</div>
@@ -46,11 +51,11 @@
         </div>
         <div class="ledger-amounts">
           <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>
-          <span class="badge">{{ invoice.get_status_display }}</span>
+          <span class="badge invoice-status-badge">{{ invoice.get_status_display }}</span>
         </div>
       </a>
     {% empty %}
-      <div class="empty-state">{% if q or status or direction or origin or date_from or date_to %}فاکتوری مطابق فیلترها پیدا نشد. فیلترها را پاک کنید یا بازه دیگری انتخاب کنید.{% else %}{% if can_manage %}هنوز فاکتوری ندارید. برای مشتری یا همکار «فاکتور جدید» بسازید.{% else %}هنوز فاکتور صادرشده یا دریافتی ندارید.{% endif %}{% endif %}</div>
+      <div class="empty-state stack-sm">{% if q or status or direction or origin or date_from or date_to %}<span>فاکتوری مطابق فیلترها پیدا نشد.</span><a class="btn btn-secondary" href="{% url 'invoicing:list' %}">نمایش همه فاکتورها</a>{% else %}{% if can_manage %}<span>هنوز فاکتوری ندارید. برای مشتری یا همکار اولین فاکتور را بسازید.</span><a class="btn btn-primary" href="{% url 'invoicing:create' %}">ساخت اولین فاکتور</a>{% else %}هنوز فاکتور صادرشده یا دریافتی ندارید.{% endif %}{% endif %}</div>
     {% endfor %}
   </div>
 

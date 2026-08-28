@@ -218,6 +218,27 @@ def build_preview_document(*, business, header: dict, calculated, totals) -> dic
             }
         )
     due = display(totals.amount_due)
+    mode = header.get("counterparty_mode", SalesInvoice.Counterparty.CUSTOMER)
+    if mode == SalesInvoice.Counterparty.BUSINESS and header.get("buyer_business"):
+        counterparty = header["buyer_business"]
+        buyer = {
+            "name": counterparty.name,
+            "phone": counterparty.phone,
+            "address": counterparty.address,
+        }
+    elif mode == SalesInvoice.Counterparty.LOCAL:
+        counterparty = header.get("local_counterparty")
+        buyer = {
+            "name": counterparty.name if counterparty else header.get("local_name", ""),
+            "phone": counterparty.phone if counterparty else header.get("local_phone", ""),
+            "address": counterparty.address if counterparty else header.get("local_address", ""),
+        }
+    else:
+        buyer = {
+            "name": header.get("customer_name", ""),
+            "phone": header.get("customer_phone", ""),
+            "address": header.get("buyer_address", ""),
+        }
     return {
         "id": "preview",
         "number": "پیش‌نویس",
@@ -227,11 +248,7 @@ def build_preview_document(*, business, header: dict, calculated, totals) -> dic
         "cancel_reason": "",
         "payment_status_label": "پیش‌نویس",
         "seller": seller_snapshot(business, settings_row),
-        "buyer": {
-            "name": header["customer_name"],
-            "phone": header.get("customer_phone", ""),
-            "address": header.get("buyer_address", ""),
-        },
+        "buyer": buyer,
         "lines": lines,
         "currency": currency,
         "display_unit": display_unit,

@@ -13,31 +13,62 @@
   var previewPanel = editor.querySelector("[data-preview-panel]");
   var previewRefresh = editor.querySelector("[data-preview-refresh]");
   var previewExpand = editor.querySelector("[data-preview-expand]");
+  var previewToggle = editor.querySelector("[data-preview-toggle]");
+  var compactPreview = window.matchMedia("(max-width: 899px)");
   var previewTimer;
   var previewController;
   var customerName = form.elements.customer_name;
   var customerOptions = editor.querySelector("#invoice-customer-options");
 
-  function syncCounterpartyMode() {
+  function setRegionActive(region, active) {
+    if (!region) return;
+    region.hidden = !active;
+    region.setAttribute("aria-hidden", active ? "false" : "true");
+    region.querySelectorAll("input, select, textarea, button").forEach(function (control) {
+      control.disabled = !active;
+    });
+  }
+
+  function selectedCounterpartyMode() {
     var selected = form.querySelector('[name="counterparty_mode"]:checked');
-    var mode = selected ? selected.value : "customer";
+    return selected ? selected.value : "customer";
+  }
+
+  function syncLocalNewFields(mode) {
+    var localNew = editor.querySelector("[data-local-new-fields]");
+    var localSelect = form.elements.local_counterparty;
+    var needsNewLocal = mode === "local" && localSelect && !localSelect.value;
+    setRegionActive(localNew, needsNewLocal);
+  }
+
+  function syncCounterpartyMode() {
+    var mode = selectedCounterpartyMode();
     editor.querySelectorAll("[data-counterparty-section]").forEach(function (section) {
-      section.hidden = section.dataset.counterpartySection !== mode;
+      setRegionActive(section, section.dataset.counterpartySection === mode);
     });
     var partnerSettlement = editor.querySelector("[data-partner-settlement]");
-    if (partnerSettlement) partnerSettlement.hidden = mode === "customer";
-    var customerPaid = form.elements.paid_amount && form.elements.paid_amount.closest("label");
-    if (customerPaid) customerPaid.hidden = mode !== "customer";
+    setRegionActive(partnerSettlement, mode !== "customer");
+    setRegionActive(editor.querySelector("[data-customer-paid]"), mode === "customer");
+    syncLocalNewFields(mode);
+    form.querySelectorAll('[name="counterparty_mode"]').forEach(function (radio) {
+      var controls = radio.value === "business" ? "invoice-business-fields invoice-partner-settlement" :
+        radio.value === "local" ? "invoice-local-fields invoice-partner-settlement" : "";
+      if (controls) radio.setAttribute("aria-controls", controls);
+      else radio.removeAttribute("aria-controls");
+    });
     syncChequeFields();
   }
 
   function syncChequeFields() {
     var chequeFields = editor.querySelector("[data-cheque-fields]");
     if (!chequeFields) return;
-    var selected = form.querySelector('[name="counterparty_mode"]:checked');
-    var isPartner = selected && selected.value !== "customer";
-    var amount = Number((form.elements.cheque_amount && form.elements.cheque_amount.value) || 0);
-    chequeFields.hidden = !isPartner || amount <= 0;
+    var isPartner = selectedCounterpartyMode() !== "customer";
+    var amount = Number(window.SangaInvoiceCalculator.normalizeNumber(
+      (form.elements.cheque_amount && form.elements.cheque_amount.value) || 0
+    ));
+    var method = form.elements.settlement_method && form.elements.settlement_method.value;
+    var needsCheque = amount > 0 || method === "cheque" || method === "mixed";
+    setRegionActive(chequeFields, isPartner && needsCheque);
   }
 
   function field(row, suffix) {
@@ -67,7 +98,10 @@
     payload.tax_amount = form.elements.tax_amount.value;
     payload.shipping_amount = form.elements.shipping_amount.value;
     payload.adjustment_amount = form.elements.adjustment_amount.value;
-    payload.paid_amount = form.elements.paid_amount.value;
+    payload.paid_amount = selectedCounterpartyMode() === "customer"
+      ? form.elements.paid_amount.value
+      : Number(window.SangaInvoiceCalculator.normalizeNumber(form.elements.cash_amount.value || 0)) +
+        Number(window.SangaInvoiceCalculator.normalizeNumber(form.elements.cheque_amount.value || 0));
     var result = window.SangaInvoiceCalculator.calculate(payload);
     if (!result.valid) {
       activeRows.forEach(function (row) {
@@ -236,6 +270,11 @@
 
   function requestPreview(immediate) {
     clearTimeout(previewTimer);
+    if (compactPreview.matches && !previewPanel.classList.contains("is-preview-open")) {
+      previewStatus.textContent = "برای مشاهده، پیش‌نمایش را باز کنید";
+      setPreviewLoading(false);
+      return;
+    }
     previewTimer = setTimeout(function () {
       if (previewController) previewController.abort();
       previewController = new AbortController();
@@ -310,11 +349,27 @@
   form.addEventListener("input", changed);
   form.addEventListener("change", function () { syncCounterpartyMode(); syncChequeFields(); changed(); });
   if (previewRefresh) {
-    previewRefresh.addEventListener("click", function () { requestPreview(true); });
+    previewRefresh.addEventListener("click", function () {
+      previewPanel.classList.add("is-preview-open");
+      if (previewToggle) {
+        previewToggle.setAttribute("aria-expanded", "true");
+        previewToggle.textContent = "بستن پیش‌نمایش";
+      }
+      requestPreview(true);
+    });
+  }
+  if (previewToggle) {
+    previewToggle.addEventListener("click", function () {
+      var open = previewPanel.classList.toggle("is-preview-open");
+      previewToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      previewToggle.textContent = open ? "بستن پیش‌نمایش" : "نمایش پیش‌نمایش";
+      if (open) requestPreview(true);
+    });
   }
   if (previewExpand) {
     previewExpand.addEventListener("click", function () {
       var expanded = editor.classList.toggle("is-preview-expanded");
+      if (expanded) previewPanel.classList.add("is-preview-open");
       previewExpand.setAttribute("aria-expanded", expanded ? "true" : "false");
       previewExpand.textContent = expanded ? "بازگشت به فرم" : "نمایش بزرگ";
       if (expanded) previewPanel.scrollIntoView({behavior: "smooth", block: "start"});
@@ -326,4 +381,10 @@
   changed();
   var errorSummary = editor.querySelector("[data-error-summary]");
   if (errorSummary) errorSummary.focus();
+  window.addEventListener("pageshow", syncCounterpartyMode);
+  var handlePreviewViewportChange = function () {
+    if (!compactPreview.matches) requestPreview(true);
+  };
+  if (compactPreview.addEventListener) compactPreview.addEventListener("change", handlePreviewViewportChange);
+  else compactPreview.addListener(handlePreviewViewportChange);
 })();

@@ -41,6 +41,20 @@ INVOICE_PALETTE_COLORS = {
 
 
 class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
+    CUSTOMER_FIELDS = ("customer_name", "customer_phone", "buyer_address", "paid_amount")
+    BUSINESS_FIELDS = ("buyer_business",)
+    LOCAL_FIELDS = ("local_counterparty", "local_name", "local_phone", "local_address")
+    PARTNER_FIELDS = (
+        "settlement_method",
+        "cash_amount",
+        "credit_amount",
+        "cheque_amount",
+        "cheque_reference",
+        "cheque_bank",
+        "cheque_due_date",
+        "cheque_drawer",
+    )
+    CHEQUE_DETAIL_FIELDS = ("cheque_reference", "cheque_bank", "cheque_due_date", "cheque_drawer")
     numeric_fields = (
         "invoice_discount_value",
         "tax_amount",
@@ -259,8 +273,18 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
 
     def __init__(self, *args, business=None, **kwargs):
         self.business = business
+        # Remove controls that do not belong to the submitted buyer mode before
+        # Django runs individual field validation.  This prevents an invalid or
+        # stale hidden ID from blocking the active path even when JavaScript is
+        # unavailable or a crafted request submits every section.
+        if args and args[0] is not None:
+            data = self._mode_scoped_data(args[0])
+            args = (data, *args[1:])
+        elif kwargs.get("data") is not None:
+            kwargs["data"] = self._mode_scoped_data(kwargs["data"])
         super().__init__(*args, **kwargs)
         self.fields["customer_name"].widget.attrs["list"] = "invoice-customer-options"
+        self.fields["local_counterparty"].empty_label = "ثبت همکار محلی جدید"
         self.fields["issue_date"].input_formats = ["%Y-%m-%d"]
         self.fields["cheque_due_date"].input_formats = ["%Y-%m-%d"]
         if business is not None:
@@ -286,6 +310,25 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
                 self.initial.setdefault("show_bank_information", settings_row.show_bank_information)
                 self.initial.setdefault("show_stamp", settings_row.show_stamp)
                 self.initial.setdefault("show_signature", settings_row.show_signature)
+
+    @classmethod
+    def _mode_scoped_data(cls, source):
+        data = source.copy()
+        mode = data.get("counterparty_mode") or SalesInvoice.Counterparty.CUSTOMER
+        if mode == SalesInvoice.Counterparty.CUSTOMER:
+            inactive = cls.BUSINESS_FIELDS + cls.LOCAL_FIELDS + cls.PARTNER_FIELDS
+        elif mode == SalesInvoice.Counterparty.BUSINESS:
+            inactive = cls.CUSTOMER_FIELDS + cls.LOCAL_FIELDS
+        elif mode == SalesInvoice.Counterparty.LOCAL:
+            inactive = cls.CUSTOMER_FIELDS + cls.BUSINESS_FIELDS
+            if data.get("local_counterparty"):
+                inactive += ("local_name", "local_phone", "local_address")
+        else:
+            # Preserve all values so ChoiceField reports the unsupported mode.
+            return data
+        for name in inactive:
+            data.pop(name, None)
+        return data
 
     def clean_buyer_signature(self):
         upload = self.cleaned_data.get("buyer_signature")
@@ -313,19 +356,34 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
             self.add_error("primary_color", "رنگ اصلی باید برای متن سفید کنتراست حداقل ۴٫۵ به ۱ داشته باشد.")
         mode = cleaned.get("counterparty_mode") or SalesInvoice.Counterparty.CUSTOMER
         cleaned["counterparty_mode"] = mode
-        cleaned["settlement_method"] = cleaned.get("settlement_method") or SalesInvoice.SettlementMethod.CREDIT
         if mode == SalesInvoice.Counterparty.CUSTOMER:
+            for name in self.BUSINESS_FIELDS + self.LOCAL_FIELDS + self.PARTNER_FIELDS:
+                cleaned[name] = None
             if not (cleaned.get("customer_name") or "").strip():
                 self.add_error("customer_name", "نام مشتری را وارد کنید.")
         elif mode == SalesInvoice.Counterparty.BUSINESS:
+            for name in self.CUSTOMER_FIELDS + self.LOCAL_FIELDS:
+                cleaned[name] = None
             if not cleaned.get("buyer_business"):
                 self.add_error("buyer_business", "کسب‌وکار خریدار را انتخاب کنید.")
-        elif not cleaned.get("local_counterparty") and not (cleaned.get("local_name") or "").strip():
-            self.add_error("local_name", "همکار محلی موجود را انتخاب کنید یا نام جدید را وارد کنید.")
+        elif mode == SalesInvoice.Counterparty.LOCAL:
+            for name in self.CUSTOMER_FIELDS + self.BUSINESS_FIELDS:
+                cleaned[name] = None
+            if cleaned.get("local_counterparty"):
+                for name in ("local_name", "local_phone", "local_address"):
+                    cleaned[name] = None
+            elif not (cleaned.get("local_name") or "").strip():
+                self.add_error("local_name", "همکار محلی موجود را انتخاب کنید یا نام جدید را وارد کنید.")
         if mode != SalesInvoice.Counterparty.CUSTOMER:
+            cleaned["settlement_method"] = (
+                cleaned.get("settlement_method") or SalesInvoice.SettlementMethod.CREDIT
+            )
             cheque = cleaned.get("cheque_amount") or 0
             if cheque and (not (cleaned.get("cheque_reference") or "").strip() or not cleaned.get("cheque_due_date")):
                 self.add_error("cheque_reference", "برای مبلغ چک، شماره و تاریخ سررسید الزامی است.")
+            if not cheque:
+                for name in self.CHEQUE_DETAIL_FIELDS:
+                    cleaned[name] = None
         return cleaned
 
     def appearance(self) -> dict:
