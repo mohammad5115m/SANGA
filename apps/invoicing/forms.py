@@ -285,6 +285,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.fields["customer_name"].widget.attrs["list"] = "invoice-customer-options"
         self.fields["local_counterparty"].empty_label = "ثبت همکار محلی جدید"
+        self.fields["local_counterparty"].widget.attrs["aria-controls"] = "invoice-local-new-fields"
         self.fields["issue_date"].input_formats = ["%Y-%m-%d"]
         self.fields["cheque_due_date"].input_formats = ["%Y-%m-%d"]
         if business is not None:
