@@ -23,7 +23,7 @@
   var primaryAction = editor.querySelector("[data-invoice-primary-action]");
   var modePresentation = {
     customer: {
-      controls: "invoice-customer-fields",
+      controls: "invoice-customer-fields invoice-customer-paid",
       hint: "فاکتور مشتری پس از دریافت کامل مبلغ نهایی می‌شود.",
       action: "صدور نهایی",
       confirm: "پس از صدور، نسخه ثبت‌شده تغییرناپذیر است. ادامه می‌دهید؟"
@@ -294,6 +294,22 @@
     previewPanel.setAttribute("aria-busy", loading ? "true" : "false");
   }
 
+  function setPreviewOpen(open) {
+    if (!previewPanel) return;
+    previewPanel.classList.toggle("is-preview-open", open);
+    if (previewToggle) {
+      previewToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      previewToggle.textContent = open ? "بستن پیش‌نمایش" : "نمایش پیش‌نمایش";
+    }
+    if (!open && editor.classList.contains("is-preview-expanded")) {
+      editor.classList.remove("is-preview-expanded");
+      if (previewExpand) {
+        previewExpand.setAttribute("aria-expanded", "false");
+        previewExpand.textContent = "نمایش بزرگ";
+      }
+    }
+  }
+
   function requestPreview(immediate) {
     clearTimeout(previewTimer);
     if (compactPreview.matches && !previewPanel.classList.contains("is-preview-open")) {
@@ -376,29 +392,27 @@
   form.addEventListener("change", function () { syncCounterpartyMode(); syncChequeFields(); changed(); });
   if (previewRefresh) {
     previewRefresh.addEventListener("click", function () {
-      previewPanel.classList.add("is-preview-open");
-      if (previewToggle) {
-        previewToggle.setAttribute("aria-expanded", "true");
-        previewToggle.textContent = "بستن پیش‌نمایش";
-      }
+      setPreviewOpen(true);
       requestPreview(true);
     });
   }
   if (previewToggle) {
     previewToggle.addEventListener("click", function () {
-      var open = previewPanel.classList.toggle("is-preview-open");
-      previewToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      previewToggle.textContent = open ? "بستن پیش‌نمایش" : "نمایش پیش‌نمایش";
+      var open = !previewPanel.classList.contains("is-preview-open");
+      setPreviewOpen(open);
       if (open) requestPreview(true);
     });
   }
   if (previewExpand) {
     previewExpand.addEventListener("click", function () {
       var expanded = editor.classList.toggle("is-preview-expanded");
-      if (expanded) previewPanel.classList.add("is-preview-open");
+      if (expanded) setPreviewOpen(true);
       previewExpand.setAttribute("aria-expanded", expanded ? "true" : "false");
       previewExpand.textContent = expanded ? "بازگشت به فرم" : "نمایش بزرگ";
-      if (expanded) previewPanel.scrollIntoView({behavior: "smooth", block: "start"});
+      if (expanded) {
+        previewPanel.scrollIntoView({behavior: "smooth", block: "start"});
+        requestPreview(true);
+      }
     });
   }
   lines.querySelectorAll("[data-invoice-line]").forEach(initRow);
