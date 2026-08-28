@@ -300,6 +300,7 @@ def test_long_invoice_paginates_without_rasterizing_the_pdf(seller):
         count=75,
         invoice_discount_type="none",
         invoice_discount_value=0,
+        paid_amount=Decimal("135075"),
     )
     pdf = render_pdf(invoice)
     parsed = pymupdf.open(stream=pdf, filetype="pdf")

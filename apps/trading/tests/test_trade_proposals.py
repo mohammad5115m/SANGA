@@ -153,7 +153,7 @@ def test_a_marketplace_product_returns_to_its_market_detail(client, agreement_ma
 
     assert response.status_code == 302
     assert response.url == reverse(
-        "marketplace:lot_detail", kwargs={"item_id": agreement_market["item"].id}
+        "marketplace:lot_detail", kwargs={"lot_id": agreement_market["item"].id}
     )
 
 
