@@ -173,10 +173,10 @@ def test_an_owner_finalizing_a_sale_still_gets_an_issued_invoice(shop):
 
 
 @pytest.mark.django_db
-def test_a_trade_without_an_invoice_offers_a_way_to_create_one(client, shop):
+def test_a_historical_trade_without_an_invoice_stays_read_only(client, shop):
     item = make_item(
         shop["seller"],
-        product=make_product(shop["seller"], commercial_name="تراورتن بازیابی"),
+        product=make_product(shop["seller"], commercial_name="تراورتن سابقه"),
         lot_code="ST-7",
         b2b="1000000",
     )
@@ -192,11 +192,12 @@ def test_a_trade_without_an_invoice_offers_a_way_to_create_one(client, shop):
 
     _login(client, shop["staff"])
     body = client.get(reverse("trading:trade_detail", kwargs={"trade_id": trade.id})).content.decode()
-    assert "ساخت فاکتور" in body
+    assert "فقط خواندنی" in body
+    assert "ساخت فاکتور" not in body
 
-    client.post(reverse("trading:trade_create_invoice", kwargs={"trade_id": trade.id}))
-    assert SalesInvoice.objects.filter(trade=trade).count() == 1
-
+    response = client.post(reverse("trading:trade_create_invoice", kwargs={"trade_id": trade.id}))
+    assert response.status_code == 302
+    assert not SalesInvoice.objects.filter(trade=trade).exists()
 
 @pytest.mark.django_db
 def test_the_recovery_action_cannot_produce_a_second_invoice(client, shop):

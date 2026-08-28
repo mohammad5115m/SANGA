@@ -18,14 +18,12 @@ import uuid
 from decimal import Decimal
 
 import pytest
-from django.urls import reverse
-
 from apps.accounting.models import LedgerEntry
 from apps.accounting.selectors import current_balance
 from apps.core.testing import make_business, make_item, make_product, owner_membership
 from apps.invoicing.models import SalesInvoice
 from apps.pricing.services import ensure_default_tiers
-from apps.trading.models import Trade, TradeProposal
+from apps.trading.models import Trade
 from apps.trading.services import record_direct_sale
 
 
@@ -161,33 +159,3 @@ def test_a_sale_recorded_without_a_token_is_still_allowed(market):
     _sale(market, None)
 
     assert Trade.objects.count() == 2
-
-
-# --- through the view ---------------------------------------------------------
-
-
-def test_the_agreement_form_carries_a_token_and_a_double_post_records_one_proposal(client, market):
-    client.force_login(market["seller_m"].user)
-    url = reverse("trading:proposal_create")
-
-    page = client.get(url)
-    token = page.context["form"]["submission_id"].value()
-    assert token, "the blank form must mint a submission token"
-
-    payload = {
-        "submission_id": str(token),
-        "direction": "sell",
-        "counterparty": str(market["buyer"].id),
-        "lines-TOTAL_FORMS": "1",
-        "lines-INITIAL_FORMS": "0",
-        "lines-0-item": str(market["item"].id),
-        "lines-0-quantity": "10",
-        "lines-0-unit_price": "1000000",
-    }
-    client.post(url, payload)
-    client.post(url, payload)
-
-    assert TradeProposal.objects.count() == 1
-    assert Trade.objects.count() == 0
-    assert SalesInvoice.objects.count() == 0
-    assert current_balance(market["seller"], market["buyer"]) == Decimal("0.00")

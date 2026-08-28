@@ -66,6 +66,8 @@ def _invoice(seller, *, issue=False, count=1, **kwargs):
         "paid_amount": Decimal("200"),
         "issue": issue,
     }
+    if issue and "paid_amount" not in kwargs:
+        values["paid_amount"] = Decimal("1800") * count - Decimal("25")
     values.update(kwargs)
     return create_manual_invoice(**values)
 
@@ -137,6 +139,13 @@ def test_draft_has_no_number_and_issue_freezes_server_calculated_totals(seller):
     assert invoice.total_amount == Decimal("1775.00")
     assert invoice.amount_due == Decimal("1575.00")
 
+    with pytest.raises(InvoiceError, match="دریافت کامل"):
+        issue_invoice(invoice=invoice, membership=seller[1])
+
+    invoice.paid_amount = invoice.total_amount
+    invoice.amount_due = Decimal("0")
+    invoice.payment_status = SalesInvoice.PaymentStatus.PAID
+    invoice.save(update_fields=["paid_amount", "amount_due", "payment_status", "updated_at"])
     issued = issue_invoice(invoice=invoice, membership=seller[1])
     assert issued.status == SalesInvoice.Status.ISSUED
     assert issued.number == "00001"
@@ -169,6 +178,7 @@ def test_create_and_edit_views_add_delete_reorder_and_issue_lines(client, seller
     edited_payload["lines-1-product_name"] = "سنگ ویرایش‌شده"
     edited_payload["lines-1-quantity"] = "3"
     edited_payload["lines-1-ORDER"] = "0"
+    edited_payload["paid_amount"] = "3000"
     edited = client.post(
         reverse("invoicing:edit", kwargs={"invoice_id": invoice.id}),
         edited_payload,

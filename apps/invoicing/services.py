@@ -447,19 +447,28 @@ def create_manual_invoice(
     tax_amount=0,
     shipping_amount=0,
     adjustment_amount=0,
-    paid_amount=0,
+    paid_amount=None,
     appearance: dict | None = None,
     buyer_signature=None,
     remove_buyer_signature: bool = False,
     submission_id: uuid.UUID | None = None,
 ) -> SalesInvoice:
     _require_manage(business, membership)
+    payment_was_omitted = paid_amount is None
+    paid_amount = 0 if payment_was_omitted else paid_amount
     requested_issue = issue
     issue = False
     if submission_id is not None:
         existing = SalesInvoice.objects.filter(seller_business=business, submission_id=submission_id).first()
         if existing is not None:
             if requested_issue and existing.status == SalesInvoice.Status.DRAFT:
+                if payment_was_omitted:
+                    existing.paid_amount = existing.total_amount
+                    existing.amount_due = Decimal("0")
+                    existing.payment_status = SalesInvoice.PaymentStatus.PAID
+                    existing.save(
+                        update_fields=["paid_amount", "amount_due", "payment_status", "updated_at"]
+                    )
                 from .partner_services import finalize_customer_invoice
 
                 return finalize_customer_invoice(invoice=existing, membership=membership)
@@ -532,6 +541,11 @@ def create_manual_invoice(
         logger.info("Duplicate manual invoice submission resolved to %s", winner.pk)
         invoice = winner
     if requested_issue:
+        if payment_was_omitted and invoice.status == SalesInvoice.Status.DRAFT:
+            invoice.paid_amount = invoice.total_amount
+            invoice.amount_due = Decimal("0")
+            invoice.payment_status = SalesInvoice.PaymentStatus.PAID
+            invoice.save(update_fields=["paid_amount", "amount_due", "payment_status", "updated_at"])
         from .partner_services import finalize_customer_invoice
 
         return finalize_customer_invoice(invoice=invoice, membership=membership)

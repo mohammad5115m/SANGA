@@ -32,7 +32,7 @@ def _login(client, business, membership=None):
     session.save()
 
 
-PRIMARY_NAV = ("خانه", "موجودی من", "بازار", "خرید و فروش", "کاتالوگ‌ها", "بیشتر")
+PRIMARY_NAV = ("خانه", "موجودی من", "بازار", "فاکتورها", "کاتالوگ‌ها", "بیشتر")
 
 
 @pytest.mark.django_db

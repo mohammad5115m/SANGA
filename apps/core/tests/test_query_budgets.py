@@ -76,6 +76,7 @@ def busy(db):
             lines=[{"product_name": item.product.commercial_name, "quantity": Decimal("5"),
                     "unit_price": Decimal("1000000"), "item": item}],
             customer_name=f"مشتری {index}",
+            issue=False,
         )
 
     return {"seller": seller, "buyer": buyer, "items": items}

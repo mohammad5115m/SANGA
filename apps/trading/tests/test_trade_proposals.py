@@ -145,15 +145,16 @@ def test_reject_and_cancel_close_without_financial_records(agreement_market):
     assert Trade.objects.count() == SalesInvoice.objects.count() == LedgerEntry.objects.count() == 0
 
 
-def test_a_marketplace_product_prefills_the_new_agreement_instead_of_a_request(client, agreement_market):
+def test_a_marketplace_product_returns_to_its_market_detail(client, agreement_market):
     client.force_login(agreement_market["buyer_m"].user)
     response = client.get(
         reverse("trading:request_create", kwargs={"item_id": agreement_market["item"].id})
     )
 
     assert response.status_code == 302
-    assert reverse("trading:proposal_create") in response.url
-    assert "direction=buy" in response.url
+    assert response.url == reverse(
+        "marketplace:lot_detail", kwargs={"item_id": agreement_market["item"].id}
+    )
 
 
 def test_both_parties_can_reach_the_trade_invoice_and_colleague_account(client, agreement_market):

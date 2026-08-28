@@ -471,7 +471,7 @@ def _create_settlement_events(invoice: SalesInvoice, revision: InvoiceRevision, 
 
 @transaction.atomic
 def finalize_customer_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
-    invoice = SalesInvoice.objects.select_for_update().select_related("seller_business").get(pk=invoice.pk)
+    invoice = SalesInvoice.objects.select_for_update(of=("self",)).select_related("seller_business").get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     if invoice.status == SalesInvoice.Status.ISSUED:
         return invoice
@@ -503,7 +503,7 @@ def finalize_customer_invoice(*, invoice: SalesInvoice, membership: BusinessMemb
 @transaction.atomic
 def send_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
     invoice = (
-        SalesInvoice.objects.select_for_update()
+        SalesInvoice.objects.select_for_update(of=("self",))
         .select_related("seller_business", "buyer_business")
         .prefetch_related("items")
         .get(pk=invoice.pk)
@@ -615,7 +615,7 @@ def reject_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembers
 @transaction.atomic
 def confirm_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
     invoice = (
-        SalesInvoice.objects.select_for_update()
+        SalesInvoice.objects.select_for_update(of=("self",))
         .select_related("seller_business", "buyer_business")
         .prefetch_related("items")
         .get(pk=invoice.pk)
@@ -685,7 +685,7 @@ def confirm_local_invoice_offline(
     attested: bool,
 ) -> SalesInvoice:
     invoice = (
-        SalesInvoice.objects.select_for_update()
+        SalesInvoice.objects.select_for_update(of=("self",))
         .select_related("seller_business", "local_counterparty")
         .prefetch_related("items")
         .get(pk=invoice.pk)
@@ -742,7 +742,7 @@ def change_cheque_status(
     *, cheque: ChequeReceivable, membership: BusinessMembership, status: str, reason: str = ""
 ) -> ChequeReceivable:
     cheque = (
-        ChequeReceivable.objects.select_for_update()
+        ChequeReceivable.objects.select_for_update(of=("self",))
         .select_related("invoice__seller_business", "invoice__buyer_business", "settlement_event__revision")
         .get(pk=cheque.pk)
     )
@@ -827,7 +827,7 @@ def propose_counterparty_link(
 def cancel_counterparty_link(
     *, proposal: CounterpartyLinkProposal, membership: BusinessMembership
 ) -> CounterpartyLinkProposal:
-    proposal = CounterpartyLinkProposal.objects.select_for_update().select_related("local_counterparty").get(
+    proposal = CounterpartyLinkProposal.objects.select_for_update(of=("self",)).select_related("local_counterparty").get(
         pk=proposal.pk
     )
     _require(membership, COUNTERPARTY_LINK_PROPOSE, "اجازه لغو پیشنهاد اتصال را ندارید.")
@@ -847,7 +847,7 @@ def decide_counterparty_link(
     *, proposal: CounterpartyLinkProposal, membership: BusinessMembership, approve: bool, reason: str = ""
 ) -> CounterpartyLinkProposal:
     proposal = (
-        CounterpartyLinkProposal.objects.select_for_update()
+        CounterpartyLinkProposal.objects.select_for_update(of=("self",))
         .select_related("local_counterparty__owner_business", "target_business")
         .get(pk=proposal.pk)
     )
