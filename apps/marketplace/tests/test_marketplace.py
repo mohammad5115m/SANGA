@@ -157,6 +157,23 @@ def test_marketplace_page_shows_b2b_and_never_b2c(network, client):
 
 
 @pytest.mark.django_db
+def test_fourteen_digit_b2b_price_renders_in_marketplace(network, client):
+    from apps.pricing.services import set_lot_price
+
+    set_lot_price(
+        lot=network["item"],
+        tier_code="b2b",
+        amount=Decimal("99999999999999"),
+    )
+    _login_owner(client, network["buyer"])
+
+    response = client.get(reverse("marketplace:home"))
+
+    assert response.status_code == 200
+    assert "99,999,999,999,999" in response.content.decode("utf-8")
+
+
+@pytest.mark.django_db
 def test_marketplace_prefetch_loads_only_the_b2b_tier(network):
     item = marketplace_lots_for(network["buyer"]).first()
     loaded = {price.tier.code for price in item.prices.all()}

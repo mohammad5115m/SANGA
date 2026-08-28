@@ -51,7 +51,10 @@ class LotPrice(models.Model):
     tier = models.ForeignKey(PriceTier, on_delete=models.PROTECT, related_name="lot_prices")
     mode = models.CharField("نوع قیمت", max_length=20, choices=Mode.choices, default=Mode.FIXED)
     amount = models.DecimalField(
-        max_digits=14,
+        # The product form accepts up to fourteen whole Rial digits. DecimalField's
+        # max_digits includes decimal_places, so this must be 16 rather than 14.
+        # SQLite otherwise stores the value and only crashes when it is read back.
+        max_digits=16,
         decimal_places=2,
         null=True,
         blank=True,
@@ -70,7 +73,7 @@ class LotPrice(models.Model):
 
     special_amount = models.DecimalField(
         "قیمت فروش ویژه",
-        max_digits=14,
+        max_digits=16,
         decimal_places=2,
         null=True,
         blank=True,

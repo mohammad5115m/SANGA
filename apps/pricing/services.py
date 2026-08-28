@@ -14,6 +14,11 @@ from .models import LotPrice, PriceTier
 
 logger = logging.getLogger(__name__)
 
+# Fourteen whole digits is the explicit limit presented by the product form.
+# Keep the service boundary aligned so imports, management commands and future
+# APIs cannot put a value into SQLite that its DecimalField cannot read back.
+MAX_PRICE_AMOUNT = Decimal("99999999999999.99")
+
 Audience = Literal["owner_staff", "b2b_partner", "b2c_public", "platform_admin"]
 
 
@@ -146,9 +151,15 @@ def _require_price_edit(membership) -> None:
 
 def _quantize_amount(value) -> Decimal:
     try:
-        return Decimal(str(value)).quantize(Decimal("0.01"))
+        amount = Decimal(str(value))
+        if not amount.is_finite():
+            raise InvalidOperation
+        amount = amount.quantize(Decimal("0.01"))
     except (InvalidOperation, TypeError, ValueError) as exc:
-        raise PricingError("مبلغ واردشده معتبر نیست.") from exc
+        raise ValueError("مبلغ واردشده معتبر نیست.") from exc
+    if amount > MAX_PRICE_AMOUNT:
+        raise ValueError("مبلغ نمی‌تواند بیشتر از ۹۹٬۹۹۹٬۹۹۹٬۹۹۹٬۹۹۹ ریال باشد.")
+    return amount
 
 
 @transaction.atomic

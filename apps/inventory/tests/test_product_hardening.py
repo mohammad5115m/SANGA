@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from apps.core.testing import expire_price, make_business, make_item, make_user, owner_membership
 from apps.inventory.filters import ItemFilterSpec
-from apps.inventory.forms import ItemFilterForm, ProductItemForm
+from apps.inventory.forms import ItemFilterForm, MarketplaceItemFilterForm, ProductItemForm
 from apps.inventory.models import InventoryLot, VocabularyTerm
 from apps.inventory.selectors import filter_owned_lots, lots_for_business
 from apps.inventory.services import InventoryError, create_product_item, set_item_availability
@@ -107,6 +107,16 @@ def test_invalid_filter_keeps_other_valid_filters_and_reports_the_error():
     assert "price_min" in form.errors
 
 
+def test_quantity_filter_is_available_and_oversized_prices_are_rejected():
+    form = MarketplaceItemFilterForm({"min_qty_sqm": "25.5", "price_max": "9" * 15})
+
+    spec = form.to_spec()
+
+    assert spec.min_qty_sqm == Decimal("25.5")
+    assert "price_max" in form.errors
+    assert "availability" not in {field.name for field in form.advanced_scalar_fields}
+
+
 @pytest.mark.django_db
 def test_product_creation_submission_token_is_idempotent():
     seller = make_business(name="سنگ تکرار", owner_phone="09120002002")
@@ -174,3 +184,20 @@ def test_product_options_are_tenant_scoped(client):
 
     assert response.status_code == 200
     assert [item["id"] for item in payload["items"]] == [str(own.id)]
+
+
+@pytest.mark.django_db
+def test_fourteen_digit_price_renders_on_inventory_without_sqlite_decimal_crash(client):
+    seller = make_business(name="سنگ قیمت بزرگ", owner_phone="09120002009")
+    make_item(
+        seller,
+        lot_code="PRICE-WIDE",
+        b2b="99999999999999",
+        b2c="99999999999999",
+    )
+    _login(client, seller)
+
+    response = client.get(reverse("inventory:lot_list"))
+
+    assert response.status_code == 200
+    assert "99,999,999,999,999" in response.content.decode("utf-8")

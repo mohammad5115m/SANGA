@@ -178,18 +178,18 @@
   <section class="panel stack-sm">
     <h2 class="section-title">قیمت‌ها</h2>
     <div class="kv">
-      <span>قیمت همکار</span>
+      <span>قیمت همکار / متر مربع</span>
       <strong dir="ltr">
-        {% if prices.b2b and prices.b2b.amount %}{{ prices.b2b.amount|rial }} {{ prices.b2b.currency }}
-        {% elif prices.b2b %}استعلام قیمت{% else %}—{% endif %}
+        {% if prices.b2b and prices.b2b.amount %}{{ prices.b2b.amount|rial }} ریال
+        {% elif prices.b2b.expired %}نیاز به تأیید{% elif prices.b2b %}استعلام قیمت{% else %}—{% endif %}
       </strong>
     </div>
     {% if prices.b2b.expired %}<p class="muted">قیمت همکار منقضی شده و به همکاران نمایش داده نمی‌شود.</p>{% endif %}
     <div class="kv">
-      <span>قیمت مشتری</span>
+      <span>قیمت مشتری / متر مربع</span>
       <strong dir="ltr">
-        {% if prices.b2c and prices.b2c.amount %}{{ prices.b2c.amount|rial }} {{ prices.b2c.currency }}
-        {% elif prices.b2c %}استعلام قیمت{% else %}—{% endif %}
+        {% if prices.b2c and prices.b2c.amount %}{{ prices.b2c.amount|rial }} ریال
+        {% elif prices.b2c.expired %}نیاز به تأیید{% elif prices.b2c %}استعلام قیمت{% else %}—{% endif %}
       </strong>
     </div>
     {% if prices.b2c.expired %}<p class="muted">قیمت مشتری منقضی شده و به مشتری نمایش داده نمی‌شود.</p>{% endif %}

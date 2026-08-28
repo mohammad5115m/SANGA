@@ -12,7 +12,7 @@ from django.views.decorators.http import require_GET
 from apps.businesses.decorators import business_login_required
 from apps.core.pagination import paginate
 from apps.inventory.filters import effective_price_bounds
-from apps.inventory.forms import ItemFilterForm
+from apps.inventory.forms import MarketplaceItemFilterForm
 from apps.inventory.selectors import lots_for_business
 
 from .models import PartnerInquiry
@@ -34,11 +34,12 @@ def _partner_share_url(request: HttpRequest, lot) -> str:
 
 
 @business_login_required
+@require_GET
 def marketplace_home(request: HttpRequest) -> HttpResponse:
     if not request.business:
         return redirect("businesses:no_business")
 
-    form = ItemFilterForm(request.GET or None)
+    form = MarketplaceItemFilterForm(request.GET or None)
     spec = form.to_spec()
     base = marketplace_lots_for(request.business)
     qs = filter_marketplace_lots(base, spec=spec)

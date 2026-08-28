@@ -142,20 +142,28 @@
               {% if can_view_prices %}
                 <div class="inventory-prices">
                   <div>
-                    <span>قیمت همکار</span>
+                    <span>قیمت همکار / متر مربع</span>
                     <strong dir="ltr">
                       {% if row.prices.b2b and row.prices.b2b.amount %}
-                        {{ row.prices.b2b.amount|rial }}
+                        {{ row.prices.b2b.amount|rial }} ریال
+                      {% elif row.prices.b2b.expired %}
+                        نیاز به تأیید
+                      {% elif row.prices.b2b %}
+                        استعلام قیمت
                       {% else %}
                         ثبت نشده
                       {% endif %}
                     </strong>
                   </div>
                   <div>
-                    <span>قیمت مشتری</span>
+                    <span>قیمت مشتری / متر مربع</span>
                     <strong dir="ltr">
                       {% if row.prices.b2c and row.prices.b2c.amount %}
-                        {{ row.prices.b2c.amount|rial }}
+                        {{ row.prices.b2c.amount|rial }} ریال
+                      {% elif row.prices.b2c.expired %}
+                        نیاز به تأیید
+                      {% elif row.prices.b2c %}
+                        استعلام قیمت
                       {% else %}
                         ثبت نشده
                       {% endif %}

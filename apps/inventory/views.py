@@ -142,6 +142,7 @@ def _seller_processing_suggestions(business) -> list[str]:
 
 @business_login_required
 @require_capability(INVENTORY_VIEW)
+@require_GET
 def lot_list(request: HttpRequest) -> HttpResponse:
     form = OwnerItemFilterForm(request.GET or None)
     spec = form.to_spec()

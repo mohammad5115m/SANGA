@@ -281,14 +281,19 @@ class ItemMediaForm(forms.Form):
 class ItemFilterForm(PersianNumericFormMixin, forms.Form):
     numeric_fields = ("price_min", "price_max", "min_qty_sqm")
     q = forms.CharField(
-        required=False, label="جست‌وجو",
+        required=False, label="جست‌وجو", max_length=100,
         widget=forms.TextInput(attrs={**_TEXT, "placeholder": "نام، کد یا فرآوری..."}),
     )
     stone = StoneChoiceField(
         required=False, label="نوع سنگ", queryset=VocabularyTerm.objects.none(),
         empty_label="همه", widget=forms.Select(attrs=_TEXT),
     )
-    processing_type = forms.CharField(required=False, label="فرآوری", widget=forms.TextInput(attrs=_TEXT))
+    processing_type = forms.CharField(
+        required=False,
+        label="فرآوری",
+        max_length=100,
+        widget=forms.TextInput(attrs={**_TEXT, "placeholder": "مثلاً صیقلی"}),
+    )
     applications = forms.ModelMultipleChoiceField(
         label="کاربرد", queryset=Application.objects.none(), required=False,
         widget=forms.CheckboxSelectMultiple(attrs=_CHECK),
@@ -306,10 +311,28 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
         widget=forms.Select(attrs=_TEXT),
     )
     price_min = forms.DecimalField(
-        required=False, label="حداقل قیمت", min_value=0, widget=forms.NumberInput(attrs=_TEXT)
+        required=False,
+        label="حداقل قیمت (ریال)",
+        min_value=0,
+        max_digits=14,
+        decimal_places=0,
+        widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
     )
     price_max = forms.DecimalField(
-        required=False, label="حداکثر قیمت", min_value=0, widget=forms.NumberInput(attrs=_TEXT)
+        required=False,
+        label="حداکثر قیمت (ریال)",
+        min_value=0,
+        max_digits=14,
+        decimal_places=0,
+        widget=forms.NumberInput(attrs={**_TEXT, "inputmode": "numeric"}),
+    )
+    min_qty_sqm = forms.DecimalField(
+        required=False,
+        label="حداقل متراژ موجود",
+        min_value=0,
+        max_digits=12,
+        decimal_places=3,
+        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001", "inputmode": "decimal"}),
     )
     sort = forms.ChoiceField(
         required=False, label="ترتیب", choices=SORT_CHOICES, widget=forms.Select(attrs=_TEXT)
@@ -341,8 +364,6 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
         # putting the retired free-text controls back into the compact UI.
         if not stone and self.data.get("stone_type"):
             data["stone_type"] = self.data.get("stone_type")
-        if self.data.get("min_qty_sqm") not in (None, ""):
-            data["min_qty_sqm"] = self.data.get("min_qty_sqm")
         data["applications"] = [app.code for app in data.get("applications") or []]
         return ItemFilterSpec.from_dict(data)
 
@@ -354,6 +375,7 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
             "availability",
             "price_min",
             "price_max",
+            "min_qty_sqm",
             "sort",
             "application_match",
         ]
@@ -368,6 +390,7 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
             "availability",
             "price_min",
             "price_max",
+            "min_qty_sqm",
             "sort",
             "state",
             "price_tier",
@@ -394,6 +417,7 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
                 "availability",
                 "price_min",
                 "price_max",
+                "min_qty_sqm",
                 "state",
                 "price_tier",
             )
@@ -431,6 +455,24 @@ class OwnerItemFilterForm(ItemFilterForm):
             "price_tier",
             "price_min",
             "price_max",
+            "min_qty_sqm",
+            "sort",
+            "application_match",
+        ]
+        return [self[name] for name in names]
+
+
+class MarketplaceItemFilterForm(ItemFilterForm):
+    """Buyer filters without controls that cannot change marketplace results."""
+
+    @property
+    def advanced_scalar_fields(self):
+        names = [
+            "stone",
+            "processing_type",
+            "price_min",
+            "price_max",
+            "min_qty_sqm",
             "sort",
             "application_match",
         ]

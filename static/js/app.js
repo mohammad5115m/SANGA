@@ -100,15 +100,24 @@
 
       if (copy) {
         copy.addEventListener("click", function () {
-          var original = copy.textContent;
+          var label = copy.querySelector("[data-share-label]");
+          var original = label ? label.textContent : copy.textContent;
           copyText(actions.dataset.shareUrl).then(function () {
-            copy.textContent = "لینک کپی شد";
+            if (label) label.textContent = "لینک کپی شد";
+            else copy.textContent = "لینک کپی شد";
             announce("لینک کپی شد.");
-            window.setTimeout(function () { copy.textContent = original; }, 2000);
+            window.setTimeout(function () {
+              if (label) label.textContent = original;
+              else copy.textContent = original;
+            }, 2000);
           }).catch(function () {
-            copy.textContent = "کپی انجام نشد";
+            if (label) label.textContent = "کپی انجام نشد";
+            else copy.textContent = "کپی انجام نشد";
             announce("کپی لینک انجام نشد.");
-            window.setTimeout(function () { copy.textContent = original; }, 2000);
+            window.setTimeout(function () {
+              if (label) label.textContent = original;
+              else copy.textContent = original;
+            }, 2000);
           });
         });
       }

@@ -20,7 +20,7 @@ from .models import LotPrice
 
 #: Wide enough for any stored amount; the annotation is only ever compared and
 #: ordered, never summed.
-AMOUNT_FIELD = DecimalField(max_digits=14, decimal_places=2)
+AMOUNT_FIELD = DecimalField(max_digits=16, decimal_places=2)
 
 
 def special_is_live_q(prefix: str = "") -> Q:

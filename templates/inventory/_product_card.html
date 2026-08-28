@@ -41,7 +41,7 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
 
       <div class="product-card-commercial">
         <div class="product-card-price">
-          <span>{% if show_marketplace_meta %}قیمت همکار{% else %}قیمت{% endif %}</span>
+          <span>{% if show_marketplace_meta %}قیمت همکار{% else %}قیمت{% endif %} / متر مربع</span>
           <strong class="catalog-price" dir="ltr">{{ card.price.label }}</strong>
         </div>
         <div class="stock-pill{% if card.stock.is_inquiry %} is-inquiry{% else %} is-fresh{% endif %}">

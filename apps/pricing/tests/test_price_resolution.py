@@ -92,6 +92,17 @@ def test_fixed_price_requires_an_amount(seller):
         set_lot_price(lot=item, tier_code="b2c", amount=None, mode=LotPrice.Mode.FIXED)
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("amount", ["NaN", "Infinity", "100000000000000"])
+def test_invalid_or_oversized_price_is_rejected_before_persistence(seller, amount):
+    item = make_item(seller)
+
+    with pytest.raises(ValueError, match="مبلغ"):
+        set_lot_price(lot=item, tier_code="b2c", amount=amount)
+
+    assert not item.prices.exists()
+
+
 # --- freshness ----------------------------------------------------------------
 
 
