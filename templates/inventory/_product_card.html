@@ -1,16 +1,13 @@
 {% comment %}
-One product card, used by the marketplace, public search and catalogs.
-
-The card renders only what the calling view put in `card.price` and `card.stock`,
-both of which are already audience-filtered by the services that built them.
-There is deliberately no access to `card.lot.prices` here: a template must never
-be in a position to pick the wrong tier.
+One audience-safe product card used by the marketplace, public search and
+catalogs. The caller decides whether marketplace-only metadata/actions appear.
 
 Expects: card = {lot, product, price, stock, primary_media, supplier?}, card_url
+Optional: show_marketplace_meta, show_marketplace_actions, show_select
 {% endcomment %}
-<article class="catalog-card-wrap">
-  <a class="catalog-card" href="{{ card_url }}">
-    <div class="catalog-card-media">
+<article class="catalog-card-wrap product-card{% if show_marketplace_meta %} product-card-market{% endif %}">
+  <a class="catalog-card product-card-link" href="{{ card_url }}">
+    <div class="catalog-card-media product-card-media">
       {% if card.primary_media %}
         <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
       {% else %}
@@ -23,18 +20,53 @@ Expects: card = {lot, product, price, stock, primary_media, supplier?}, card_url
         </div>
       {% endif %}
     </div>
-    <div class="catalog-card-body">
-      <div class="list-title">{{ card.product.commercial_name }}</div>
-      {% if card.supplier %}<div class="muted">{{ card.supplier.name }}</div>{% endif %}
-      <div class="muted">
-        {{ card.product.stone.name }}{% if card.lot.processing_type %} · {{ card.lot.processing_type }}{% endif %}
+
+    <div class="catalog-card-body product-card-body">
+      <div class="product-card-kicker">
+        {% if card.supplier %}
+          <span class="product-card-supplier">{{ card.supplier.name }}</span>
+        {% endif %}
+        {% if show_marketplace_meta %}
+          <span class="product-code" dir="ltr">{{ card.lot.lot_code }}</span>
+        {% endif %}
       </div>
-      <div class="catalog-price">{{ card.price.label }}</div>
-      <div class="muted stock-line{% if card.stock.is_inquiry %} stock-line-inquiry{% endif %}">
-        {{ card.stock.label }}
+
+      <h2 class="list-title product-card-title">{{ card.product.commercial_name }}</h2>
+
+      <div class="product-specs product-card-specs">
+        {% if card.product.stone %}<span>{{ card.product.stone.name }}</span>{% endif %}
+        {% if card.lot.processing_type %}<span>{{ card.lot.processing_type }}</span>{% endif %}
+        {% if card.lot.thickness_cm %}<span>{{ card.lot.thickness_cm }} سانتی‌متر</span>{% endif %}
       </div>
+
+      <div class="product-card-commercial">
+        <div class="product-card-price">
+          <span>{% if show_marketplace_meta %}قیمت همکار{% else %}قیمت{% endif %}</span>
+          <strong class="catalog-price" dir="ltr">{{ card.price.label }}</strong>
+        </div>
+        <div class="stock-pill{% if card.stock.is_inquiry %} is-inquiry{% else %} is-fresh{% endif %}">
+          <span class="stock-pill-dot" aria-hidden="true"></span>
+          <span>{{ card.stock.label }}</span>
+        </div>
+      </div>
+
+      {% if show_marketplace_meta and card.stock.confirmed_at %}
+        <div class="product-card-freshness">موجودی تأییدشده در {{ card.stock.human_confirmed }}</div>
+      {% endif %}
     </div>
   </a>
+
+  {% if show_marketplace_actions %}
+    <div class="product-card-actions">
+      <a class="btn btn-secondary btn-sm product-card-detail-action" href="{{ card_url }}">
+        <span>مشاهده محصول</span><span aria-hidden="true">←</span>
+      </a>
+      {% with share_url=card.share_url product=card.product share_compact="1" %}
+        {% include "catalog/_share_actions.html" %}
+      {% endwith %}
+    </div>
+  {% endif %}
+
   {% if show_select %}
     {% include "catalog/_select_button.html" with is_selected=card.is_selected %}
   {% endif %}
