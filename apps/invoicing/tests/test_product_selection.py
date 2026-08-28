@@ -61,8 +61,12 @@ def test_invoice_form_uses_lazy_product_picker(client):
     assert "data-preview-toggle" in body
     assert '<fieldset class="invoice-counterparty-fieldset"' in body
     assert 'id="invoice-customer-fields"' in body
+    assert 'aria-controls="invoice-local-new-fields"' in body
+    assert 'id="invoice-local-new-fields"' in body
+    assert 'id="invoice-customer-paid"' in body
     assert "data-mode-hint" in body
     assert "data-invoice-primary-action" in body
+    assert 'data-preview-expand aria-expanded="false" aria-controls="invoice-preview-canvas"' in body
     assert "صدور نهایی" in body
 
 
