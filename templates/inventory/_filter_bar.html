@@ -15,7 +15,7 @@ Expects: filter_form
     <label class="field field-grow search-field">
       <span class="field-label">{{ filter_form.q.label }}</span>
       <span class="search-input-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <svg class="search-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
           <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
         </svg>
         {{ filter_form.q }}
@@ -37,7 +37,7 @@ Expects: filter_form
 
     <details class="filter-disclosure" {% if filter_form.has_advanced_values or filter_form.errors %}open{% endif %}>
       <summary class="filter-trigger">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <svg class="filter-trigger-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
           <path d="M4 6h16M7 12h10M10 18h4"/>
         </svg>
         <span>فیلتر و مرتب‌سازی</span>

@@ -91,3 +91,37 @@ def test_global_accessibility_and_interaction_hooks_exist():
     assert 'query.setAttribute("role", "combobox")' in script
     assert 'window.addEventListener("beforeunload"' in script
     assert 'form.dataset.submitting = "true"' in script
+
+
+def test_product_surface_icons_have_intrinsic_dimensions():
+    """Inline SVGs stay compact even while an installed PWA refreshes its CSS."""
+    names = (
+        "layouts/app_shell.html",
+        "inventory/_filter_bar.html",
+        "inventory/lot_list.html",
+        "marketplace/home.html",
+        "catalog/_share_actions.html",
+    )
+    opening_svg = re.compile(r"<svg\b[^>]*>", re.IGNORECASE)
+    missing_dimensions: list[str] = []
+    for name in names:
+        body = (TEMPLATE_ROOT / name).read_text()
+        for tag in opening_svg.findall(body):
+            if 'width="' not in tag or 'height="' not in tag:
+                missing_dimensions.append(f"{name}: {tag}")
+
+    assert missing_dimensions == []
+
+
+def test_pwa_refreshes_static_assets_instead_of_serving_stale_css():
+    base = (TEMPLATE_ROOT / "base.html").read_text()
+    app_script = (Path(settings.BASE_DIR) / "static/js/app.js").read_text()
+    worker = (Path(settings.BASE_DIR) / "static/js/sw.js").read_text()
+
+    assert "app.css' %}?v=3" in base
+    assert 'const SHELL_CACHE = "sanga-shell-v3"' in worker
+    assert 'url.pathname.startsWith("/static/")' in worker
+    assert "networkFirst(request)" in worker
+    assert '"/static/css/app.css"' not in worker
+    assert 'updateViaCache: "none"' in app_script
+    assert "registration.update()" in app_script

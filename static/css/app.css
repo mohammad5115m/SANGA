@@ -131,6 +131,7 @@ body.is-loading .route-progress {
 .brand-lockup > div { min-width: 0; }
 .brand-lockup-lg { margin-bottom: var(--space-5); }
 .brand-mark {
+  flex: 0 0 36px;
   width: 36px;
   height: 36px;
   border-radius: 11px;
@@ -1252,6 +1253,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
 
 /* Product inventory and colleague marketplace surfaces */
 .btn-icon {
+  display: block;
   width: 1.1rem;
   height: 1.1rem;
   flex: none;
@@ -1319,6 +1321,8 @@ input[type="number"], input[type="tel"], input[type="date"] {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.13);
 }
 .surface-primary-action svg {
+  display: block;
+  flex: none;
   width: 1.15rem;
   height: 1.15rem;
 }
@@ -1347,6 +1351,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
   background: rgba(255, 255, 255, 0.1);
 }
 .market-trust-icon svg {
+  display: block;
   width: 1.2rem;
   height: 1.2rem;
 }
@@ -1462,6 +1467,8 @@ input[type="number"], input[type="tel"], input[type="date"] {
   display: none;
 }
 .filter-trigger > svg {
+  display: block;
+  flex: none;
   width: 1.1rem;
   height: 1.1rem;
 }
@@ -1554,6 +1561,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
   background: var(--color-accent-soft);
 }
 .catalog-builder-icon svg {
+  display: block;
   width: 1.25rem;
   height: 1.25rem;
 }
@@ -2069,6 +2077,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
   background: var(--color-accent-soft);
 }
 .empty-state-icon svg {
+  display: block;
   width: 2rem;
   height: 2rem;
 }

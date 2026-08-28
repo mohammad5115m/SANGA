@@ -13,7 +13,7 @@
     </div>
     {% if can_add_products %}
       <a class="btn btn-primary surface-primary-action" href="{% url 'inventory:product_create' %}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <svg class="surface-action-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M12 5v14M5 12h14"/>
         </svg>
         <span>افزودن محصول</span>
@@ -41,7 +41,7 @@
       <details class="panel catalog-builder">
         <summary class="catalog-builder-summary">
           <span class="catalog-builder-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <svg class="catalog-builder-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/>
               <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 18.5"/>
             </svg>
@@ -177,7 +177,7 @@
       {% empty %}
         <div class="empty-state product-empty-state">
           <span class="empty-state-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <svg class="empty-state-svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
               <path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="m4 7 8 4 8-4v10l-8 4-8-4V7Z"/><path d="M12 11v10"/>
             </svg>
           </span>
