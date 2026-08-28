@@ -204,6 +204,16 @@ def _partner_header(header: dict) -> dict:
     } | {"cheque_details": _cheque_details(header)}
 
 
+def _saved_invoice_message(*, action: str, invoice: SalesInvoice) -> str:
+    if action != "issue":
+        return "پیش‌نویس ذخیره شد."
+    if invoice.counterparty_type == SalesInvoice.Counterparty.CUSTOMER:
+        return "فاکتور مشتری نهایی شد."
+    if invoice.counterparty_type == SalesInvoice.Counterparty.BUSINESS:
+        return "فاکتور برای تأیید همکار ارسال شد."
+    return "پیش‌نویس ذخیره شد؛ اکنون تأیید آفلاین همکار محلی را ثبت کنید."
+
+
 @business_login_required
 @require_capability(INVOICE_VIEW)
 def invoice_list(request: HttpRequest) -> HttpResponse:
@@ -500,10 +510,7 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
         except InvoiceError as exc:
             form.add_error(None, exc.message)
         else:
-            messages.success(
-                request,
-                "فاکتور ارسال/نهایی شد." if action == "issue" else "پیش‌نویس ذخیره شد.",
-            )
+            messages.success(request, _saved_invoice_message(action=action, invoice=invoice))
             return redirect("invoicing:detail", invoice_id=invoice.id)
     return render(
         request,
@@ -584,10 +591,7 @@ def invoice_edit(request: HttpRequest, invoice_id) -> HttpResponse:
         except InvoiceError as exc:
             form.add_error(None, exc.message)
         else:
-            messages.success(
-                request,
-                "فاکتور صادر شد." if action == "issue" else "تغییرات پیش‌نویس ذخیره شد.",
-            )
+            messages.success(request, _saved_invoice_message(action=action, invoice=invoice))
             return redirect("invoicing:detail", invoice_id=invoice.id)
     return render(
         request,

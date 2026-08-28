@@ -58,11 +58,11 @@
         <button class="btn btn-primary" type="submit" data-confirm="تأیید آفلاین ثبت و فروش نهایی شود؟">ثبت تأیید آفلاین و نهایی‌سازی</button>
       </form>
       {% endif %}
-      {% if can_manage %}<form method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>{% endif %}
+      {% if can_manage %}<form class="invoice-destructive-action" method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>{% endif %}
       {% elif invoice.status == 'awaiting_confirmation' %}
-      {% if can_send %}<form class="stack-sm" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit">لغو فاکتور در انتظار</button></form>{% endif %}
+      {% if can_send %}<form class="stack-sm invoice-destructive-action" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit">لغو فاکتور در انتظار</button></form>{% endif %}
       {% elif invoice.status == 'issued' and can_cancel %}
-      <form class="stack-sm" method="post">
+      <form class="stack-sm invoice-destructive-action" method="post">
         {% csrf_token %}
         <label class="field"><span class="field-label">علت ابطال یا اصلاح</span>{{ cancel_form.reason }}</label>
         <div class="btn-row">

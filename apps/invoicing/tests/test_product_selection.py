@@ -59,6 +59,11 @@ def test_invoice_form_uses_lazy_product_picker(client):
     assert "data-counterparty-panel" in body
     assert "data-local-new-fields" in body
     assert "data-preview-toggle" in body
+    assert '<fieldset class="invoice-counterparty-fieldset"' in body
+    assert 'id="invoice-customer-fields"' in body
+    assert "data-mode-hint" in body
+    assert "data-invoice-primary-action" in body
+    assert "صدور نهایی" in body
 
 
 @pytest.mark.django_db

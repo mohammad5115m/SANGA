@@ -46,15 +46,20 @@
           <h2 class="section-title" id="invoice-party-title">اطلاعات فاکتور و خریدار</h2>
           <p class="muted">نوع خریدار را انتخاب کنید؛ فقط اطلاعات مرتبط همان مسیر ذخیره می‌شود.</p>
         </div>
-        <div class="invoice-counterparty-switch" data-counterparty-switch aria-describedby="invoice-party-help">{{ form.counterparty_mode }}</div>
-        {% if form.counterparty_mode.errors %}<span class="field-error">{{ form.counterparty_mode.errors|striptags }}</span>{% endif %}
+        <fieldset class="invoice-counterparty-fieldset" aria-describedby="invoice-party-help invoice-mode-hint">
+          <legend class="sr-only">{{ form.counterparty_mode.label }}</legend>
+          <div class="invoice-counterparty-switch" data-counterparty-switch>{{ form.counterparty_mode }}</div>
+          {% if form.counterparty_mode.errors %}<span class="field-error">{{ form.counterparty_mode.errors|striptags }}</span>{% endif %}
+        </fieldset>
         <p class="sr-only" id="invoice-party-help">با تغییر نوع خریدار، فقط فیلدهای مرتبط همان خریدار فعال می‌شوند.</p>
+        <p class="invoice-mode-hint" id="invoice-mode-hint" data-mode-hint aria-live="polite">فاکتور مشتری پس از دریافت کامل مبلغ نهایی می‌شود.</p>
         <div class="form-grid invoice-party-grid">
-          {% for field in form %}
-            {% if field.name in 'customer_name customer_phone buyer_address issue_date' %}
-            <label class="field field-{{ field.name }}" {% if field.name != 'issue_date' %}data-counterparty-section="customer" data-counterparty-panel{% endif %}><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
-            {% endif %}
-          {% endfor %}
+          <label class="field field-issue_date"><span class="field-label">{{ form.issue_date.label }}</span>{{ form.issue_date }}{% if form.issue_date.errors %}<span class="field-error">{{ form.issue_date.errors|striptags }}</span>{% endif %}</label>
+        </div>
+        <div class="form-grid invoice-choice-panel" id="invoice-customer-fields" data-counterparty-section="customer" data-counterparty-panel>
+          <label class="field field-customer_name"><span class="field-label">{{ form.customer_name.label }}</span>{{ form.customer_name }}{% if form.customer_name.errors %}<span class="field-error">{{ form.customer_name.errors|striptags }}</span>{% endif %}</label>
+          <label class="field field-customer_phone"><span class="field-label">{{ form.customer_phone.label }}</span>{{ form.customer_phone }}{% if form.customer_phone.errors %}<span class="field-error">{{ form.customer_phone.errors|striptags }}</span>{% endif %}</label>
+          <label class="field field-buyer_address"><span class="field-label">{{ form.buyer_address.label }}</span>{{ form.buyer_address }}{% if form.buyer_address.errors %}<span class="field-error">{{ form.buyer_address.errors|striptags }}</span>{% endif %}</label>
         </div>
         <div class="form-grid invoice-choice-panel" id="invoice-business-fields" data-counterparty-section="business" data-counterparty-panel>
           <label class="field"><span class="field-label">{{ form.buyer_business.label }}</span>{{ form.buyer_business }}{% if form.buyer_business.errors %}<span class="field-error">{{ form.buyer_business.errors|striptags }}</span>{% endif %}</label>
@@ -121,7 +126,7 @@
         <p class="muted invoice-calculation-note">همه مبالغ هنگام ذخیره دوباره در سرور محاسبه می‌شوند.</p>
         <div class="invoice-submit-row">
           <button class="btn btn-secondary" name="action" value="draft" type="submit">ذخیره پیش‌نویس</button>
-          <button class="btn btn-primary" name="action" value="issue" type="submit" data-confirm="پس از نهایی‌شدن یا ارسال، نسخه ثبت‌شده تغییرناپذیر است. ادامه می‌دهید؟">صدور یا ارسال</button>
+          <button class="btn btn-primary" name="action" value="issue" type="submit" data-invoice-primary-action data-confirm="پس از صدور، نسخه ثبت‌شده تغییرناپذیر است. ادامه می‌دهید؟">صدور نهایی</button>
         </div>
       </section>
     </form>

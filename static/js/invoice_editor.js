@@ -19,6 +19,28 @@
   var previewController;
   var customerName = form.elements.customer_name;
   var customerOptions = editor.querySelector("#invoice-customer-options");
+  var modeHint = editor.querySelector("[data-mode-hint]");
+  var primaryAction = editor.querySelector("[data-invoice-primary-action]");
+  var modePresentation = {
+    customer: {
+      controls: "invoice-customer-fields",
+      hint: "فاکتور مشتری پس از دریافت کامل مبلغ نهایی می‌شود.",
+      action: "صدور نهایی",
+      confirm: "پس از صدور، نسخه ثبت‌شده تغییرناپذیر است. ادامه می‌دهید؟"
+    },
+    business: {
+      controls: "invoice-business-fields invoice-partner-settlement",
+      hint: "فاکتور برای همکار ثبت‌شده ارسال می‌شود و پس از تأیید او اثر مالی می‌گذارد.",
+      action: "ارسال برای تأیید",
+      confirm: "فاکتور برای تأیید همکار ارسال شود؟"
+    },
+    local: {
+      controls: "invoice-local-fields invoice-partner-settlement",
+      hint: "پس از ذخیره، تصویر امضای همکار محلی را در صفحه فاکتور ثبت کنید.",
+      action: "ادامه برای تأیید آفلاین",
+      confirm: "پیش‌نویس ذخیره شود تا تأیید آفلاین همکار را ثبت کنید؟"
+    }
+  };
 
   function setRegionActive(region, active) {
     if (!region) return;
@@ -43,6 +65,7 @@
 
   function syncCounterpartyMode() {
     var mode = selectedCounterpartyMode();
+    var presentation = modePresentation[mode] || modePresentation.customer;
     editor.querySelectorAll("[data-counterparty-section]").forEach(function (section) {
       setRegionActive(section, section.dataset.counterpartySection === mode);
     });
@@ -51,11 +74,14 @@
     setRegionActive(editor.querySelector("[data-customer-paid]"), mode === "customer");
     syncLocalNewFields(mode);
     form.querySelectorAll('[name="counterparty_mode"]').forEach(function (radio) {
-      var controls = radio.value === "business" ? "invoice-business-fields invoice-partner-settlement" :
-        radio.value === "local" ? "invoice-local-fields invoice-partner-settlement" : "";
-      if (controls) radio.setAttribute("aria-controls", controls);
-      else radio.removeAttribute("aria-controls");
+      var radioPresentation = modePresentation[radio.value];
+      if (radioPresentation) radio.setAttribute("aria-controls", radioPresentation.controls);
     });
+    if (modeHint) modeHint.textContent = presentation.hint;
+    if (primaryAction) {
+      primaryAction.textContent = presentation.action;
+      primaryAction.dataset.confirm = presentation.confirm;
+    }
     syncChequeFields();
   }
 
@@ -381,7 +407,10 @@
   changed();
   var errorSummary = editor.querySelector("[data-error-summary]");
   if (errorSummary) errorSummary.focus();
-  window.addEventListener("pageshow", syncCounterpartyMode);
+  window.addEventListener("pageshow", function () {
+    syncCounterpartyMode();
+    changed();
+  });
   var handlePreviewViewportChange = function () {
     if (!compactPreview.matches) requestPreview(true);
   };

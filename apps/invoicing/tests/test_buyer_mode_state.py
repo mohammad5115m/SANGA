@@ -12,6 +12,7 @@ from apps.invoicing.forms import ManualInvoiceForm
 from apps.invoicing.models import LocalCounterparty, SalesInvoice
 from apps.invoicing.partner_services import update_partner_draft
 from apps.invoicing.services import create_manual_invoice, update_draft_invoice
+from apps.invoicing.views import _saved_invoice_message
 
 
 def _header(mode: str, **overrides) -> dict:
@@ -49,6 +50,25 @@ def _lines() -> list[dict]:
             "item": None,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("action", "mode", "expected"),
+    [
+        ("draft", SalesInvoice.Counterparty.CUSTOMER, "پیش‌نویس ذخیره شد."),
+        ("issue", SalesInvoice.Counterparty.CUSTOMER, "فاکتور مشتری نهایی شد."),
+        ("issue", SalesInvoice.Counterparty.BUSINESS, "فاکتور برای تأیید همکار ارسال شد."),
+        (
+            "issue",
+            SalesInvoice.Counterparty.LOCAL,
+            "پیش‌نویس ذخیره شد؛ اکنون تأیید آفلاین همکار محلی را ثبت کنید.",
+        ),
+    ],
+)
+def test_save_feedback_matches_the_actual_buyer_workflow(action, mode, expected):
+    invoice = SimpleNamespace(counterparty_type=mode)
+
+    assert _saved_invoice_message(action=action, invoice=invoice) == expected
 
 
 @pytest.mark.django_db
