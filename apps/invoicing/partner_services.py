@@ -827,8 +827,10 @@ def propose_counterparty_link(
 def cancel_counterparty_link(
     *, proposal: CounterpartyLinkProposal, membership: BusinessMembership
 ) -> CounterpartyLinkProposal:
-    proposal = CounterpartyLinkProposal.objects.select_for_update(of=("self",)).select_related("local_counterparty").get(
-        pk=proposal.pk
+    proposal = (
+        CounterpartyLinkProposal.objects.select_for_update(of=("self",))
+        .select_related("local_counterparty")
+        .get(pk=proposal.pk)
     )
     _require(membership, COUNTERPARTY_LINK_PROPOSE, "اجازه لغو پیشنهاد اتصال را ندارید.")
     if membership.business_id != proposal.local_counterparty.owner_business_id:
