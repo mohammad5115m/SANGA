@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}{% if invoice %}ویرایش پیش‌نویس{% else %}فاکتور جدید{% endif %} | سنگا{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=4">{% endblock %}
 
 {% block content %}
 <section class="stack-lg invoice-editor" data-invoice-editor>
@@ -152,4 +152,5 @@
 </section>
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}"></script><script src="{% static 'js/invoice_editor.js' %}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}?v=4"></script><script src="{% static 'js/invoice_editor.js' %}?v=4"></script>{% endblock %}
+

@@ -1,5 +1,5 @@
 /* SANGA service worker: offline shell only. Never cache inventory/pricing. */
-const SHELL_CACHE = "sanga-shell-v3";
+const SHELL_CACHE = "sanga-shell-v4";
 const SHELL_URLS = ["/offline/", "/static/manifest.webmanifest"];
 
 async function networkFirst(request) {
@@ -57,3 +57,4 @@ self.addEventListener("fetch", (event) => {
     caches.match(request).then((cached) => cached || fetch(request))
   );
 });
+

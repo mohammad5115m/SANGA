@@ -11,6 +11,18 @@
   window.SANGA_UI_READY = true;
 
   if ("serviceWorker" in navigator) {
+    var controllerAtLoad = navigator.serviceWorker.controller;
+    var reloadingForWorkerUpdate = false;
+
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      // An existing PWA tab may initially be controlled by an older worker.
+      // Reload once after its replacement claims the page so all requests use
+      // the new caching rules. A first-time install does not need a reload.
+      if (!controllerAtLoad || reloadingForWorkerUpdate) return;
+      reloadingForWorkerUpdate = true;
+      window.location.reload();
+    });
+
     window.addEventListener("load", function () {
       navigator.serviceWorker.register("/sw.js", {updateViaCache: "none"})
         .then(function (registration) { return registration.update(); })
@@ -420,3 +432,4 @@
 
   init(document);
 })();
+

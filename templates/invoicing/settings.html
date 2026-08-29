@@ -1,7 +1,7 @@
 {% extends "layouts/app_shell.html" %}
 {% load static %}
 {% block title %}تنظیمات فاکتور | سنگا{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=4">{% endblock %}
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar"><div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div><a class="btn btn-secondary" href="{% url 'invoicing:counterparty_links' %}">همکاران محلی و اتصال سابقه</a></div>
@@ -84,4 +84,5 @@
   </section>{% endif %}
 </section>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'js/invoice_settings.js' %}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/invoice_settings.js' %}?v=4"></script>{% endblock %}
+

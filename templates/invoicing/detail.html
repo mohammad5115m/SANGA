@@ -1,7 +1,7 @@
 {% extends "layouts/app_shell.html" %}
 {% load static %}
 {% block title %}فاکتور {{ invoice.display_number }} | سنگا{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=4">{% endblock %}
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar">
@@ -94,3 +94,4 @@
   <p class="muted">اثر مالی فقط هنگام نهایی‌شدن فاکتور ثبت می‌شود؛ رویدادهای چک و برگشت‌ها نیز بدون ویرایش تاریخچه، سند مستقل می‌سازند.</p>
 </section>
 {% endblock %}
+

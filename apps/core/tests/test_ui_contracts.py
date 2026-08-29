@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from django.conf import settings
+from django.urls import reverse
 
 TEMPLATE_ROOT = Path(settings.BASE_DIR) / "templates"
 
@@ -113,15 +114,21 @@ def test_product_surface_icons_have_intrinsic_dimensions():
     assert missing_dimensions == []
 
 
-def test_pwa_refreshes_static_assets_instead_of_serving_stale_css():
+def test_pwa_refreshes_static_assets_instead_of_serving_stale_css(client):
     base = (TEMPLATE_ROOT / "base.html").read_text()
     app_script = (Path(settings.BASE_DIR) / "static/js/app.js").read_text()
     worker = (Path(settings.BASE_DIR) / "static/js/sw.js").read_text()
 
-    assert "app.css' %}?v=3" in base
-    assert 'const SHELL_CACHE = "sanga-shell-v3"' in worker
+    assert "app.css' %}?v=4" in base
+    assert "app.js' %}?v=4" in base
+    assert 'const SHELL_CACHE = "sanga-shell-v4"' in worker
     assert 'url.pathname.startsWith("/static/")' in worker
     assert "networkFirst(request)" in worker
     assert '"/static/css/app.css"' not in worker
     assert 'updateViaCache: "none"' in app_script
     assert "registration.update()" in app_script
+    assert 'addEventListener("controllerchange"' in app_script
+    assert "controllerAtLoad" in app_script
+    assert "window.location.reload()" in app_script
+    assert client.get(reverse("core:offline")).status_code == 200
+

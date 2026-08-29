@@ -68,6 +68,9 @@ def test_invoice_form_uses_lazy_product_picker(client):
     assert "data-invoice-primary-action" in body
     assert 'data-preview-expand aria-expanded="false" aria-controls="invoice-preview-canvas"' in body
     assert "صدور نهایی" in body
+    assert "css/invoice.css?v=4" in body
+    assert "js/invoice_calculator.js?v=4" in body
+    assert "js/invoice_editor.js?v=4" in body
 
 
 @pytest.mark.django_db
@@ -123,3 +126,4 @@ def test_invalid_product_identifier_becomes_a_field_error():
 
     assert not form.is_valid()
     assert "item" in form.errors
+

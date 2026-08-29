@@ -14,8 +14,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
-  {# v=3 releases installed PWAs from the previous cache-first stylesheet URL. #}
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=3">
+  {# The query version bypasses an older cache-first worker controlling this first navigation. #}
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=4">
   {# Interactive controls use the CSP-safe code in static/js/app.js. #}
   <script src="{% static 'vendor/htmx-2.0.2.min.js' %}"></script>
   {% block extra_head %}{% endblock %}
@@ -38,7 +38,8 @@
   {% block shell %}
   {% endblock %}
 
-  <script src="{% static 'js/app.js' %}"></script>
+  <script src="{% static 'js/app.js' %}?v=4"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>
+

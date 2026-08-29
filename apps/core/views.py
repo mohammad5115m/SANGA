@@ -32,7 +32,10 @@ def health(request: HttpRequest) -> JsonResponse:
 
 
 def offline(request: HttpRequest) -> HttpResponse:
-    return render(request, "core/offline.html", status=503)
+    # Service-worker cache.addAll() only accepts successful responses. Keep the
+    # offline document cacheable; it is merely fallback content, not the failed
+    # network response itself.
+    return render(request, "core/offline.html")
 
 
 @cache_control(max_age=0, must_revalidate=True)
@@ -49,3 +52,4 @@ def service_worker(request: HttpRequest) -> HttpResponse:
         logger.exception("Service worker file missing at %s", sw_path)
         return HttpResponse(status=404)
     return HttpResponse(source, content_type="application/javascript")
+
