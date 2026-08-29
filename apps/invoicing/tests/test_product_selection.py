@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from django.conf import settings
 from django.urls import reverse
 
 from apps.core.testing import make_business, make_item, owner_membership
@@ -70,7 +71,11 @@ def test_invoice_form_uses_lazy_product_picker(client):
     assert "صدور نهایی" in body
     assert "css/invoice.css?v=4" in body
     assert "js/invoice_calculator.js?v=4" in body
-    assert "js/invoice_editor.js?v=4" in body
+    assert "js/invoice_editor.js?v=5" in body
+
+    editor_script = (settings.BASE_DIR / "static/js/invoice_editor.js").read_text()
+    assert "response.status === 204" in editor_script
+    assert "result.pending" in editor_script
 
 
 @pytest.mark.django_db

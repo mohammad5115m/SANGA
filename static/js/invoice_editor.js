@@ -333,8 +333,16 @@
         headers: {"X-Requested-With": "XMLHttpRequest"},
         signal: previewController.signal
       }).then(function (response) {
+        if (response.status === 204) return {ok: true, pending: true, body: ""};
         return response.text().then(function (body) { return {ok: response.ok, body: body}; });
       }).then(function (result) {
+        if (result.pending) {
+          preview.srcdoc = "";
+          previewStatus.textContent = "اطلاعات خریدار و حداقل یک ردیف کامل را وارد کنید";
+          previewStatus.classList.remove("is-error");
+          setPreviewLoading(false);
+          return;
+        }
         if (!result.ok) {
           previewStatus.textContent = result.body;
           previewStatus.classList.add("is-error");

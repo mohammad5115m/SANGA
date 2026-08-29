@@ -613,7 +613,10 @@ def invoice_preview(request: HttpRequest) -> HttpResponse:
     form = ManualInvoiceForm(request.POST, request.FILES, business=request.business)
     formset = InvoiceLineFormSet(request.POST, prefix="lines", business=request.business)
     if not (form.is_valid() and formset.is_valid()):
-        return HttpResponse("برای پیش‌نمایش، خطاهای فرم را برطرف کنید.", status=422)
+        # An incomplete form is the normal state while the live editor is being
+        # filled in. Avoid reporting it as an HTTP error (and logging a noisy
+        # Unprocessable Entity warning); the client presents a waiting state.
+        return HttpResponse(status=204)
     header = _header_data(form)
     paid_amount = (
         header["paid_amount"]

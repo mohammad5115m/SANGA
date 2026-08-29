@@ -242,6 +242,21 @@ def test_live_preview_endpoint_excludes_stale_customer_identity(client):
 
 
 @pytest.mark.django_db
+def test_live_preview_treats_an_incomplete_editor_as_not_ready(client):
+    seller = make_business(name="فروشنده پیش‌نمایش ناقص", owner_phone="09120001012")
+    member = owner_membership(seller)
+    client.force_login(member.user)
+    session = client.session
+    session["current_business_id"] = str(seller.id)
+    session.save()
+
+    response = client.post(reverse("invoicing:preview"), {})
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+@pytest.mark.django_db
 def test_draft_can_switch_between_customer_and_registered_partner_without_stale_identity():
     seller = make_business(name="فروشنده تبدیل", owner_phone="09120001007")
     buyer = make_business(name="همکار تبدیل", owner_phone="09120001008")
