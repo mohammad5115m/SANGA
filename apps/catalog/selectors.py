@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from django.db.models import Q, QuerySet
+from django.db.models import Prefetch, Q, QuerySet
 
 from apps.businesses.eligibility import business_can_sell
 from apps.businesses.models import Business
 from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
 from apps.inventory.policy import eligible_items, get_eligible_item
+from apps.pricing.models import LotPrice
+from apps.pricing.queries import live_special_subquery
 
-from .models import CustomCatalog
+from .models import CustomCatalog, StorefrontCollection, StorefrontCollectionItem
 
 __all__ = [
     "public_catalog_lots",
-    "public_items",
     "get_public_lot",
     "get_public_item_by_token",
     "filter_public_lots",
@@ -22,6 +23,8 @@ __all__ = [
     "selected_catalog_lots",
     "catalog_notes",
     "catalogs_for_business",
+    "active_special_lots",
+    "storefront_collection_sections",
 ]
 
 
@@ -33,11 +36,6 @@ def public_catalog_lots(business: Business) -> QuerySet[InventoryLot]:
     the marketplace and catalogs cannot disagree about what is public.
     """
     return eligible_items(audience="public", seller_business=business)
-
-
-def public_items() -> QuerySet[InventoryLot]:
-    """Everything publicly discoverable, across all sellers."""
-    return eligible_items(audience="public")
 
 
 def get_public_lot(business: Business, lot_id) -> InventoryLot | None:
@@ -133,3 +131,37 @@ def catalog_notes(catalog: CustomCatalog) -> dict:
 
 def catalogs_for_business(business: Business) -> QuerySet[CustomCatalog]:
     return CustomCatalog.objects.filter(business=business).only("id", "title").order_by("title")
+
+
+def active_special_lots(business: Business, *, limit: int = 12) -> QuerySet[InventoryLot]:
+    """Current B2C promotions for this seller only, ending soonest first."""
+    return (
+        public_catalog_lots(business)
+        .annotate(_live_special=live_special_subquery("b2c"))
+        .filter(_live_special__isnull=False)
+        .order_by("-updated_at")[:limit]
+    )
+
+
+def storefront_collection_sections(business: Business) -> QuerySet[StorefrontCollection]:
+    """Visible collections with eligible, tenant-scoped products prefetched."""
+    eligible_ids = public_catalog_lots(business).values("pk")
+    memberships = (
+        StorefrontCollectionItem.objects.filter(lot__in=eligible_ids)
+        .select_related("lot", "lot__business", "lot__product", "lot__product__stone")
+        .prefetch_related(
+            Prefetch(
+                "lot__prices",
+                queryset=LotPrice.objects.select_related("tier").filter(
+                    tier__code="b2c", tier__is_active=True
+                ),
+            ),
+            "lot__media",
+        )
+        .order_by("sort_order", "id")
+    )
+    return (
+        StorefrontCollection.objects.filter(business=business, is_active=True)
+        .prefetch_related(Prefetch("items", queryset=memberships, to_attr="public_items"))
+        .order_by("sort_order", "created_at")
+    )

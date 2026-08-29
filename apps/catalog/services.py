@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
+import secrets
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.utils import timezone
 
 from apps.businesses.eligibility import NotOperationalError, require_operational
@@ -15,7 +18,12 @@ from apps.inventory.freshness import stock_view
 from apps.inventory.models import InventoryLot
 from apps.pricing.services import resolve_visible_prices
 
-from .models import CustomCatalog, CustomCatalogItem
+from .models import (
+    CustomCatalog,
+    CustomCatalogItem,
+    StorefrontCollection,
+    StorefrontCollectionItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +60,19 @@ def b2c_price_context(lot: InventoryLot) -> dict:
             "currency": None,
             "label": "استعلام قیمت",
             "is_special": False,
+            "regular_amount": None,
+            "regular_label": "",
+            "discount_percent": None,
+            "remaining_label": "",
         }
+    regular_amount = b2c.regular_amount if b2c.is_special else None
+    discount_percent = None
+    if regular_amount and b2c.amount:
+        discount_percent = int(
+            (((regular_amount - b2c.amount) / regular_amount) * Decimal("100")).quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP
+            )
+        )
     return {
         "has_price": True,
         "amount": b2c.amount,
@@ -60,7 +80,25 @@ def b2c_price_context(lot: InventoryLot) -> dict:
         "label": format_rial(b2c.amount),
         "is_special": b2c.is_special,
         "special_until": b2c.special_until,
+        "regular_amount": regular_amount,
+        "regular_label": format_rial(regular_amount) if regular_amount else "",
+        "discount_percent": discount_percent,
+        "remaining_label": _promotion_remaining(b2c.special_until),
     }
+
+
+def _promotion_remaining(ends_at) -> str:
+    if ends_at is None:
+        return ""
+    seconds = max(0, int((ends_at - timezone.now()).total_seconds()))
+    days, remainder = divmod(seconds, 86400)
+    hours = remainder // 3600
+    if days:
+        return f"{days} روز و {hours} ساعت تا پایان پیشنهاد"
+    if hours:
+        return f"{hours} ساعت تا پایان پیشنهاد"
+    minutes = max(1, seconds // 60)
+    return f"{minutes} دقیقه تا پایان پیشنهاد"
 
 
 def public_lot_card(lot: InventoryLot) -> dict:
@@ -247,3 +285,215 @@ def record_catalog_view(catalog: CustomCatalog) -> CustomCatalog:
     CustomCatalog.objects.filter(pk=catalog.pk, first_viewed_at__isnull=True).update(first_viewed_at=now)
     catalog.refresh_from_db()
     return catalog
+
+
+DEFAULT_STOREFRONT_COLLECTIONS = (
+    {
+        "title": "انتخاب‌های اقتصادی",
+        "description": "محصولات دارای قیمت روز، مرتب‌شده از قیمت کمتر",
+        "suggestion_kind": StorefrontCollection.SuggestionKind.ECONOMIC,
+    },
+    {
+        "title": "تازه‌های ویترین",
+        "description": "محصولاتی که موجودی آن‌ها تازه‌تر تأیید شده است",
+        "suggestion_kind": StorefrontCollection.SuggestionKind.FRESH,
+    },
+    {
+        "title": "سنگ‌های مناسب نمای بیرونی",
+        "description": "پیشنهاد بر پایه کاربرد ثبت‌شده برای هر محصول",
+        "suggestion_kind": StorefrontCollection.SuggestionKind.EXTERIOR,
+    },
+    {
+        "title": "پیشنهاد فروشنده",
+        "description": "انتخاب‌های دست‌چین‌شده شما برای مشتریان",
+        "suggestion_kind": StorefrontCollection.SuggestionKind.NONE,
+    },
+)
+
+
+@transaction.atomic
+def ensure_default_storefront_collections(*, business: Business) -> None:
+    """Create editable, hidden starter sections only when none exist yet."""
+    if StorefrontCollection.objects.filter(business=business).exists():
+        return
+    StorefrontCollection.objects.bulk_create(
+        [
+            StorefrontCollection(business=business, sort_order=index * 10, **definition)
+            for index, definition in enumerate(DEFAULT_STOREFRONT_COLLECTIONS, start=1)
+        ]
+    )
+
+
+def _require_collection_manage(collection: StorefrontCollection, membership: BusinessMembership) -> None:
+    _require_catalog_manage(membership)
+    if collection.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این مجموعه وجود ندارد.")
+
+
+@transaction.atomic
+def save_storefront_collection(
+    *,
+    business: Business,
+    membership: BusinessMembership,
+    title: str,
+    description: str = "",
+    is_active: bool = False,
+    suggestion_kind: str = "",
+    collection: StorefrontCollection | None = None,
+    lot_ids: list | None = None,
+) -> StorefrontCollection:
+    _require_catalog_manage(membership)
+    if membership.business_id != business.id:
+        raise CatalogError("دسترسی نامعتبر است.")
+    title = (title or "").strip()
+    if len(title) < 2:
+        raise CatalogError("عنوان مجموعه خیلی کوتاه است.")
+    if collection is None:
+        last = StorefrontCollection.objects.filter(business=business).order_by("-sort_order").first()
+        collection = StorefrontCollection(business=business, sort_order=(last.sort_order + 10 if last else 10))
+    elif collection.business_id != business.id:
+        raise CatalogError("دسترسی به این مجموعه وجود ندارد.")
+    collection.title = title
+    collection.description = (description or "").strip()
+    collection.is_active = bool(is_active)
+    collection.suggestion_kind = suggestion_kind or StorefrontCollection.SuggestionKind.NONE
+    try:
+        collection.save()
+    except IntegrityError as exc:
+        if collection.business.storefront_collections.filter(title=title).exclude(pk=collection.pk).exists():
+            raise CatalogError("مجموعه‌ای با این عنوان دارید.") from exc
+        raise
+    if lot_ids is not None:
+        set_storefront_collection_lots(
+            collection=collection,
+            membership=membership,
+            lot_ids=lot_ids,
+        )
+    return collection
+
+
+@transaction.atomic
+def set_storefront_collection_lots(
+    *, collection: StorefrontCollection, membership: BusinessMembership, lot_ids: list
+) -> StorefrontCollection:
+    _require_collection_manage(collection, membership)
+    requested = [value for value in lot_ids if value]
+    try:
+        owned = list(
+            InventoryLot.objects.filter(
+                business=collection.business,
+                deleted_at__isnull=True,
+                pk__in=requested,
+            ).values_list("pk", flat=True)
+        )
+    except (DjangoValidationError, TypeError, ValueError) as exc:
+        raise CatalogError("محصول انتخاب‌شده معتبر نیست.") from exc
+    owned_map = {str(value): value for value in owned}
+    unique_requested = list(dict.fromkeys(str(value) for value in requested))
+    if len(owned_map) != len(unique_requested):
+        raise CatalogError("یک یا چند محصول متعلق به کسب‌وکار شما نیست.")
+    collection.items.all().delete()
+    StorefrontCollectionItem.objects.bulk_create(
+        [
+            StorefrontCollectionItem(
+                collection=collection,
+                lot_id=owned_map[value],
+                sort_order=index,
+            )
+            for index, value in enumerate(unique_requested)
+        ]
+    )
+    collection.save(update_fields=["updated_at"])
+    return collection
+
+
+def suggested_storefront_lots(collection: StorefrontCollection, *, limit: int = 12) -> list[InventoryLot]:
+    """Evidence-backed suggestions only; the seller can freely edit the result."""
+    from .selectors import public_catalog_lots
+
+    qs = public_catalog_lots(collection.business)
+    if collection.suggestion_kind == StorefrontCollection.SuggestionKind.ECONOMIC:
+        from apps.pricing.queries import effective_amount_subquery
+
+        qs = qs.annotate(_b2c_amount=effective_amount_subquery("b2c")).filter(
+            _b2c_amount__isnull=False
+        ).order_by("_b2c_amount", "-stock_confirmed_at")
+    elif collection.suggestion_kind == StorefrontCollection.SuggestionKind.FRESH:
+        qs = qs.order_by(F("stock_confirmed_at").desc(nulls_last=True), "-updated_at")
+    elif collection.suggestion_kind == StorefrontCollection.SuggestionKind.EXTERIOR:
+        qs = qs.filter(product__applications__code="exterior-facade").order_by(
+            F("stock_confirmed_at").desc(nulls_last=True), "-updated_at"
+        )
+    else:
+        return []
+    return list(qs[:limit])
+
+
+@transaction.atomic
+def apply_storefront_suggestions(
+    *, collection: StorefrontCollection, membership: BusinessMembership
+) -> StorefrontCollection:
+    _require_collection_manage(collection, membership)
+    suggested = suggested_storefront_lots(collection)
+    current = list(collection.items.order_by("sort_order", "id").values_list("lot_id", flat=True))
+    merged = current + [lot.pk for lot in suggested if lot.pk not in set(current)]
+    return set_storefront_collection_lots(
+        collection=collection,
+        membership=membership,
+        lot_ids=merged,
+    )
+
+
+@transaction.atomic
+def move_storefront_collection(
+    *, collection: StorefrontCollection, membership: BusinessMembership, direction: str
+) -> None:
+    _require_collection_manage(collection, membership)
+    ordered = list(
+        StorefrontCollection.objects.select_for_update().filter(business=collection.business).order_by(
+            "sort_order", "created_at"
+        )
+    )
+    _move_ordered(ordered, collection.pk, direction)
+
+
+@transaction.atomic
+def move_storefront_collection_item(
+    *, membership_item: StorefrontCollectionItem, membership: BusinessMembership, direction: str
+) -> None:
+    _require_collection_manage(membership_item.collection, membership)
+    ordered = list(
+        StorefrontCollectionItem.objects.select_for_update().filter(
+            collection=membership_item.collection
+        ).order_by("sort_order", "id")
+    )
+    _move_ordered(ordered, membership_item.pk, direction)
+
+
+def _move_ordered(ordered: list, target_id, direction: str) -> None:
+    index = next((idx for idx, value in enumerate(ordered) if value.pk == target_id), None)
+    if index is None:
+        return
+    other_index = index - 1 if direction == "up" else index + 1
+    if other_index < 0 or other_index >= len(ordered):
+        return
+    ordered[index], ordered[other_index] = ordered[other_index], ordered[index]
+    for sort_order, value in enumerate(ordered):
+        value.sort_order = sort_order
+        value.save(update_fields=["sort_order"])
+
+
+@transaction.atomic
+def regenerate_storefront_token(*, business: Business, membership: BusinessMembership) -> str:
+    _require_catalog_manage(membership)
+    if membership.business_id != business.id:
+        raise CatalogError("دسترسی نامعتبر است.")
+    locked = Business.objects.select_for_update().get(pk=business.pk)
+    while True:
+        token = secrets.token_urlsafe(24)
+        if not Business.objects.filter(storefront_token=token).exists():
+            break
+    locked.storefront_token = token
+    locked.save(update_fields=["storefront_token", "updated_at"])
+    business.storefront_token = token
+    return token

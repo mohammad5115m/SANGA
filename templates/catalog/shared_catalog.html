@@ -2,7 +2,7 @@
 
 {% block title %}{{ catalog.title }} | {{ business.name }}{% endblock %}
 
-{% block extra_head %}
+{% block storefront_extra_head %}
 <meta property="og:title" content="{{ catalog.title }} — {{ business.name }}">
 <meta property="og:description" content="{{ catalog.custom_message|default:'کاتالوگ اختصاصی سنگ' }}">
 {% endblock %}
@@ -19,14 +19,14 @@
 
   <div class="catalog-grid">
     {% for card in cards %}
-      {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
+      {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
       {% include "inventory/_product_card.html" with show_select=True %}
     {% empty %}
       <div class="empty-state product-empty-state">
         <span class="empty-state-icon" aria-hidden="true">◇</span>
         <h2>محصولی برای نمایش در این کاتالوگ نیست</h2>
         <p>ممکن است محصولات این کاتالوگ دیگر در ویترین عمومی فروشنده فعال نباشند.</p>
-        <a class="btn btn-secondary" href="{% url 'catalog:storefront' business.slug %}">مشاهده ویترین فروشنده</a>
+        <a class="btn btn-secondary" href="{% url 'catalog:storefront' business.storefront_token %}">مشاهده ویترین فروشنده</a>
       </div>
     {% endfor %}
   </div>
@@ -37,7 +37,7 @@
     <h2 class="section-title">درخواست خرید از این کاتالوگ</h2>
     {% if selection_count %}
       <p class="muted">{{ selection_count }} محصول انتخاب کرده‌اید.</p>
-      <a class="btn btn-primary" href="{% url 'catalog:inquiry_review' %}">ادامه درخواست خرید</a>
+      <a class="btn btn-primary" href="{% url 'catalog:inquiry_review' business.storefront_token %}">ادامه درخواست خرید</a>
     {% else %}
       <p class="muted">
         محصولی را که می‌خواهید درباره‌اش بپرسید انتخاب کنید، سپس متراژ مورد نیاز و

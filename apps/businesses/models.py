@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import uuid
 
 from django.conf import settings
@@ -8,6 +9,11 @@ from django.db import models
 from django.utils.text import slugify
 
 from .permissions import CAPABILITY_MIGRATION_MAP, defaults_for_role
+
+
+def generate_storefront_token() -> str:
+    """Opaque, URL-safe capability used to enter one seller's storefront."""
+    return secrets.token_urlsafe(24)
 
 
 class Business(models.Model):
@@ -36,6 +42,13 @@ class Business(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField("نام کسب‌وکار", max_length=200)
     slug = models.SlugField("نامک", max_length=220, unique=True, allow_unicode=True)
+    storefront_token = models.CharField(
+        "توکن ویترین",
+        max_length=64,
+        unique=True,
+        default=generate_storefront_token,
+        editable=False,
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     verification_status = models.CharField(
         max_length=20,

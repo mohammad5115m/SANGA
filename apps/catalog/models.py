@@ -81,3 +81,79 @@ class CustomCatalogItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.catalog.title} :: {self.lot.lot_code}"
+
+
+class StorefrontCollection(models.Model):
+    """A reusable seller-controlled merchandising section on the storefront."""
+
+    class SuggestionKind(models.TextChoices):
+        NONE = "", "بدون پیشنهاد خودکار"
+        ECONOMIC = "economic", "قیمت‌های اقتصادی"
+        FRESH = "fresh", "تازه‌های ویترین"
+        EXTERIOR = "exterior", "مناسب نمای بیرونی"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.CASCADE,
+        related_name="storefront_collections",
+    )
+    title = models.CharField("عنوان", max_length=120)
+    description = models.CharField("توضیح کوتاه", max_length=240, blank=True)
+    is_active = models.BooleanField("نمایش در ویترین", default=False)
+    sort_order = models.PositiveIntegerField(default=0)
+    suggestion_kind = models.CharField(
+        "پیشنهاد سیستمی",
+        max_length=20,
+        choices=SuggestionKind.choices,
+        blank=True,
+        default=SuggestionKind.NONE,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "created_at"]
+        verbose_name = "مجموعه ویترین"
+        verbose_name_plural = "مجموعه‌های ویترین"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["business", "title"],
+                name="uniq_storefront_collection_title_per_business",
+            ),
+        ]
+        indexes = [models.Index(fields=["business", "is_active", "sort_order"])]
+
+    def __str__(self) -> str:
+        return self.title
+
+
+class StorefrontCollectionItem(models.Model):
+    """An explicitly ordered product selected for a storefront collection."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    collection = models.ForeignKey(
+        StorefrontCollection,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    lot = models.ForeignKey(
+        "inventory.InventoryLot",
+        on_delete=models.CASCADE,
+        related_name="storefront_collection_items",
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name = "محصول مجموعه ویترین"
+        verbose_name_plural = "محصولات مجموعه ویترین"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["collection", "lot"],
+                name="uniq_lot_per_storefront_collection",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.collection.title} :: {self.lot.lot_code}"

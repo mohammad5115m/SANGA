@@ -24,6 +24,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.accounts.services import OTPError, request_customer_otp, verify_customer_otp
+from apps.businesses.eligibility import public_business_by_storefront_token_or_none
 from apps.inquiries.models import Inquiry
 from apps.inquiries.services import InquiryError, submit_public_inquiry, validate_phone
 from apps.inventory.policy import get_eligible_item
@@ -48,84 +49,102 @@ def _safe_next(request: HttpRequest, fallback: str) -> str:
     return fallback
 
 
+def _business_or_404(storefront_token: str):
+    from django.http import Http404
+
+    business = public_business_by_storefront_token_or_none(storefront_token)
+    if business is None:
+        raise Http404("این فروشگاه در دسترس نیست.")
+    return business
+
+
 # --- entering the flow --------------------------------------------------------
 
 
 @require_POST
-def selection_toggle(request: HttpRequest, item_id) -> HttpResponse:
-    item = get_eligible_item(audience="public", item_id=item_id)
+def selection_toggle(request: HttpRequest, storefront_token: str, item_id) -> HttpResponse:
+    business = _business_or_404(storefront_token)
+    item = get_eligible_item(audience="public", seller_business=business, item_id=item_id)
     if item is not None:
-        cart.toggle(request, item)
-    return redirect(_safe_next(request, "/search/"))
+        cart.toggle(request, business, item)
+        cart.set_source(request, Inquiry.Source.STOREFRONT)
+    return redirect(_safe_next(request, f"/store/{storefront_token}/"))
 
 
 @require_POST
-def selection_remove(request: HttpRequest, item_id) -> HttpResponse:
-    cart.remove(request, item_id)
-    return redirect(_safe_next(request, "/inquiry/"))
+def selection_remove(request: HttpRequest, storefront_token: str, item_id) -> HttpResponse:
+    business = _business_or_404(storefront_token)
+    cart.remove(request, business, item_id)
+    return redirect(_safe_next(request, f"/store/{storefront_token}/inquiry/"))
 
 
 @require_POST
-def inquiry_start(request: HttpRequest, item_id) -> HttpResponse:
+def inquiry_start(request: HttpRequest, storefront_token: str, item_id) -> HttpResponse:
     """«درخواست استعلام» from a product page — select it, then continue.
 
     The same three steps as any other selection. This exists so the product page
     has a one-click way in without also having a second, weaker inquiry form.
     """
-    item = get_eligible_item(audience="public", item_id=item_id)
+    business = _business_or_404(storefront_token)
+    item = get_eligible_item(audience="public", seller_business=business, item_id=item_id)
     if item is None:
         return render(request, "catalog/item_unavailable.html", status=404)
 
-    cart.add(request, item)
+    cart.add(request, business, item)
     cart.set_source(request, Inquiry.Source.ITEM_DETAIL)
-    return redirect("catalog:inquiry_review")
+    return redirect("catalog:inquiry_review", storefront_token=storefront_token)
 
 
 @require_POST
-def stock_inquiry(request: HttpRequest, item_id) -> HttpResponse:
+def stock_inquiry(request: HttpRequest, storefront_token: str, item_id) -> HttpResponse:
     """«استعلام موجودی» — ask whether a stale quantity still holds.
 
     The same pipeline as any other inquiry, seeded with the question, so the
     phone behind it is verified like every other. It lands in the same inbox; the
     seller's reply is either confirming the stock or marking the product ناموجود.
     """
-    item = get_eligible_item(audience="public", item_id=item_id)
+    business = _business_or_404(storefront_token)
+    item = get_eligible_item(audience="public", seller_business=business, item_id=item_id)
     if item is None:
         return render(request, "catalog/item_unavailable.html", status=404)
 
-    cart.add(request, item)
+    cart.add(request, business, item)
     cart.set_source(request, Inquiry.Source.ITEM_DETAIL)
     cart.set_message_seed(request, STOCK_QUESTION)
-    return redirect("catalog:inquiry_identify")
+    return redirect("catalog:inquiry_identify", storefront_token=storefront_token)
 
 
 # --- the flow -----------------------------------------------------------------
 
 
 @require_http_methods(["GET", "POST"])
-def selection_review(request: HttpRequest) -> HttpResponse:
+def selection_review(request: HttpRequest, storefront_token: str) -> HttpResponse:
     """Review the selection, set a quantity per product, then identify yourself."""
-    rows = cart.resolve(request)
+    business = _business_or_404(storefront_token)
+    rows = cart.resolve(request, business)
 
     if request.method == "POST" and rows:
         for row in rows:
-            cart.set_quantity(request, row["item"].pk, request.POST.get(f"qty-{row['item'].pk}", ""))
-        return redirect("catalog:inquiry_identify")
+            cart.set_quantity(
+                request, business, row["item"].pk, request.POST.get(f"qty-{row['item'].pk}", "")
+            )
+        return redirect("catalog:inquiry_identify", storefront_token=storefront_token)
 
     return render(
         request,
         "catalog/inquiry_review.html",
-        {"rows": rows, "groups": cart.group_by_seller(rows)},
+        {"business": business, "rows": rows, "groups": cart.group_by_seller(rows)},
     )
 
 
 @require_http_methods(["GET", "POST"])
-def inquiry_identify(request: HttpRequest) -> HttpResponse:
+def inquiry_identify(request: HttpRequest, storefront_token: str) -> HttpResponse:
     """Ask who they are, and send a verification code."""
-    rows = cart.resolve(request)
+    business = _business_or_404(storefront_token)
+    rows = cart.resolve(request, business)
     if not rows:
         messages.info(request, "هنوز محصولی انتخاب نکرده‌اید.")
-        return redirect("catalog:public_search")
+        return redirect("catalog:storefront", storefront_token=storefront_token)
 
     form = CustomerIdentityForm(
         request.POST or None,
@@ -151,26 +170,27 @@ def inquiry_identify(request: HttpRequest) -> HttpResponse:
             request.session.modified = True
             if result.dev_code:
                 messages.info(request, f"کد توسعه (فقط DEBUG): {result.dev_code}")
-            return redirect("catalog:inquiry_verify")
+            return redirect("catalog:inquiry_verify", storefront_token=storefront_token)
 
     return render(
         request,
         "catalog/inquiry_identify.html",
-        {"form": form, "rows": rows},
+        {"business": business, "form": form, "rows": rows},
     )
 
 
 @require_http_methods(["GET", "POST"])
-def inquiry_verify(request: HttpRequest) -> HttpResponse:
+def inquiry_verify(request: HttpRequest, storefront_token: str) -> HttpResponse:
     """Confirm the code, then save.
 
     Verification creates no User and no session. It only records that the phone
     was reachable, on the CustomerLead.
     """
+    business = _business_or_404(storefront_token)
     pending = request.session.get(PENDING_KEY)
-    rows = cart.resolve(request)
+    rows = cart.resolve(request, business)
     if not pending or not rows:
-        return redirect("catalog:public_search")
+        return redirect("catalog:storefront", storefront_token=storefront_token)
 
     form = OTPCodeForm(request.POST or None)
     if request.method == "POST":
@@ -182,7 +202,7 @@ def inquiry_verify(request: HttpRequest) -> HttpResponse:
             else:
                 if result.dev_code:
                     messages.info(request, f"کد توسعه (فقط DEBUG): {result.dev_code}")
-            return redirect("catalog:inquiry_verify")
+            return redirect("catalog:inquiry_verify", storefront_token=storefront_token)
 
         if form.is_valid():
             try:
@@ -190,16 +210,16 @@ def inquiry_verify(request: HttpRequest) -> HttpResponse:
             except OTPError as exc:
                 form.add_error("code", exc.message)
             else:
-                return _submit(request, pending, rows)
+                return _submit(request, business, storefront_token, pending, rows)
 
     return render(
         request,
         "catalog/inquiry_verify.html",
-        {"form": form, "phone": pending["phone"], "rows": rows},
+        {"business": business, "form": form, "phone": pending["phone"], "rows": rows},
     )
 
 
-def _submit(request: HttpRequest, pending: dict, rows: list[dict]) -> HttpResponse:
+def _submit(request: HttpRequest, business, storefront_token: str, pending: dict, rows: list[dict]) -> HttpResponse:
     """Persist one inquiry per seller, then show the thank-you page.
 
     Saving happens here and share buttons appear on the next page — never the
@@ -217,35 +237,46 @@ def _submit(request: HttpRequest, pending: dict, rows: list[dict]) -> HttpRespon
             name=pending["name"],
             phone=pending["phone"],
             message=pending.get("message", ""),
-            source=pending.get("source") or Inquiry.Source.PUBLIC_SEARCH,
+            source=pending.get("source") or Inquiry.Source.STOREFRONT,
             requester=request.user,
             verified=True,
         )
     except InquiryError as exc:
         messages.error(request, exc.message)
-        return redirect("catalog:inquiry_review")
+        return redirect("catalog:inquiry_review", storefront_token=storefront_token)
     except Exception:
         logger.exception("Public inquiry submission failed")
         messages.error(request, "ثبت درخواست با خطا روبه‌رو شد. دوباره تلاش کنید.")
-        return redirect("catalog:inquiry_review")
+        return redirect("catalog:inquiry_review", storefront_token=storefront_token)
 
     cart.clear(request)
     request.session.pop(PENDING_KEY, None)
-    request.session[DONE_KEY] = [str(inquiry.id) for inquiry in created]
+    request.session[DONE_KEY] = {
+        "business_id": str(business.pk),
+        "ids": [str(inquiry.id) for inquiry in created],
+    }
     request.session.modified = True
-    return redirect("catalog:inquiry_done")
+    return redirect("catalog:inquiry_done", storefront_token=storefront_token)
 
 
 @require_http_methods(["GET"])
-def inquiry_done(request: HttpRequest) -> HttpResponse:
-    ids = request.session.get(DONE_KEY) or []
+def inquiry_done(request: HttpRequest, storefront_token: str) -> HttpResponse:
+    business = _business_or_404(storefront_token)
+    done = request.session.get(DONE_KEY) or {}
+    ids = done.get("ids", []) if done.get("business_id") == str(business.pk) else []
     inquiries = (
-        Inquiry.objects.filter(id__in=ids).select_related("business").prefetch_related("items")
+        Inquiry.objects.filter(id__in=ids, business=business)
+        .select_related("business")
+        .prefetch_related("items")
         if ids
         else []
     )
     return render(
         request,
         "catalog/inquiry_done.html",
-        {"inquiries": inquiries, "share_url": request.build_absolute_uri("/search/")},
+        {
+            "business": business,
+            "inquiries": inquiries,
+            "share_url": request.build_absolute_uri(f"/store/{storefront_token}/"),
+        },
     )

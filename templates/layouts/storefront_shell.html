@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 
+{% block extra_head %}<meta name="robots" content="noindex,nofollow,noarchive">{% block storefront_extra_head %}{% endblock %}{% endblock %}
+
 {% block body_class %}storefront-body{% endblock %}
 
 {% block shell %}
 <div class="storefront-shell">
   <header class="storefront-top">
-    {% comment %}`business` is absent on the cross-seller search and on the unavailable
-    page, so the header falls back to SANGA's own branding rather than
-    reversing a storefront URL with an empty slug.{% endcomment %}
     {% if business %}
-      <a class="brand-lockup storefront-brand" href="{% url 'catalog:storefront' business.slug %}">
+      <a class="brand-lockup storefront-brand" href="{% url 'catalog:storefront' business.storefront_token %}">
         {% if business.logo %}
           <img class="business-logo" src="{{ business.logo.url }}" alt="نشان {{ business.name }}" decoding="async">
         {% else %}
@@ -21,13 +20,13 @@
         </div>
       </a>
     {% else %}
-      <a class="brand-lockup storefront-brand" href="{% url 'catalog:public_search' %}">
+      <span class="brand-lockup storefront-brand">
         <span class="brand-mark" aria-hidden="true"></span>
         <div>
           <div class="brand-name">سنگا</div>
-          <div class="brand-sub">جست‌وجوی سنگ</div>
+          <div class="brand-sub">ویترین خصوصی فروشنده</div>
         </div>
-      </a>
+      </span>
     {% endif %}
     <div class="storefront-actions">{% block storefront_actions %}{% endblock %}</div>
   </header>

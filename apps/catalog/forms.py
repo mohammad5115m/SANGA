@@ -3,7 +3,9 @@ from __future__ import annotations
 from django import forms
 from django.utils import timezone
 
-from .models import CustomCatalog
+from apps.inventory.selectors import lots_for_business
+
+from .models import CustomCatalog, StorefrontCollection
 
 
 class CustomerIdentityForm(forms.Form):
@@ -91,3 +93,33 @@ class CustomCatalogForm(forms.ModelForm):
         if value is not None and value <= timezone.now():
             raise forms.ValidationError("تاریخ انقضا باید در آینده باشد.")
         return value
+
+
+class StorefrontCollectionForm(forms.ModelForm):
+    products = forms.ModelMultipleChoiceField(
+        label="محصولات مجموعه",
+        queryset=None,
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={"class": "collection-product-check"}),
+        help_text="پس از ذخیره می‌توانید ترتیب محصولات را با دکمه‌های بالا و پایین تنظیم کنید.",
+    )
+
+    class Meta:
+        model = StorefrontCollection
+        fields = ("title", "description", "is_active", "suggestion_kind")
+        widgets = {
+            "title": forms.TextInput(attrs={"class": "field-input"}),
+            "description": forms.Textarea(attrs={"class": "field-input", "rows": 2}),
+            "is_active": forms.CheckboxInput(attrs={"class": "field-checkbox"}),
+            "suggestion_kind": forms.Select(attrs={"class": "field-input"}),
+        }
+
+    def __init__(self, *args, business, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["products"].queryset = lots_for_business(business).order_by(
+            "product__commercial_name"
+        )
+        if self.instance and self.instance.pk:
+            self.fields["products"].initial = self.instance.items.order_by(
+                "sort_order", "id"
+            ).values_list("lot_id", flat=True)

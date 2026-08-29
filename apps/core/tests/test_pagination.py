@@ -57,16 +57,23 @@ def _cards(response) -> list:
     return response.context["cards"]
 
 
+def _storefront(stocked) -> str:
+    return reverse(
+        "catalog:storefront",
+        kwargs={"storefront_token": stocked["seller"].storefront_token},
+    )
+
+
 # --- everything is reachable ----------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_public_search_offers_a_second_page(client, stocked):
-    first = client.get(reverse("catalog:public_search"))
+def test_storefront_offers_a_second_page(client, stocked):
+    first = client.get(_storefront(stocked))
     assert len(_cards(first)) == CARD_PAGE_SIZE
     assert first.context["page"].has_next
 
-    second = client.get(reverse("catalog:public_search"), {"page": 2})
+    second = client.get(_storefront(stocked), {"page": 2})
     assert len(_cards(second)) == ROWS - CARD_PAGE_SIZE
     assert second.context["page"].total == ROWS
 
@@ -75,7 +82,7 @@ def test_public_search_offers_a_second_page(client, stocked):
 def test_no_product_is_reachable_on_two_pages_or_neither(client, stocked):
     seen = []
     for number in (1, 2):
-        response = client.get(reverse("catalog:public_search"), {"page": number})
+        response = client.get(_storefront(stocked), {"page": number})
         seen.extend(card["lot"].lot_code for card in _cards(response))
 
     assert len(seen) == ROWS
@@ -103,7 +110,7 @@ def test_the_owner_inventory_pages_too(client, stocked):
 @pytest.mark.django_db
 def test_a_filter_is_preserved_across_pages(client, stocked):
     filtered = {"stone_type": "تراورتن", "page": 2}
-    response = client.get(reverse("catalog:public_search"), filtered)
+    response = client.get(_storefront(stocked), filtered)
 
     page = response.context["page"]
     assert page.total == ROWS // 2 + ROWS % 2
@@ -113,14 +120,14 @@ def test_a_filter_is_preserved_across_pages(client, stocked):
 
 @pytest.mark.django_db
 def test_a_sort_is_preserved_across_pages(client, stocked):
-    response = client.get(reverse("catalog:public_search"), {"sort": "price_asc"})
+    response = client.get(_storefront(stocked), {"sort": "price_asc"})
     assert "sort=price_asc" in response.context["page"].querystring
 
 
 @pytest.mark.django_db
 def test_the_pager_links_carry_the_filters(client, stocked):
     # A filter that still leaves more than one page, or there is no link to check.
-    body = client.get(reverse("catalog:public_search"), {"q": "سنگ"}).content.decode()
+    body = client.get(_storefront(stocked), {"q": "سنگ"}).content.decode()
     assert "q=" in body
     assert "page=2" in body
 
@@ -132,21 +139,21 @@ def test_the_pager_links_carry_the_filters(client, stocked):
 def test_a_page_beyond_the_end_shows_the_last_one(client, stocked):
     """Narrowing a filter while on page 7 is the normal way to arrive here.
     Answering with a 404 punishes the user for refining their search."""
-    response = client.get(reverse("catalog:public_search"), {"page": 99})
+    response = client.get(_storefront(stocked), {"page": 99})
     assert response.status_code == 200
     assert response.context["page"].number == response.context["page"].num_pages
 
 
 @pytest.mark.django_db
 def test_a_nonsense_page_number_shows_the_first_one(client, stocked):
-    response = client.get(reverse("catalog:public_search"), {"page": "٪٪"})
+    response = client.get(_storefront(stocked), {"page": "٪٪"})
     assert response.status_code == 200
     assert response.context["page"].number == 1
 
 
 @pytest.mark.django_db
 def test_an_empty_result_set_has_one_page_and_no_pager(client, stocked):
-    response = client.get(reverse("catalog:public_search"), {"q": "چیزی-که-وجود-ندارد"})
+    response = client.get(_storefront(stocked), {"q": "چیزی-که-وجود-ندارد"})
     page = response.context["page"]
     assert page.total == 0
     assert page.is_paginated is False
@@ -155,7 +162,7 @@ def test_an_empty_result_set_has_one_page_and_no_pager(client, stocked):
 
 @pytest.mark.django_db
 def test_a_unicode_query_survives_the_page_link(client, stocked):
-    response = client.get(reverse("catalog:public_search"), {"q": "سنگ", "page": 2})
+    response = client.get(_storefront(stocked), {"q": "سنگ", "page": 2})
     assert response.status_code == 200
     assert "q=" in response.context["page"].querystring
 
@@ -207,7 +214,7 @@ def test_resolving_a_catalog_does_not_load_every_membership(stocked, django_asse
 def test_query_count_does_not_grow_with_the_number_of_products(client, stocked, django_assert_max_num_queries):
     """The point of paging: page one costs the same however much matched."""
     with django_assert_max_num_queries(12):
-        client.get(reverse("catalog:public_search"))
+        client.get(_storefront(stocked))
 
     for index in range(ROWS, ROWS * 3):
         make_item(
@@ -218,7 +225,7 @@ def test_query_count_does_not_grow_with_the_number_of_products(client, stocked, 
         )
 
     with django_assert_max_num_queries(12):
-        response = client.get(reverse("catalog:public_search"))
+        response = client.get(_storefront(stocked))
     assert response.context["page"].total == ROWS * 3
     assert len(_cards(response)) == CARD_PAGE_SIZE
 
@@ -231,5 +238,5 @@ def test_paging_does_not_change_what_the_filters_mean(client, stocked):
     for lot in stocked["seller"].lots.all()[:ROWS - 2]:
         expire_stock(lot)
 
-    response = client.get(reverse("catalog:public_search"), {"min_qty_sqm": Decimal("10")})
+    response = client.get(_storefront(stocked), {"min_qty_sqm": Decimal("10")})
     assert response.context["page"].total == 2

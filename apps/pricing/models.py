@@ -158,7 +158,10 @@ class LotPrice(models.Model):
     def special_is_live(self) -> bool:
         if self.special_amount is None or self.special_until is None:
             return False
-        return self.special_until > timezone.now()
+        # A promotion cannot revive an underlying price the seller no longer
+        # confirms. Both numbers disappear together when regular price freshness
+        # expires, even if the promotion end time is later.
+        return self.is_fresh and self.special_until > timezone.now()
 
     def effective_amount(self) -> Decimal | None:
         """The number to show, or ``None`` when it must read «استعلام قیمت».

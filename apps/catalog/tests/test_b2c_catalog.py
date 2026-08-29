@@ -74,7 +74,10 @@ def test_b2c_price_context_never_includes_b2b(seller_setup):
 
 @pytest.mark.django_db
 def test_storefront_hides_hidden_items_and_b2b_price(client, seller_setup):
-    url = reverse("catalog:storefront", kwargs={"business_slug": seller_setup["business"].slug})
+    url = reverse(
+        "catalog:storefront",
+        kwargs={"storefront_token": seller_setup["business"].storefront_token},
+    )
     content = _no_commas(_body(client, url))
     assert "تراورتن کرم دمو" in content
     assert B2C in content
@@ -86,7 +89,10 @@ def test_storefront_hides_hidden_items_and_b2b_price(client, seller_setup):
 def test_public_detail_rejects_a_hidden_item(client, seller_setup):
     url = reverse(
         "catalog:lot_detail",
-        kwargs={"business_slug": seller_setup["business"].slug, "lot_id": seller_setup["private_lot"].id},
+        kwargs={
+            "storefront_token": seller_setup["business"].storefront_token,
+            "lot_id": seller_setup["private_lot"].id,
+        },
     )
     response = client.get(url)
     assert response.status_code == 404
@@ -99,7 +105,10 @@ def test_public_detail_rejects_a_hidden_item(client, seller_setup):
 def test_public_detail_shows_only_b2c(client, seller_setup):
     business = seller_setup["business"]
     lot = seller_setup["public_lot"]
-    url = reverse("catalog:lot_detail", kwargs={"business_slug": business.slug, "lot_id": lot.id})
+    url = reverse(
+        "catalog:lot_detail",
+        kwargs={"storefront_token": business.storefront_token, "lot_id": lot.id},
+    )
 
     content = _no_commas(_body(client, url))
     assert B2C in content
@@ -115,7 +124,10 @@ def test_the_product_page_cannot_record_an_inquiry_directly(client, seller_setup
     flow next to it asked for all three."""
     business = seller_setup["business"]
     lot = seller_setup["public_lot"]
-    url = reverse("catalog:lot_detail", kwargs={"business_slug": business.slug, "lot_id": lot.id})
+    url = reverse(
+        "catalog:lot_detail",
+        kwargs={"storefront_token": business.storefront_token, "lot_id": lot.id},
+    )
 
     post = client.post(url, {"name": "مشتری تست", "phone": "09123334455", "message": "لطفاً تماس بگیرید"})
     assert post.status_code == 405
@@ -125,30 +137,41 @@ def test_the_product_page_cannot_record_an_inquiry_directly(client, seller_setup
 @pytest.mark.django_db
 def test_the_product_page_button_starts_the_verified_flow(client, seller_setup):
     lot = seller_setup["public_lot"]
-    response = client.post(reverse("catalog:inquiry_start", kwargs={"item_id": lot.id}))
+    token = seller_setup["business"].storefront_token
+    response = client.post(
+        reverse("catalog:inquiry_start", kwargs={"storefront_token": token, "item_id": lot.id})
+    )
 
     assert response.status_code == 302
-    assert response.url == reverse("catalog:inquiry_review")
+    assert response.url == reverse("catalog:inquiry_review", kwargs={"storefront_token": token})
     assert not Inquiry.objects.exists()
-    assert lot.product.commercial_name in _body(client, reverse("catalog:inquiry_review"))
+    assert lot.product.commercial_name in _body(
+        client, reverse("catalog:inquiry_review", kwargs={"storefront_token": token})
+    )
 
 
-# --- public search ------------------------------------------------------------
+# --- seller-scoped discovery -------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_public_search_needs_no_login_and_spans_sellers(client, seller_setup):
+def test_storefront_needs_no_login_and_never_spans_sellers(client, seller_setup):
     other = make_business(name="سنگ دیگر", owner_phone="09125550009", city="یزد")
     make_item(other, product=make_product(other, commercial_name="گرانیت نطنز"), lot_code="OTH-1", b2c="900000")
 
-    content = _body(client, reverse("catalog:public_search"))
+    content = _body(
+        client,
+        reverse(
+            "catalog:storefront",
+            kwargs={"storefront_token": seller_setup["business"].storefront_token},
+        ),
+    )
     assert "تراورتن کرم دمو" in content
-    assert "گرانیت نطنز" in content
+    assert "گرانیت نطنز" not in content
     assert "PRIV-1" not in content
 
 
 @pytest.mark.django_db
-def test_public_search_filters_by_stone_type(client, seller_setup):
+def test_storefront_filters_only_inside_the_current_seller(client, seller_setup):
     other = make_business(name="سنگ دیگر", owner_phone="09125550010")
     make_item(
         other,
@@ -156,8 +179,12 @@ def test_public_search_filters_by_stone_type(client, seller_setup):
         lot_code="OTH-1",
         b2c="900000",
     )
-    content = _body(client, reverse("catalog:public_search") + "?stone_type=گرانیت")
-    assert "گرانیت نطنز" in content
+    url = reverse(
+        "catalog:storefront",
+        kwargs={"storefront_token": seller_setup["business"].storefront_token},
+    )
+    content = _body(client, url + "?stone_type=گرانیت")
+    assert "گرانیت نطنز" not in content
     assert "تراورتن کرم دمو" not in content
 
 

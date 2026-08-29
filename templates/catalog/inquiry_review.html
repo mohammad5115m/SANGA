@@ -36,20 +36,20 @@
                        name="qty-{{ row.item.id }}" value="{{ row.quantity|default_if_none:'' }}">
               </label>
               <button class="btn btn-ghost btn-sm" type="submit"
-                      formaction="{% url 'catalog:selection_remove' row.item.id %}"
-                      name="next" value="{% url 'catalog:inquiry_review' %}">حذف</button>
+                      formaction="{% url 'catalog:selection_remove' business.storefront_token row.item.id %}"
+                      name="next" value="{% url 'catalog:inquiry_review' business.storefront_token %}">حذف</button>
             </div>
           {% endfor %}
         </section>
       {% endfor %}
 
       <button class="btn btn-primary btn-block" type="submit">ادامه</button>
-      <a class="btn btn-ghost btn-block" href="{% url 'catalog:public_search' %}">افزودن محصول بیشتر</a>
+      <a class="btn btn-ghost btn-block" href="{% url 'catalog:storefront' business.storefront_token %}">افزودن محصول بیشتر</a>
     </form>
   {% else %}
     <div class="empty-state stack-md">
       <p>هنوز محصولی انتخاب نکرده‌اید.</p>
-      <a class="btn btn-primary" href="{% url 'catalog:public_search' %}">جست‌وجوی محصولات</a>
+      <a class="btn btn-primary" href="{% url 'catalog:storefront' business.storefront_token %}">بازگشت به ویترین</a>
     </div>
   {% endif %}
 </section>

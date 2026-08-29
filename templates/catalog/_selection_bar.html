@@ -9,6 +9,6 @@ Expects: selection_count
 {% if selection_count %}
   <div class="selection-bar">
     <span>{{ selection_count }} محصول انتخاب شده</span>
-    <a class="btn btn-primary btn-sm" href="{% url 'catalog:inquiry_review' %}">ادامه و ارسال درخواست</a>
+    <a class="btn btn-primary btn-sm" href="{% url 'catalog:inquiry_review' business.storefront_token %}">ادامه و ارسال درخواست</a>
   </div>
 {% endif %}

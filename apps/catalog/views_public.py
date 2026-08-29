@@ -1,98 +1,44 @@
 from __future__ import annotations
 
-import logging
-
-from django.contrib import messages
 from django.http import Http404, HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
-from django.utils.http import url_has_allowed_host_and_scheme
+from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
 
-from apps.businesses.eligibility import public_business_or_none
+from apps.businesses.eligibility import public_business_by_storefront_token_or_none
 from apps.core.pagination import paginate
 from apps.inventory.filters import effective_price_bounds
 from apps.inventory.forms import ItemFilterForm
 
 from . import cart
 from .selectors import (
+    active_special_lots,
     catalog_notes,
     filter_public_lots,
     get_public_item_by_token,
     get_public_lot,
     get_shareable_catalog,
     public_catalog_lots,
-    public_items,
     related_public_lots,
+    storefront_collection_sections,
 )
 from .services import b2c_price_context, public_lot_card, record_catalog_view
 
-logger = logging.getLogger(__name__)
 
-COMPARE_SESSION_KEY = "b2c_compare_lot_ids"
-
-
-def _business_or_404(slug: str):
+def _business_or_404(token: str):
     """The one gate every public seller page goes through.
 
-    See :func:`apps.businesses.eligibility.public_business_or_none` for why a
+    See :func:`apps.businesses.eligibility.public_business_by_storefront_token_or_none` for why a
     seller who cannot sell gets a 404 rather than an empty shop.
     """
-    business = public_business_or_none(slug)
+    business = public_business_by_storefront_token_or_none(token)
     if business is None:
         raise Http404("این فروشگاه در دسترس نیست.")
     return business
 
 
-def _compare_map(request: HttpRequest) -> dict[str, list[str]]:
-    raw = request.session.get(COMPARE_SESSION_KEY, {})
-    if not isinstance(raw, dict):
-        return {}
-    return {
-        str(key): [str(item) for item in value][:4]
-        for key, value in raw.items()
-        if isinstance(value, list)
-    }
-
-
-def _compare_ids(request: HttpRequest, business) -> list[str]:
-    return _compare_map(request).get(str(business.id), [])
-
-
-def _all_compare_ids(request: HttpRequest) -> list[str]:
-    return [item for values in _compare_map(request).values() for item in values]
-
-
 @require_http_methods(["GET"])
-def public_search(request: HttpRequest) -> HttpResponse:
-    """Login-free product discovery across every eligible seller."""
-    form = ItemFilterForm(request.GET or None)
-    spec = form.to_spec()
-    base = public_items()
-    qs = filter_public_lots(base, spec=spec)
-    minimum, maximum = effective_price_bounds(base, spec=spec, audience="public")
-    page = paginate(request, qs)
-    cards = [public_lot_card(lot) for lot in page.object_list]
-    selected = set(cart.selected_ids(request))
-    for card in cards:
-        card["supplier"] = card["lot"].business
-        card["is_selected"] = str(card["lot"].id) in selected
-    return render(
-        request,
-        "catalog/public_search.html",
-        {
-            "filter_form": form,
-            "cards": cards,
-            "page": page,
-            "compare_ids": _all_compare_ids(request),
-            "selection_count": cart.count(request),
-            "price_bounds": {"minimum": minimum, "maximum": maximum},
-        },
-    )
-
-
-@require_http_methods(["GET"])
-def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
-    business = _business_or_404(business_slug)
+def storefront(request: HttpRequest, storefront_token: str) -> HttpResponse:
+    business = _business_or_404(storefront_token)
     form = ItemFilterForm(request.GET or None)
     spec = form.to_spec()
     base = public_catalog_lots(business)
@@ -100,11 +46,19 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
     minimum, maximum = effective_price_bounds(base, spec=spec, audience="public")
     page = paginate(request, qs)
     cards = [public_lot_card(lot) for lot in page.object_list]
-    selected = set(cart.selected_ids(request))
-    compared = set(_compare_ids(request, business))
+    selected = set(cart.selected_ids(request, business))
     for card in cards:
         card["is_selected"] = str(card["lot"].id) in selected
-        card["is_compared"] = str(card["lot"].id) in compared
+    special_cards = [public_lot_card(lot) for lot in active_special_lots(business)]
+    for card in special_cards:
+        card["is_selected"] = str(card["lot"].id) in selected
+    collection_sections = []
+    for collection in storefront_collection_sections(business):
+        collection_cards = [public_lot_card(item.lot) for item in collection.public_items]
+        for card in collection_cards:
+            card["is_selected"] = str(card["lot"].id) in selected
+        if collection_cards:
+            collection_sections.append({"collection": collection, "cards": collection_cards})
     return render(
         request,
         "catalog/storefront.html",
@@ -112,17 +66,18 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
             "business": business,
             "filter_form": form,
             "cards": cards,
+            "special_cards": special_cards,
+            "collection_sections": collection_sections,
             "page": page,
-            "compare_ids": _compare_ids(request, business),
-            "selection_count": cart.count(request),
+            "selection_count": cart.count(request, business),
             "price_bounds": {"minimum": minimum, "maximum": maximum},
         },
     )
 
 
 @require_http_methods(["GET"])
-def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse:
-    business = _business_or_404(business_slug)
+def lot_detail(request: HttpRequest, storefront_token: str, lot_id) -> HttpResponse:
+    business = _business_or_404(storefront_token)
     lot = get_public_lot(business, lot_id)
     if lot is None:
         return render(request, "catalog/not_found.html", {"business": business}, status=404)
@@ -140,8 +95,7 @@ def lot_detail(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse
             "stock": stock_view(lot),
             "media_items": list(lot.media.all()),
             "related_cards": [public_lot_card(item) for item in related_public_lots(lot)],
-            "is_selected": cart.contains(request, lot.pk),
-            "compare_ids": _compare_ids(request, business),
+            "is_selected": cart.contains(request, business, lot.pk),
             "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
         },
     )
@@ -174,6 +128,7 @@ def shared_item(request: HttpRequest, public_token: str) -> HttpResponse:
             "stock": stock_view(lot),
             "media_items": list(lot.media.all()),
             "share_url": request.build_absolute_uri(),
+            "storefront_token": lot.business.storefront_token,
         },
     )
 
@@ -191,7 +146,7 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
     # Re-filtering in the template layer is what let a private item slip through
     # before.
     notes = catalog_notes(catalog)
-    selected = set(cart.selected_ids(request))
+    selected = set(cart.selected_ids(request, catalog.business))
     page = paginate(request, catalog.resolved_items)
     cards = [
         {
@@ -211,50 +166,7 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
             "cards": cards,
             "page": page,
             "share_url": request.build_absolute_uri(),
-            "selection_count": cart.count(request),
+            "selection_count": cart.count(request, catalog.business),
+            "storefront_token": catalog.business.storefront_token,
         },
-    )
-
-
-@require_http_methods(["POST"])
-def compare_toggle(request: HttpRequest, business_slug: str, lot_id) -> HttpResponse:
-    business = _business_or_404(business_slug)
-    lot = get_public_lot(business, lot_id)
-    if lot is None:
-        return redirect("catalog:storefront", business_slug=business_slug)
-    compare_map = _compare_map(request)
-    key = str(business.id)
-    ids = compare_map.get(key, [])
-    lid = str(lot.id)
-    if lid in ids:
-        ids = [x for x in ids if x != lid]
-        messages.info(request, "محصول از مقایسه حذف شد.")
-    elif len(ids) < 4:
-        ids.append(lid)
-        messages.success(request, "محصول به مقایسه اضافه شد.")
-    else:
-        messages.info(request, "برای مقایسه هم‌زمان حداکثر ۴ محصول انتخاب کنید.")
-    compare_map[key] = ids
-    request.session[COMPARE_SESSION_KEY] = compare_map
-    request.session.modified = True
-    next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
-    # Only follow same-host redirects; anything else could be an open redirect.
-    if next_url and url_has_allowed_host_and_scheme(
-        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
-    ):
-        return redirect(next_url)
-    return redirect("catalog:compare", business_slug=business_slug)
-
-
-@require_http_methods(["GET"])
-def compare_view(request: HttpRequest, business_slug: str) -> HttpResponse:
-    business = _business_or_404(business_slug)
-    ids = _compare_ids(request, business)
-    lots = list(public_catalog_lots(business).filter(id__in=ids))
-    order = {lid: idx for idx, lid in enumerate(ids)}
-    lots.sort(key=lambda lot: order.get(str(lot.id), 99))
-    return render(
-        request,
-        "catalog/compare.html",
-        {"business": business, "cards": [public_lot_card(lot) for lot in lots]},
     )

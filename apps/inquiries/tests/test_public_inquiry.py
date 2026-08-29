@@ -49,7 +49,20 @@ def market(db):
 
 
 def _select(client, item):
-    return client.post(reverse("catalog:selection_toggle", kwargs={"item_id": item.id}), follow=True)
+    return client.post(
+        reverse(
+            "catalog:selection_toggle",
+            kwargs={"storefront_token": item.business.storefront_token, "item_id": item.id},
+        ),
+        follow=True,
+    )
+
+
+def _public_url(name, business, **kwargs):
+    return reverse(
+        f"catalog:{name}",
+        kwargs={"storefront_token": business.storefront_token, **kwargs},
+    )
 
 
 def _dev_code(phone: str) -> str:
@@ -69,7 +82,7 @@ def _dev_code(phone: str) -> str:
 
 @pytest.mark.django_db
 def test_a_visitor_can_browse_without_logging_in(client, market):
-    assert client.get(reverse("catalog:public_search")).status_code == 200
+    assert client.get(_public_url("storefront", market["seller"])).status_code == 200
     assert client.get(f"/p/{market['first'].public_token}/").status_code == 200
 
 
@@ -79,7 +92,7 @@ def test_selecting_products_never_asks_who_you_are(client, market):
     _select(client, market["first"])
     _select(client, market["second"])
 
-    body = client.get(reverse("catalog:public_search")).content.decode()
+    body = client.get(_public_url("storefront", market["seller"])).content.decode()
     assert "2 محصول انتخاب شده" in body
     assert not CustomerLead.objects.exists()
     assert not Inquiry.objects.exists()
@@ -89,7 +102,7 @@ def test_selecting_products_never_asks_who_you_are(client, market):
 def test_selecting_the_same_product_twice_removes_it(client, market):
     _select(client, market["first"])
     _select(client, market["first"])
-    body = client.get(reverse("catalog:inquiry_review")).content.decode()
+    body = client.get(_public_url("inquiry_review", market["seller"])).content.decode()
     assert "هنوز محصولی انتخاب نکرده‌اید" in body
 
 
@@ -103,7 +116,7 @@ def test_a_withdrawn_product_drops_out_of_the_selection(client, market):
     market["first"].is_visible = False
     market["first"].save()
 
-    body = client.get(reverse("catalog:inquiry_review")).content.decode()
+    body = client.get(_public_url("inquiry_review", market["seller"])).content.decode()
     assert "تراورتن عباس‌آباد" not in body
     assert "مرمریت لاشتر" in body
 
@@ -120,17 +133,17 @@ def test_the_full_public_flow_saves_one_inquiry_with_several_products(client, ma
     _select(client, market["second"])
 
     client.post(
-        reverse("catalog:inquiry_review"),
+        _public_url("inquiry_review", market["seller"]),
         {f"qty-{market['first'].id}": "120", f"qty-{market['second'].id}": "80"},
         follow=True,
     )
     client.post(
-        reverse("catalog:inquiry_identify"),
+        _public_url("inquiry_identify", market["seller"]),
         {"name": "آقای رضایی", "phone": "09121112233", "message": "نمای پروژه"},
         follow=True,
     )
     code = _dev_code("09121112233")
-    response = client.post(reverse("catalog:inquiry_verify"), {"code": code}, follow=True)
+    response = client.post(_public_url("inquiry_verify", market["seller"]), {"code": code}, follow=True)
 
     assert response.status_code == 200
     inquiry = Inquiry.objects.get()
@@ -152,56 +165,53 @@ def test_the_inquiry_is_saved_before_any_share_button_appears(client, market, se
     settings.SMS_PROVIDER = "console"
 
     _select(client, market["first"])
-    client.post(reverse("catalog:inquiry_review"), {f"qty-{market['first'].id}": "50"}, follow=True)
+    client.post(_public_url("inquiry_review", market["seller"]), {f"qty-{market['first'].id}": "50"}, follow=True)
     client.post(
-        reverse("catalog:inquiry_identify"),
+        _public_url("inquiry_identify", market["seller"]),
         {"name": "مشتری", "phone": "09121112244"},
         follow=True,
     )
-    client.post(reverse("catalog:inquiry_verify"), {"code": _dev_code("09121112244")}, follow=True)
+    client.post(_public_url("inquiry_verify", market["seller"]), {"code": _dev_code("09121112244")}, follow=True)
 
     assert Inquiry.objects.count() == 1
 
-    body = client.get(reverse("catalog:inquiry_done")).content.decode()
+    body = client.get(_public_url("inquiry_done", market["seller"])).content.decode()
     assert "درخواست شما ثبت شد" in body
     assert "واتس‌اپ" in body
 
 
 @pytest.mark.django_db
-def test_a_selection_spanning_two_sellers_becomes_two_inquiries(client, market, settings):
-    """One seller must never see what the customer asked another."""
+def test_switching_storefronts_clears_the_previous_sellers_selection(client, market, settings):
+    """A private storefront selection can never span two sellers."""
     settings.DEBUG = True
     settings.SMS_PROVIDER = "console"
 
     _select(client, market["first"])
     _select(client, market["third"])
-    client.post(reverse("catalog:inquiry_review"), {}, follow=True)
+    client.post(_public_url("inquiry_review", market["other"]), {}, follow=True)
     client.post(
-        reverse("catalog:inquiry_identify"),
+        _public_url("inquiry_identify", market["other"]),
         {"name": "مشتری", "phone": "09121112255"},
         follow=True,
     )
-    client.post(reverse("catalog:inquiry_verify"), {"code": _dev_code("09121112255")}, follow=True)
+    client.post(_public_url("inquiry_verify", market["other"]), {"code": _dev_code("09121112255")}, follow=True)
 
-    assert Inquiry.objects.count() == 2
-    seller_inquiry = Inquiry.objects.get(business=market["seller"])
+    assert Inquiry.objects.count() == 1
     other_inquiry = Inquiry.objects.get(business=market["other"])
-
-    assert [line.product_name for line in seller_inquiry.items.all()] == ["سنگ تراورتن عباس‌آباد"]
     assert [line.product_name for line in other_inquiry.items.all()] == ["سنگ گرانیت نطنز"]
 
 
 # --- one submission, one set of inquiries ---------------------------------------
 
 
-def _run_flow(client, phone: str) -> None:
-    client.post(reverse("catalog:inquiry_review"), {}, follow=True)
+def _run_flow(client, business, phone: str) -> None:
+    client.post(_public_url("inquiry_review", business), {}, follow=True)
     client.post(
-        reverse("catalog:inquiry_identify"),
+        _public_url("inquiry_identify", business),
         {"name": "مشتری", "phone": phone},
         follow=True,
     )
-    client.post(reverse("catalog:inquiry_verify"), {"code": _dev_code(phone)}, follow=True)
+    client.post(_public_url("inquiry_verify", business), {"code": _dev_code(phone)}, follow=True)
 
 
 @pytest.mark.django_db
@@ -210,8 +220,8 @@ def test_every_inquiry_from_one_submission_shares_a_token(client, market, settin
     settings.SMS_PROVIDER = "console"
 
     _select(client, market["first"])
-    _select(client, market["third"])
-    _run_flow(client, "09121113300")
+    _select(client, market["second"])
+    _run_flow(client, market["seller"], "09121113300")
 
     tokens = set(Inquiry.objects.values_list("submission_id", flat=True))
     assert len(tokens) == 1
@@ -300,9 +310,9 @@ def test_two_separate_submissions_are_two_sets_of_inquiries(client, market, sett
     settings.SMS_PROVIDER = "console"
 
     _select(client, market["first"])
-    _run_flow(client, "09121113344")
+    _run_flow(client, market["seller"], "09121113344")
     _select(client, market["first"])
-    _run_flow(client, "09121113355")
+    _run_flow(client, market["seller"], "09121113355")
 
     assert Inquiry.objects.count() == 2
     assert len(set(Inquiry.objects.values_list("submission_id", flat=True))) == 2
@@ -318,13 +328,13 @@ def test_the_whole_flow_creates_no_platform_user(client, market, settings):
     before = User.objects.count()
 
     _select(client, market["first"])
-    client.post(reverse("catalog:inquiry_review"), {}, follow=True)
+    client.post(_public_url("inquiry_review", market["seller"]), {}, follow=True)
     client.post(
-        reverse("catalog:inquiry_identify"),
+        _public_url("inquiry_identify", market["seller"]),
         {"name": "مشتری", "phone": "09121112266"},
         follow=True,
     )
-    client.post(reverse("catalog:inquiry_verify"), {"code": _dev_code("09121112266")}, follow=True)
+    client.post(_public_url("inquiry_verify", market["seller"]), {"code": _dev_code("09121112266")}, follow=True)
 
     assert Inquiry.objects.count() == 1
     assert User.objects.count() == before
@@ -337,14 +347,14 @@ def test_verifying_a_customer_never_starts_a_session(client, market, settings):
     settings.SMS_PROVIDER = "console"
 
     _select(client, market["first"])
-    client.post(reverse("catalog:inquiry_review"), {}, follow=True)
+    client.post(_public_url("inquiry_review", market["seller"]), {}, follow=True)
     client.post(
-        reverse("catalog:inquiry_identify"),
+        _public_url("inquiry_identify", market["seller"]),
         {"name": "مشتری", "phone": "09121112277"},
         follow=True,
     )
     response = client.post(
-        reverse("catalog:inquiry_verify"),
+        _public_url("inquiry_verify", market["seller"]),
         {"code": _dev_code("09121112277")},
         follow=True,
     )

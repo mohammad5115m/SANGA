@@ -1,19 +1,19 @@
 {% extends "layouts/storefront_shell.html" %}
 
 {% block title %}{{ product.commercial_name }} | {{ business.name }}{% endblock %}
-{% block extra_head %}{% include "catalog/_open_graph.html" %}{% endblock %}
+{% block storefront_extra_head %}{% include "catalog/_open_graph.html" %}{% endblock %}
 
 {% block content %}
 {% comment %}Always resolved through the public audience, including for logged-in colleagues.{% endcomment %}
 <section class="stack-lg product-detail-page">
-  <a class="back-link" href="{% url 'catalog:storefront' business.slug %}"><span aria-hidden="true">→</span> مشاهده ویترین فروشنده</a>
+  <a class="back-link" href="{% url 'catalog:storefront' business.storefront_token %}"><span aria-hidden="true">→</span> مشاهده ویترین فروشنده</a>
 
   <div class="product-detail-hero">
     <div class="product-detail-gallery">{% include "inventory/_gallery.html" with gallery_alt=product.commercial_name %}</div>
     <aside class="product-detail-summary" aria-label="خلاصه محصول">
       <div class="product-detail-supplier">
         <span>فروشنده</span>
-        <a href="{% url 'catalog:storefront' business.slug %}">{{ business.name }}</a>
+        <a href="{% url 'catalog:storefront' business.storefront_token %}">{{ business.name }}</a>
         {% if business.city %}<small>{{ business.city }}</small>{% endif %}
       </div>
       <div>
@@ -22,14 +22,15 @@
       </div>
       <div class="detail-price-card">
         <span>قیمت مشتری / متر مربع</span>
+        {% if price.is_special %}<span class="catalog-price-old">{{ price.regular_label }}</span>{% endif %}
         <strong class="catalog-price catalog-price-lg">{{ price.label }}</strong>
-        {% if price.is_special %}<span class="badge badge-special">فروش ویژه{% if price.special_until %} تا {{ price.special_until|date:"Y/m/d" }}{% endif %}</span>{% endif %}
+        {% if price.is_special %}<div class="sale-detail-meta"><span class="badge badge-special">فروش ویژه · {{ price.discount_percent }}٪ تخفیف</span><span>{{ price.remaining_label }}</span></div>{% endif %}
       </div>
       <div class="detail-stock-card">
         <div><span>وضعیت موجودی</span><strong{% if stock.is_inquiry %} class="stock-line-inquiry"{% endif %}>{{ stock.label }}</strong></div>
         <small>{% if stock.confirmed_at %}آخرین تأیید: {{ stock.human_confirmed }}{% else %}برای اطمینان از موجودی با فروشنده هماهنگ کنید.{% endif %}</small>
       </div>
-      <a class="btn btn-primary btn-block" href="{% url 'catalog:lot_detail' business.slug lot.id %}">ثبت درخواست خرید</a>
+      <a class="btn btn-primary btn-block" href="{% url 'catalog:lot_detail' business.storefront_token lot.id %}">ثبت درخواست خرید</a>
     </aside>
   </div>
 

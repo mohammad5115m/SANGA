@@ -1,15 +1,11 @@
 {% extends "layouts/storefront_shell.html" %}
 
 {% block title %}{{ product.commercial_name }} | {{ business.name }}{% endblock %}
-{% block extra_head %}{% include "catalog/_open_graph.html" %}{% endblock %}
-
-{% block storefront_actions %}
-  {% if compare_ids %}<a class="btn btn-secondary btn-sm" href="{% url 'catalog:compare' business.slug %}">مقایسه ({{ compare_ids|length }})</a>{% endif %}
-{% endblock %}
+{% block storefront_extra_head %}{% include "catalog/_open_graph.html" %}{% endblock %}
 
 {% block content %}
 <section class="stack-lg product-detail-page">
-  <a class="back-link" href="{% url 'catalog:storefront' business.slug %}"><span aria-hidden="true">→</span> بازگشت به محصولات</a>
+  <a class="back-link" href="{% url 'catalog:storefront' business.storefront_token %}"><span aria-hidden="true">→</span> بازگشت به ویترین</a>
 
   <div class="product-detail-hero">
     <div class="product-detail-gallery">
@@ -19,7 +15,7 @@
     <aside class="product-detail-summary" aria-label="خلاصه محصول">
       <div class="product-detail-supplier">
         <span>فروشنده</span>
-        <a href="{% url 'catalog:storefront' business.slug %}">{{ business.name }}</a>
+        <a href="{% url 'catalog:storefront' business.storefront_token %}">{{ business.name }}</a>
         {% if business.city %}<small>{{ business.city }}</small>{% endif %}
       </div>
 
@@ -30,9 +26,10 @@
 
       <div class="detail-price-card">
         <span>قیمت مشتری / متر مربع</span>
+        {% if price.is_special %}<span class="catalog-price-old">{{ price.regular_label }}</span>{% endif %}
         <strong class="catalog-price catalog-price-lg">{{ price.label }}</strong>
         {% if price.is_special %}
-          <span class="badge badge-special">فروش ویژه{% if price.special_until %} تا {{ price.special_until|date:"Y/m/d" }}{% endif %}</span>
+          <div class="sale-detail-meta"><span class="badge badge-special">فروش ویژه · {{ price.discount_percent }}٪ تخفیف</span><span>{{ price.remaining_label }}</span></div>
         {% endif %}
         <small>{% if price.has_price %}قیمت نهایی سفارش پس از تأیید فروشنده مشخص می‌شود.{% else %}برای دریافت قیمت روز درخواست بفرستید.{% endif %}</small>
       </div>
@@ -44,7 +41,7 @@
         </div>
         <small>{% if stock.confirmed_at %}آخرین تأیید: {{ stock.human_confirmed }}{% else %}موجودی هنوز توسط فروشنده تأیید نشده است.{% endif %}</small>
         {% if stock.is_inquiry %}
-          <form method="post" action="{% url 'catalog:stock_inquiry' lot.id %}">
+          <form method="post" action="{% url 'catalog:stock_inquiry' business.storefront_token lot.id %}">
             {% csrf_token %}
             <button class="btn btn-secondary btn-sm btn-block" type="submit">استعلام موجودی از فروشنده</button>
           </form>
@@ -52,16 +49,9 @@
       </div>
 
       <div class="detail-primary-actions stack-sm">
-        <form method="post" action="{% url 'catalog:inquiry_start' lot.id %}">
+        <form method="post" action="{% url 'catalog:inquiry_start' business.storefront_token lot.id %}">
           {% csrf_token %}
           <button class="btn btn-primary btn-block" type="submit">ثبت درخواست خرید</button>
-        </form>
-        <form method="post" action="{% url 'catalog:compare_toggle' business.slug lot.id %}">
-          {% csrf_token %}
-          <input type="hidden" name="next" value="{{ request.path }}">
-          <button class="btn btn-secondary btn-block" type="submit" aria-pressed="{% if lot.id|stringformat:'s' in compare_ids %}true{% else %}false{% endif %}">
-            {% if lot.id|stringformat:'s' in compare_ids %}حذف از مقایسه{% else %}افزودن به مقایسه{% endif %}
-          </button>
         </form>
       </div>
     </aside>
@@ -79,7 +69,8 @@
         </div>
       </div>
       <p class="muted">درخواست شما با متراژ مورد نیاز و شماره تأییدشده برای همین فروشنده ارسال می‌شود.</p>
-      <a class="btn btn-ghost btn-block" href="{% url 'catalog:storefront' business.slug %}">مشاهده همه محصولات فروشنده</a>
+      {% if business.phone %}<a class="btn btn-secondary btn-block" href="tel:{{ business.phone }}">تماس با فروشنده</a>{% endif %}
+      <a class="btn btn-ghost btn-block" href="{% url 'catalog:storefront' business.storefront_token %}">مشاهده همه محصولات فروشنده</a>
     </section>
   </div>
 
@@ -94,7 +85,7 @@
   {% if is_selected %}
     <section class="selection-bar selection-bar-inline">
       <span>این محصول در درخواست خرید شماست.</span>
-      <a class="btn btn-primary btn-sm" href="{% url 'catalog:inquiry_review' %}">ادامه درخواست خرید</a>
+      <a class="btn btn-primary btn-sm" href="{% url 'catalog:inquiry_review' business.storefront_token %}">ادامه درخواست خرید</a>
     </section>
   {% endif %}
 
@@ -103,7 +94,7 @@
     <h2 class="section-title" id="related-heading">سنگ‌های مشابه</h2>
     <div class="catalog-grid related-product-grid">
       {% for card in related_cards %}
-        {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
+        {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
         {% include "inventory/_product_card.html" %}
       {% endfor %}
     </div>

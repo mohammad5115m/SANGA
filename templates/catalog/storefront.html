@@ -2,33 +2,64 @@
 
 {% block title %}{{ business.name }} | سنگا{% endblock %}
 
-{% block storefront_actions %}
-  {% if compare_ids %}
-    <a class="btn btn-secondary btn-sm" href="{% url 'catalog:compare' business.slug %}">مقایسه ({{ compare_ids|length }})</a>
-  {% endif %}
-{% endblock %}
-
 {% block content %}
 <section class="stack-lg">
   <div class="storefront-hero">
-    <div class="storefront-eyebrow">ویترین رسمی فروشنده در سنگا</div>
+    <div class="storefront-eyebrow">فروشگاه آنلاین {{ business.name }}</div>
     <h1 class="page-title">{{ business.name }}</h1>
-    <p class="page-lead">محصولات را ببینید، مقایسه کنید و درخواست خریدتان را مستقیم برای فروشنده بفرستید.</p>
+    <p class="page-lead">سنگ مورد نظرتان را پیدا کنید و درخواست خرید را مستقیم برای همین فروشنده بفرستید.</p>
     <div class="storefront-trust-row" aria-label="اطلاعات فروشگاه">
-      {% if business.city %}<span>{{ business.city }}</span>{% endif %}
-      <span>قیمت ویژه مشتری</span>
-      <span>موجودی با زمان تأیید</span>
+      {% if business.city %}<span>ارسال از {{ business.city }}</span>{% endif %}
+      <span>قیمت مخصوص مشتری</span>
+      <span>موجودی زمان‌دار و قابل پیگیری</span>
     </div>
   </div>
 
+  {% if special_cards %}
+  <section class="sale-showcase stack-md" aria-labelledby="special-sale-heading">
+    <div class="section-heading-row">
+      <div>
+        <span class="section-kicker">پیشنهادهای محدود</span>
+        <h2 class="section-title" id="special-sale-heading">فروش ویژه</h2>
+      </div>
+      <span class="sale-section-note">تا پایان زمان درج‌شده</span>
+    </div>
+    <div class="product-rail" role="list">
+      {% for card in special_cards %}
+        {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+        <div role="listitem">{% include "inventory/_product_card.html" with show_select=True %}</div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% for section in collection_sections %}
+  <section class="collection-section stack-md" aria-labelledby="collection-{{ section.collection.id }}">
+    <div class="section-heading-row">
+      <div>
+        <h2 class="section-title" id="collection-{{ section.collection.id }}">{{ section.collection.title }}</h2>
+        {% if section.collection.description %}<p class="muted">{{ section.collection.description }}</p>{% endif %}
+      </div>
+    </div>
+    <div class="product-rail" role="list">
+      {% for card in section.cards %}
+        {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+        <div role="listitem">{% include "inventory/_product_card.html" with show_select=True %}</div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <section class="stack-md" aria-labelledby="all-products-heading">
+  <div class="section-heading-row"><div><span class="section-kicker">تمام موجودی فروشگاه</span><h2 class="section-title" id="all-products-heading">همه محصولات</h2></div></div>
   {% include "inventory/_filter_bar.html" %}
 
   {% include "catalog/_selection_bar.html" %}
 
   <div class="catalog-grid">
     {% for card in cards %}
-      {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
-      {% include "inventory/_product_card.html" with show_select=True show_compare=True %}
+      {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" with show_select=True %}
     {% empty %}
       <div class="empty-state product-empty-state">
         <span class="empty-state-icon" aria-hidden="true">⌕</span>
@@ -40,5 +71,6 @@
   </div>
 
   {% include "_pager.html" %}
+  </section>
 </section>
 {% endblock %}

@@ -25,8 +25,12 @@ AMOUNT_FIELD = DecimalField(max_digits=16, decimal_places=2)
 
 def special_is_live_q(prefix: str = "") -> Q:
     field = f"{prefix}__" if prefix else ""
-    return Q(**{f"{field}special_amount__isnull": False}) & Q(
-        **{f"{field}special_until__gt": timezone.now()}
+    return (
+        Q(**{f"{field}mode": LotPrice.Mode.FIXED})
+        & Q(**{f"{field}price_expires_at__isnull": False})
+        & Q(**{f"{field}price_expires_at__gt": timezone.now()})
+        & Q(**{f"{field}special_amount__isnull": False})
+        & Q(**{f"{field}special_until__gt": timezone.now()})
     )
 
 

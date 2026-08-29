@@ -55,12 +55,12 @@ def world(db):
 def _public_bodies(client, world) -> dict[str, str]:
     """Every anonymous surface that renders a product."""
     catalog = world["catalog"]
+    token = world["seller"].storefront_token
     urls = {
-        "search": reverse("catalog:public_search"),
-        "storefront": reverse("catalog:storefront", kwargs={"business_slug": world["seller"].slug}),
+        "storefront": reverse("catalog:storefront", kwargs={"storefront_token": token}),
         "detail": reverse(
             "catalog:lot_detail",
-            kwargs={"business_slug": world["seller"].slug, "lot_id": world["item"].id},
+            kwargs={"storefront_token": token, "lot_id": world["item"].id},
         ),
         "share": f"/p/{world['item'].public_token}/",
         "catalog": reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token}),
@@ -212,7 +212,7 @@ def test_expired_stock_keeps_the_product_discoverable(client, world):
 
     expire_stock(world["item"])
     bodies = _public_bodies(client, world)
-    assert "تراورتن آزمون" in bodies["search"]
+    assert "تراورتن آزمون" in bodies["storefront"]
     assert "استعلام موجودی" in bodies["detail"]
 
 
@@ -222,7 +222,7 @@ def test_an_expired_price_hides_the_number_but_not_the_product(client, world):
 
     expire_price(world["item"], "b2c")
     bodies = _public_bodies(client, world)
-    assert "تراورتن آزمون" in bodies["search"]
+    assert "تراورتن آزمون" in bodies["storefront"]
     assert B2C_PRICE not in bodies["detail"]
     assert "استعلام قیمت" in bodies["detail"]
 

@@ -211,6 +211,24 @@ def test_expired_special_sale_falls_back_to_the_normal_price(seller):
 
 
 @pytest.mark.django_db
+def test_special_sale_cannot_outlive_regular_price_freshness(seller):
+    item = make_item(seller, b2c="1600000")
+    set_lot_price(
+        lot=item,
+        tier_code="b2c",
+        amount=Decimal("1600000"),
+        valid_for_days=1,
+        special_amount=Decimal("1200000"),
+        special_until=timezone.now() + timedelta(days=4),
+    )
+    expire_price(item, "b2c")
+    item.refresh_from_db()
+    view = resolve_visible_prices(item, "b2c_public")["b2c"]
+    assert view.amount is None
+    assert view.is_special is False
+
+
+@pytest.mark.django_db
 def test_special_sale_requires_an_end_date(seller):
     item = make_item(seller, b2c="1600000")
     with pytest.raises(ValueError):

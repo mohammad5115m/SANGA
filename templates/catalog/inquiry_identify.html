@@ -23,7 +23,7 @@
       </label>
     {% endfor %}
     <button class="btn btn-primary btn-block" type="submit">دریافت کد تأیید</button>
-    <a class="btn btn-ghost btn-block" href="{% url 'catalog:inquiry_review' %}">بازگشت</a>
+    <a class="btn btn-ghost btn-block" href="{% url 'catalog:inquiry_review' business.storefront_token %}">بازگشت</a>
   </form>
 
   <p class="muted">

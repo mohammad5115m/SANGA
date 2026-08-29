@@ -47,7 +47,13 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
       <div class="product-card-commercial">
         <div class="product-card-price">
           <span>{% if show_marketplace_meta %}قیمت همکار{% else %}قیمت{% endif %} / متر مربع</span>
+          {% if card.price.is_special %}
+            <span class="catalog-price-old">{{ card.price.regular_label }}</span>
+          {% endif %}
           <strong class="catalog-price">{{ card.price.label }}</strong>
+          {% if card.price.is_special %}
+            <span class="sale-meta"><b>{{ card.price.discount_percent }}٪ تخفیف</b><span>{{ card.price.remaining_label }}</span></span>
+          {% endif %}
         </div>
         <div class="stock-pill{% if card.stock.is_inquiry %} is-inquiry{% else %} is-fresh{% endif %}">
           <span class="stock-pill-dot" aria-hidden="true"></span>
@@ -72,10 +78,9 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
     </div>
   {% endif %}
 
-  {% if show_select or show_compare %}
+  {% if show_select %}
     <div class="product-card-customer-actions">
       {% if show_select %}{% include "catalog/_select_button.html" with is_selected=card.is_selected %}{% endif %}
-      {% if show_compare %}{% include "catalog/_compare_button.html" %}{% endif %}
     </div>
   {% endif %}
   {% if card.note %}<div class="muted card-note">{{ card.note }}</div>{% endif %}

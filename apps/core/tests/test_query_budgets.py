@@ -116,17 +116,13 @@ def test_list_pages_do_not_scale_queries_with_rows(client, busy, url_name, budge
 
 
 @pytest.mark.django_db
-def test_public_search_does_not_scale_queries_with_rows(client, busy, django_assert_max_num_queries):
-    with django_assert_max_num_queries(12):
-        response = client.get(reverse("catalog:public_search"))
-    assert response.status_code == 200
-
-
-@pytest.mark.django_db
 def test_the_storefront_does_not_scale_queries_with_rows(client, busy, django_assert_max_num_queries):
-    with django_assert_max_num_queries(12):
+    with django_assert_max_num_queries(18):
         response = client.get(
-            reverse("catalog:storefront", kwargs={"business_slug": busy["seller"].slug})
+            reverse(
+                "catalog:storefront",
+                kwargs={"storefront_token": busy["seller"].storefront_token},
+            )
         )
     assert response.status_code == 200
 

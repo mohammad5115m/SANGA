@@ -87,7 +87,7 @@ def test_the_marketplace_shows_only_approved_sellers(network, state):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("state", EVERY_STATE)
-def test_public_search_shows_only_approved_sellers(network, state):
+def test_public_inventory_policy_shows_only_approved_sellers(network, state):
     _verify(network["seller"], state)
     public = eligible_items(audience="public")
     assert (network["item"] in public) is (state == APPROVED)

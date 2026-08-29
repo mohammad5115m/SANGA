@@ -44,6 +44,7 @@ class PriceView:
     display_as_inquiry: bool = False
     is_special: bool = False
     special_until: timezone.datetime | None = None
+    regular_amount: Decimal | None = None
     expired: bool = False
 
 
@@ -88,6 +89,7 @@ def price_view(price: LotPrice) -> PriceView:
         display_as_inquiry=amount is None,
         is_special=price.special_is_live,
         special_until=price.special_until if price.special_is_live else None,
+        regular_amount=price.amount if price.special_is_live else None,
         expired=amount is None and not is_inquiry_mode,
     )
 
