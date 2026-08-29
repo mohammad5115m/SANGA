@@ -432,4 +432,3 @@
 
   init(document);
 })();
-

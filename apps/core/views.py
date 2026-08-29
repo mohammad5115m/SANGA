@@ -52,4 +52,3 @@ def service_worker(request: HttpRequest) -> HttpResponse:
         logger.exception("Service worker file missing at %s", sw_path)
         return HttpResponse(status=404)
     return HttpResponse(source, content_type="application/javascript")
-

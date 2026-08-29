@@ -131,4 +131,3 @@ def test_pwa_refreshes_static_assets_instead_of_serving_stale_css(client):
     assert "controllerAtLoad" in app_script
     assert "window.location.reload()" in app_script
     assert client.get(reverse("core:offline")).status_code == 200
-

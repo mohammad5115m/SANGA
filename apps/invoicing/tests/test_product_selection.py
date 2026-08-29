@@ -126,4 +126,3 @@ def test_invalid_product_identifier_becomes_a_field_error():
 
     assert not form.is_valid()
     assert "item" in form.errors
-
