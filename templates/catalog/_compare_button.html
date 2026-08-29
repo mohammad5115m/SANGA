@@ -1,0 +1,8 @@
+{% comment %}Compact comparison toggle for one seller's public product card.{% endcomment %}
+<form method="post" action="{% url 'catalog:compare_toggle' business.slug card.lot.id %}" class="compare-form">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  <button class="btn btn-ghost btn-sm" type="submit" aria-pressed="{% if card.is_compared %}true{% else %}false{% endif %}">
+    {% if card.is_compared %}در مقایسه ✓{% else %}مقایسه{% endif %}
+  </button>
+</form>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from django.contrib import messages
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -73,6 +74,7 @@ def public_search(request: HttpRequest) -> HttpResponse:
     cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
     for card in cards:
+        card["supplier"] = card["lot"].business
         card["is_selected"] = str(card["lot"].id) in selected
     return render(
         request,
@@ -99,8 +101,10 @@ def storefront(request: HttpRequest, business_slug: str) -> HttpResponse:
     page = paginate(request, qs)
     cards = [public_lot_card(lot) for lot in page.object_list]
     selected = set(cart.selected_ids(request))
+    compared = set(_compare_ids(request, business))
     for card in cards:
         card["is_selected"] = str(card["lot"].id) in selected
+        card["is_compared"] = str(card["lot"].id) in compared
     return render(
         request,
         "catalog/storefront.html",
@@ -224,8 +228,12 @@ def compare_toggle(request: HttpRequest, business_slug: str, lot_id) -> HttpResp
     lid = str(lot.id)
     if lid in ids:
         ids = [x for x in ids if x != lid]
+        messages.info(request, "محصول از مقایسه حذف شد.")
     elif len(ids) < 4:
         ids.append(lid)
+        messages.success(request, "محصول به مقایسه اضافه شد.")
+    else:
+        messages.info(request, "برای مقایسه هم‌زمان حداکثر ۴ محصول انتخاب کنید.")
     compare_map[key] = ids
     request.session[COMPARE_SESSION_KEY] = compare_map
     request.session.modified = True

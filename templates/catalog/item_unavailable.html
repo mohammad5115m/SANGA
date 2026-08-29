@@ -3,13 +3,11 @@
 {% block title %}محصول در دسترس نیست | سنگا{% endblock %}
 
 {% block content %}
-{% comment %}Hidden, unavailable and deleted all render this same page. Telling a stranger
-which of the three applies would leak which products a seller has withdrawn.{% endcomment %}
-<section class="stack-lg">
-  <div class="empty-state empty-state-lg">
-    <h1 class="page-title">این محصول در حال حاضر موجود نیست</h1>
-    <p class="page-lead">ممکن است فروشنده آن را برداشته باشد یا موجودی تمام شده باشد.</p>
-    <a class="btn btn-primary" href="{% url 'catalog:public_search' %}">جست‌وجوی محصولات دیگر</a>
-  </div>
+{% comment %}Hidden, unavailable and deleted remain indistinguishable to protect seller privacy.{% endcomment %}
+<section class="empty-state product-empty-state">
+  <span class="empty-state-icon" aria-hidden="true">◇</span>
+  <h1 class="page-title">این محصول در حال حاضر در دسترس نیست</h1>
+  <p>ممکن است فروشنده آن را از ویترین برداشته باشد یا موجودی آن پایان یافته باشد.</p>
+  <a class="btn btn-primary" href="{% url 'catalog:public_search' %}">جست‌وجوی محصولات دیگر</a>
 </section>
 {% endblock %}

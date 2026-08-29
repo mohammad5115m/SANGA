@@ -20,7 +20,12 @@ submission, not at the door.{% endcomment %}
       {% url 'catalog:lot_detail' card.lot.business.slug card.lot.id as card_url %}
       {% include "inventory/_product_card.html" with show_select=True %}
     {% empty %}
-      <div class="empty-state">محصولی با این فیلترها پیدا نشد. فیلترها را ساده‌تر کنید.</div>
+      <div class="empty-state product-empty-state">
+        <span class="empty-state-icon" aria-hidden="true">⌕</span>
+        <h2>محصولی پیدا نشد</h2>
+        <p>عبارت جست‌وجو یا فیلترها را ساده‌تر کنید و دوباره ببینید.</p>
+        {% if filter_form.active_filter_count %}<a class="btn btn-secondary" href="{{ request.path }}">پاک‌کردن فیلترها</a>{% endif %}
+      </div>
     {% endfor %}
   </div>
 

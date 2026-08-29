@@ -16,12 +16,18 @@ falls back to the first item without making the gallery unusable without JS.
           <source src="{{ media.file.url }}">
         </video>
       {% else %}
-        <img src="{{ media.file.url }}" alt="{{ media.caption|default:'' }}" loading="lazy">
+        <img src="{{ media.file.url }}" alt="{{ media.caption|default:gallery_alt }}" loading="lazy">
       {% endif %}
       {% if media.caption %}<div class="gallery-caption">{{ media.caption }}</div>{% endif %}
     </div>
     {% empty %}
-    <div class="empty-state">تصویری ثبت نشده است</div>
+    <div class="empty-state gallery-empty" role="img" aria-label="تصویری برای {{ gallery_alt|default:'این محصول' }} ثبت نشده است">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m5 17 4-4 3 3 2-2 5 4"/>
+      </svg>
+      <strong>تصویر محصول هنوز ثبت نشده است</strong>
+      <span>برای مشاهده تصویر واقعی از فروشنده استعلام کنید.</span>
+    </div>
     {% endfor %}
   </div>
 

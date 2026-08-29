@@ -22,7 +22,12 @@
       {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
       {% include "inventory/_product_card.html" with show_select=True %}
     {% empty %}
-      <div class="empty-state">موردی برای نمایش نیست.</div>
+      <div class="empty-state product-empty-state">
+        <span class="empty-state-icon" aria-hidden="true">◇</span>
+        <h2>محصولی برای نمایش در این کاتالوگ نیست</h2>
+        <p>ممکن است محصولات این کاتالوگ دیگر در ویترین عمومی فروشنده فعال نباشند.</p>
+        <a class="btn btn-secondary" href="{% url 'catalog:storefront' business.slug %}">مشاهده ویترین فروشنده</a>
+      </div>
     {% endfor %}
   </div>
 

@@ -11,8 +11,14 @@
 {% block content %}
 <section class="stack-lg">
   <div class="storefront-hero">
+    <div class="storefront-eyebrow">ویترین رسمی فروشنده در سنگا</div>
     <h1 class="page-title">{{ business.name }}</h1>
-    <p class="page-lead">انتخاب سنگ با قیمت مشتری و موجودی به‌روز</p>
+    <p class="page-lead">محصولات را ببینید، مقایسه کنید و درخواست خریدتان را مستقیم برای فروشنده بفرستید.</p>
+    <div class="storefront-trust-row" aria-label="اطلاعات فروشگاه">
+      {% if business.city %}<span>{{ business.city }}</span>{% endif %}
+      <span>قیمت ویژه مشتری</span>
+      <span>موجودی با زمان تأیید</span>
+    </div>
   </div>
 
   {% include "inventory/_filter_bar.html" %}
@@ -22,9 +28,14 @@
   <div class="catalog-grid">
     {% for card in cards %}
       {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
-      {% include "inventory/_product_card.html" with show_select=True %}
+      {% include "inventory/_product_card.html" with show_select=True show_compare=True %}
     {% empty %}
-      <div class="empty-state">محصولی با این فیلترها پیدا نشد.</div>
+      <div class="empty-state product-empty-state">
+        <span class="empty-state-icon" aria-hidden="true">⌕</span>
+        <h2>محصولی با این جست‌وجو پیدا نشد</h2>
+        <p>عبارت جست‌وجو یا فیلترها را ساده‌تر کنید و دوباره ببینید.</p>
+        {% if filter_form.active_filter_count %}<a class="btn btn-secondary" href="{{ request.path }}">پاک‌کردن فیلترها</a>{% endif %}
+      </div>
     {% endfor %}
   </div>
 

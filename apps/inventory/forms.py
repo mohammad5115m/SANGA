@@ -428,6 +428,38 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
             count += 1
         return count
 
+    @property
+    def active_filter_labels(self) -> list[str]:
+        """Short, buyer-readable summaries for the active-filter strip."""
+        if not self.is_bound:
+            return []
+        self.is_valid()
+        data = self.cleaned_data
+        labels: list[str] = []
+        if data.get("q"):
+            labels.append(f"جست‌وجو: {data['q']}")
+        if data.get("stone"):
+            labels.append(f"نوع سنگ: {data['stone'].name}")
+        if data.get("processing_type"):
+            labels.append(f"فرآوری: {data['processing_type']}")
+        labels.extend(f"کاربرد: {item.name}" for item in data.get("applications") or [])
+
+        for name in ("availability", "sort", "state", "price_tier"):
+            value = data.get(name)
+            if not value or name not in self.fields:
+                continue
+            choices = dict(self.fields[name].choices)
+            if name == "sort" and value == "recent":
+                continue
+            labels.append(f"{self.fields[name].label}: {choices.get(value, value)}")
+
+        for name in ("price_min", "price_max", "min_qty_sqm"):
+            if data.get(name) is not None:
+                labels.append(f"{self.fields[name].label}: {data[name]:f}")
+        if data.get("application_match") == "all":
+            labels.append("تطبیق: همه کاربردها")
+        return labels
+
 
 class OwnerItemFilterForm(ItemFilterForm):
     price_tier = forms.ChoiceField(

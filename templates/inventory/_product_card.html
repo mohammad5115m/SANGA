@@ -11,7 +11,12 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
       {% if card.primary_media %}
         <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
       {% else %}
-        <div class="lot-thumb-fallback" aria-hidden="true"></div>
+        <div class="lot-thumb-fallback product-image-fallback" role="img" aria-label="تصویری برای {{ card.product.commercial_name }} ثبت نشده است">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m5 17 4-4 3 3 2-2 5 4"/>
+          </svg>
+          <span>تصویر محصول ثبت نشده</span>
+        </div>
       {% endif %}
       {% if card.price.is_special or card.lot.is_urgent_sale %}
         <div class="card-flags">
@@ -42,7 +47,7 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
       <div class="product-card-commercial">
         <div class="product-card-price">
           <span>{% if show_marketplace_meta %}قیمت همکار{% else %}قیمت{% endif %} / متر مربع</span>
-          <strong class="catalog-price" dir="ltr">{{ card.price.label }}</strong>
+          <strong class="catalog-price">{{ card.price.label }}</strong>
         </div>
         <div class="stock-pill{% if card.stock.is_inquiry %} is-inquiry{% else %} is-fresh{% endif %}">
           <span class="stock-pill-dot" aria-hidden="true"></span>
@@ -50,8 +55,8 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
         </div>
       </div>
 
-      {% if show_marketplace_meta and card.stock.confirmed_at %}
-        <div class="product-card-freshness">موجودی تأییدشده در {{ card.stock.human_confirmed }}</div>
+      {% if card.stock.confirmed_at %}
+        <div class="product-card-freshness">آخرین تأیید موجودی: {{ card.stock.human_confirmed }}</div>
       {% endif %}
     </div>
   </a>
@@ -67,8 +72,11 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
     </div>
   {% endif %}
 
-  {% if show_select %}
-    {% include "catalog/_select_button.html" with is_selected=card.is_selected %}
+  {% if show_select or show_compare %}
+    <div class="product-card-customer-actions">
+      {% if show_select %}{% include "catalog/_select_button.html" with is_selected=card.is_selected %}{% endif %}
+      {% if show_compare %}{% include "catalog/_compare_button.html" %}{% endif %}
+    </div>
   {% endif %}
   {% if card.note %}<div class="muted card-note">{{ card.note }}</div>{% endif %}
 </article>

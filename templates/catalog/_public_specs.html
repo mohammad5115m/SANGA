@@ -1,37 +1,24 @@
-{% comment %}
-Public-safe specification table.
-
-Everything here is explicitly listed. There is deliberately no loop over model
-fields: that is how internal notes, defect notes and the exact address end up on
-a public page. Only buyer-useful product and stock facts belong here.
-
-Expects: lot, product, stock
-{% endcomment %}
-<section class="panel stack-sm">
-  <h2 class="section-title">مشخصات</h2>
-  <div class="kv">
-    <span>موجودی</span>
-    <strong{% if stock.is_inquiry %} class="stock-line-inquiry"{% endif %}>{{ stock.label }}</strong>
-  </div>
-  {% if stock.is_inquiry %}
-    <form method="post" action="{% url 'catalog:stock_inquiry' lot.id %}">
-      {% csrf_token %}
-      <button class="btn btn-secondary btn-sm" type="submit">استعلام موجودی از فروشنده</button>
-    </form>
-  {% endif %}
-  <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone.name|default:"—" }}</strong></div>
-  <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
-  <div class="kv">
-    <span>ابعاد</span>
-    <strong>
-      {% if lot.length_cm %}{{ lot.length_cm }}{% else %}آزاد{% endif %}{% if lot.width_cm %}×{{ lot.width_cm }}{% endif %} سانتی‌متر
-      {% if lot.thickness_cm %} / ضخامت {{ lot.thickness_cm }} سانتی‌متر{% endif %}
-    </strong>
-  </div>
-  {% if product.applications.all %}
+{% comment %}Explicit public-safe buyer specifications; never loop over model fields.{% endcomment %}
+<section class="panel stack-sm public-specs" aria-labelledby="specs-heading">
+  <h2 class="section-title" id="specs-heading">مشخصات محصول</h2>
+  <dl class="public-spec-list">
+    <div class="kv"><dt>نوع سنگ</dt><dd>{{ product.stone.name|default:"ثبت نشده" }}</dd></div>
+    {% if lot.processing_type %}<div class="kv"><dt>فرآوری</dt><dd>{{ lot.processing_type }}</dd></div>{% endif %}
     <div class="kv">
-      <span>کاربردها</span>
-      <strong>{% for a in product.applications.all %}{{ a.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong>
+      <dt>ابعاد</dt>
+      <dd>
+        {% if lot.length_cm and lot.width_cm %}{{ lot.length_cm }}×{{ lot.width_cm }} سانتی‌متر
+        {% elif lot.length_cm %}طول {{ lot.length_cm }} سانتی‌متر
+        {% elif lot.width_cm %}عرض {{ lot.width_cm }} سانتی‌متر
+        {% else %}ابعاد آزاد{% endif %}
+      </dd>
     </div>
-  {% endif %}
+    {% if lot.thickness_cm %}<div class="kv"><dt>ضخامت</dt><dd>{{ lot.thickness_cm }} سانتی‌متر</dd></div>{% endif %}
+    {% if product.applications.all %}
+      <div class="kv">
+        <dt>کاربردهای پیشنهادی</dt>
+        <dd>{% for a in product.applications.all %}{{ a.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</dd>
+      </div>
+    {% endif %}
+  </dl>
 </section>

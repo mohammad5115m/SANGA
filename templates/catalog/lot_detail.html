@@ -1,59 +1,107 @@
 {% extends "layouts/storefront_shell.html" %}
 
 {% block title %}{{ product.commercial_name }} | {{ business.name }}{% endblock %}
+{% block extra_head %}{% include "catalog/_open_graph.html" %}{% endblock %}
 
-{% block extra_head %}
-{% include "catalog/_open_graph.html" %}
+{% block storefront_actions %}
+  {% if compare_ids %}<a class="btn btn-secondary btn-sm" href="{% url 'catalog:compare' business.slug %}">مقایسه ({{ compare_ids|length }})</a>{% endif %}
 {% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  {% include "inventory/_gallery.html" %}
+<section class="stack-lg product-detail-page">
+  <a class="back-link" href="{% url 'catalog:storefront' business.slug %}"><span aria-hidden="true">→</span> بازگشت به محصولات</a>
 
-  <div>
-    <h1 class="page-title">{{ product.commercial_name }}</h1>
-    <p class="page-lead">{{ product.description_public|default:product.stone.name }}</p>
-    <div class="catalog-price catalog-price-lg">{{ price.label }}</div>
-    {% if price.is_special %}
-      <div class="badge badge-special">
-        فروش ویژه{% if price.special_until %} تا {{ price.special_until|date:"Y/m/d" }}{% endif %}
+  <div class="product-detail-hero">
+    <div class="product-detail-gallery">
+      {% include "inventory/_gallery.html" with gallery_alt=product.commercial_name %}
+    </div>
+
+    <aside class="product-detail-summary" aria-label="خلاصه محصول">
+      <div class="product-detail-supplier">
+        <span>فروشنده</span>
+        <a href="{% url 'catalog:storefront' business.slug %}">{{ business.name }}</a>
+        {% if business.city %}<small>{{ business.city }}</small>{% endif %}
       </div>
-    {% endif %}
+
+      <div>
+        <h1 class="page-title">{{ product.commercial_name }}</h1>
+        <p class="page-lead">{{ product.description_public|default:product.stone.name }}</p>
+      </div>
+
+      <div class="detail-price-card">
+        <span>قیمت مشتری / متر مربع</span>
+        <strong class="catalog-price catalog-price-lg">{{ price.label }}</strong>
+        {% if price.is_special %}
+          <span class="badge badge-special">فروش ویژه{% if price.special_until %} تا {{ price.special_until|date:"Y/m/d" }}{% endif %}</span>
+        {% endif %}
+        <small>{% if price.has_price %}قیمت نهایی سفارش پس از تأیید فروشنده مشخص می‌شود.{% else %}برای دریافت قیمت روز درخواست بفرستید.{% endif %}</small>
+      </div>
+
+      <div class="detail-stock-card">
+        <div>
+          <span>وضعیت موجودی</span>
+          <strong{% if stock.is_inquiry %} class="stock-line-inquiry"{% endif %}>{{ stock.label }}</strong>
+        </div>
+        <small>{% if stock.confirmed_at %}آخرین تأیید: {{ stock.human_confirmed }}{% else %}موجودی هنوز توسط فروشنده تأیید نشده است.{% endif %}</small>
+        {% if stock.is_inquiry %}
+          <form method="post" action="{% url 'catalog:stock_inquiry' lot.id %}">
+            {% csrf_token %}
+            <button class="btn btn-secondary btn-sm btn-block" type="submit">استعلام موجودی از فروشنده</button>
+          </form>
+        {% endif %}
+      </div>
+
+      <div class="detail-primary-actions stack-sm">
+        <form method="post" action="{% url 'catalog:inquiry_start' lot.id %}">
+          {% csrf_token %}
+          <button class="btn btn-primary btn-block" type="submit">ثبت درخواست خرید</button>
+        </form>
+        <form method="post" action="{% url 'catalog:compare_toggle' business.slug lot.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.path }}">
+          <button class="btn btn-secondary btn-block" type="submit" aria-pressed="{% if lot.id|stringformat:'s' in compare_ids %}true{% else %}false{% endif %}">
+            {% if lot.id|stringformat:'s' in compare_ids %}حذف از مقایسه{% else %}افزودن به مقایسه{% endif %}
+          </button>
+        </form>
+      </div>
+    </aside>
   </div>
 
-  {% include "catalog/_public_specs.html" %}
+  <div class="product-detail-grid">
+    {% include "catalog/_public_specs.html" %}
 
-  <div class="btn-row">
-    {# One way in: select the product, say how much you need, verify your phone. #}
-    <form method="post" action="{% url 'catalog:inquiry_start' lot.id %}">
-      {% csrf_token %}
-      <button class="btn btn-primary" type="submit">درخواست خرید</button>
-    </form>
-    <form method="post" action="{% url 'catalog:compare_toggle' business.slug lot.id %}">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ request.path }}">
-      <button class="btn btn-secondary" type="submit">
-        {% if lot.id|stringformat:'s' in compare_ids %}حذف از مقایسه{% else %}افزودن به مقایسه{% endif %}
-      </button>
-    </form>
-    {% include "catalog/_share_actions.html" %}
+    <section class="panel stack-sm seller-card" aria-labelledby="seller-heading">
+      <div class="seller-card-heading">
+        <span class="seller-avatar" aria-hidden="true">{{ business.name|first }}</span>
+        <div>
+          <h2 class="section-title" id="seller-heading">{{ business.name }}</h2>
+          <p class="muted">{% if business.city %}{{ business.city }} · {% endif %}فروشنده فعال در سنگا</p>
+        </div>
+      </div>
+      <p class="muted">درخواست شما با متراژ مورد نیاز و شماره تأییدشده برای همین فروشنده ارسال می‌شود.</p>
+      <a class="btn btn-ghost btn-block" href="{% url 'catalog:storefront' business.slug %}">مشاهده همه محصولات فروشنده</a>
+    </section>
   </div>
 
-  <section class="panel stack-sm">
-    <h2 class="section-title">چطور درخواست خرید ثبت کنم؟</h2>
-    <p class="muted">
-      محصول را انتخاب کنید، متراژ مورد نیازتان را بنویسید و شماره موبایلتان را با کد
-      تأیید مشخص کنید. می‌توانید چند محصول از چند فروشنده را با هم بفرستید.
-    </p>
-    {% if is_selected %}
-      <a class="btn btn-secondary" href="{% url 'catalog:inquiry_review' %}">ادامه درخواست خرید</a>
-    {% endif %}
+  <section class="panel share-detail-panel" aria-labelledby="share-heading">
+    <div>
+      <h2 class="section-title" id="share-heading">این محصول را به اشتراک بگذارید</h2>
+      <p class="muted">لینک عمومی محصول فقط اطلاعات و قیمت ویژه مشتری را نمایش می‌دهد.</p>
+    </div>
+    <div class="share-detail-controls">{% include "catalog/_share_actions.html" %}</div>
   </section>
 
+  {% if is_selected %}
+    <section class="selection-bar selection-bar-inline">
+      <span>این محصول در درخواست خرید شماست.</span>
+      <a class="btn btn-primary btn-sm" href="{% url 'catalog:inquiry_review' %}">ادامه درخواست خرید</a>
+    </section>
+  {% endif %}
+
   {% if related_cards %}
-  <section class="stack-md">
-    <h2 class="section-title">سنگ‌های مشابه</h2>
-    <div class="catalog-grid">
+  <section class="stack-md" aria-labelledby="related-heading">
+    <h2 class="section-title" id="related-heading">سنگ‌های مشابه</h2>
+    <div class="catalog-grid related-product-grid">
       {% for card in related_cards %}
         {% url 'catalog:lot_detail' business.slug card.lot.id as card_url %}
         {% include "inventory/_product_card.html" %}

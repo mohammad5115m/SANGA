@@ -2,23 +2,49 @@
 {% block title %}مقایسه سنگ‌ها | {{ business.name }}{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <h1 class="page-title">مقایسه</h1>
+<section class="stack-lg compare-page">
+  <div class="toolbar compare-heading">
+    <div>
+      <h1 class="page-title">مقایسه سنگ‌ها</h1>
+      <p class="page-lead">قیمت، موجودی و مشخصات مهم را کنار هم بررسی کنید؛ حداکثر ۴ محصول.</p>
+    </div>
+    <a class="btn btn-ghost" href="{% url 'catalog:storefront' business.slug %}">افزودن محصول دیگر</a>
+  </div>
+
   {% if cards %}
   <div class="compare-grid">
     {% for card in cards %}
-      <article class="panel stack-sm">
-        <div class="list-title">{{ card.product.commercial_name }}</div>
-        <div class="catalog-price">{{ card.price.label }}</div>
-        <div class="kv"><span>نوع</span><strong>{{ card.product.stone.name|default:"—" }}</strong></div>
-        <div class="kv"><span>وضعیت موجودی</span><strong>{{ card.stock.label }}</strong></div>
-        <div class="kv"><span>ضخامت</span><strong>{% if card.lot.thickness_cm %}{{ card.lot.thickness_cm }} سانتی‌متر{% else %}—{% endif %}</strong></div>
-        <a class="btn btn-secondary btn-block" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">مشاهده</a>
+      <article class="panel compare-card">
+        <div class="compare-card-media">
+          {% if card.primary_media %}<img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
+          {% else %}<div class="lot-thumb-fallback product-image-fallback" role="img" aria-label="تصویری برای {{ card.product.commercial_name }} ثبت نشده است"><span>بدون تصویر</span></div>{% endif %}
+        </div>
+        <div class="stack-sm compare-card-body">
+          <h2 class="list-title">{{ card.product.commercial_name }}</h2>
+          <div class="detail-price-card compare-price"><span>قیمت مشتری / متر مربع</span><strong class="catalog-price">{{ card.price.label }}</strong></div>
+          <dl class="public-spec-list">
+            <div class="kv"><dt>نوع</dt><dd>{{ card.product.stone.name|default:"ثبت نشده" }}</dd></div>
+            {% if card.lot.processing_type %}<div class="kv"><dt>فرآوری</dt><dd>{{ card.lot.processing_type }}</dd></div>{% endif %}
+            <div class="kv"><dt>موجودی</dt><dd>{{ card.stock.label }}</dd></div>
+            {% if card.lot.thickness_cm %}<div class="kv"><dt>ضخامت</dt><dd>{{ card.lot.thickness_cm }} سانتی‌متر</dd></div>{% endif %}
+          </dl>
+          <a class="btn btn-primary btn-block" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">مشاهده و درخواست خرید</a>
+          <form method="post" action="{% url 'catalog:compare_toggle' business.slug card.lot.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <button class="btn btn-ghost btn-sm btn-block" type="submit" aria-label="حذف {{ card.product.commercial_name }} از مقایسه">حذف از مقایسه</button>
+          </form>
+        </div>
       </article>
     {% endfor %}
   </div>
   {% else %}
-    <div class="empty-state">هنوز سنگی برای مقایسه انتخاب نشده است.</div>
+    <div class="empty-state product-empty-state">
+      <span class="empty-state-icon" aria-hidden="true">⇄</span>
+      <h2>هنوز محصولی برای مقایسه انتخاب نکرده‌اید</h2>
+      <p>از ویترین فروشنده دو تا چهار سنگ را انتخاب کنید تا تفاوت‌های مهم را یک‌جا ببینید.</p>
+      <a class="btn btn-primary" href="{% url 'catalog:storefront' business.slug %}">انتخاب محصول برای مقایسه</a>
+    </div>
   {% endif %}
 </section>
 {% endblock %}

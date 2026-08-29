@@ -81,4 +81,14 @@ Expects: filter_form
       </div>
     </details>
   </div>
+
+  {% with active_filters=filter_form.active_filter_labels %}
+  {% if active_filters %}
+    <div class="active-filter-row" aria-label="فیلترهای فعال">
+      <span class="active-filter-heading">فیلترهای فعال:</span>
+      {% for label in active_filters %}<span class="active-filter-chip">{{ label }}</span>{% endfor %}
+      <a href="{{ request.path }}">پاک‌کردن همه</a>
+    </div>
+  {% endif %}
+  {% endwith %}
 </form>
