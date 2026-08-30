@@ -1,6 +1,6 @@
 """The public customer inquiry flow — the only one there is.
 
-    browse → select → quantity → identity → OTP → submit → one inquiry per seller
+    seller storefront → select → quantity → identity → OTP → one seller inquiry
 
 Every public entry point funnels through here. The product detail page and the
 shared catalog used to carry their own name/phone forms that called
@@ -133,7 +133,7 @@ def selection_review(request: HttpRequest, storefront_token: str) -> HttpRespons
     return render(
         request,
         "catalog/inquiry_review.html",
-        {"business": business, "rows": rows, "groups": cart.group_by_seller(rows)},
+        {"business": business, "rows": rows, "groups": [{"business": business, "rows": rows}]},
     )
 
 
@@ -220,7 +220,7 @@ def inquiry_verify(request: HttpRequest, storefront_token: str) -> HttpResponse:
 
 
 def _submit(request: HttpRequest, business, storefront_token: str, pending: dict, rows: list[dict]) -> HttpResponse:
-    """Persist one inquiry per seller, then show the thank-you page.
+    """Persist one inquiry for the current storefront seller, then show the thank-you page.
 
     Saving happens here and share buttons appear on the next page — never the
     other way round. A seller must not depend on a WhatsApp message the customer
@@ -233,7 +233,7 @@ def _submit(request: HttpRequest, business, storefront_token: str, pending: dict
     try:
         created = submit_public_inquiry(
             submission_id=pending["submission_id"],
-            groups=cart.group_by_seller(rows),
+            groups=[{"business": business, "rows": rows}],
             name=pending["name"],
             phone=pending["phone"],
             message=pending.get("message", ""),

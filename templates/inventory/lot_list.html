@@ -129,6 +129,7 @@
                 {% endif %}
                 {% if row.lot.is_unavailable %}<span class="badge badge-danger">ناموجود</span>{% endif %}
                 {% if row.stock.needs_confirmation %}<span class="badge badge-warn">نیاز به تأیید موجودی</span>{% endif %}
+                {% if row.prices.b2c.is_special %}<span class="badge badge-special">فروش ویژه مشتری</span>{% endif %}
               </div>
 
               <div class="inventory-stock-row">
@@ -157,9 +158,10 @@
                   </div>
                   <div>
                     <span>قیمت مشتری / متر مربع</span>
-                    <strong dir="ltr">
+                    <strong{% if row.prices.b2c.is_special %} class="inventory-special-price"{% endif %} dir="ltr">
                       {% if row.prices.b2c and row.prices.b2c.amount %}
-                        {{ row.prices.b2c.amount|rial }} ریال
+                        {% if row.prices.b2c.is_special %}<span class="catalog-price-old">{{ row.prices.b2c.regular_amount|rial }} ریال</span>{% endif %}
+                        <span>{{ row.prices.b2c.amount|rial }} ریال</span>
                       {% elif row.prices.b2c.expired %}
                         نیاز به تأیید
                       {% elif row.prices.b2c %}
@@ -168,6 +170,7 @@
                         ثبت نشده
                       {% endif %}
                     </strong>
+                    {% if row.prices.b2c.is_special %}<small class="inventory-special-until">تا {{ row.prices.b2c.special_until|date:"Y/m/d، H:i" }}</small>{% endif %}
                   </div>
                 </div>
               {% endif %}

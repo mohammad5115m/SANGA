@@ -19,6 +19,7 @@ from .services import (
     ensure_default_storefront_collections,
     move_storefront_collection,
     move_storefront_collection_item,
+    public_lot_card,
     regenerate_storefront_token,
     remove_catalog_lot,
     save_storefront_collection,
@@ -33,6 +34,7 @@ def catalog_list(request: HttpRequest) -> HttpResponse:
     collections = request.business.storefront_collections.prefetch_related(
         "items", "items__lot", "items__lot__product"
     )
+    special_lots = list(active_special_lots(request.business))
     return render(
         request,
         "catalog/manage_list.html",
@@ -42,7 +44,8 @@ def catalog_list(request: HttpRequest) -> HttpResponse:
             "storefront_url": request.build_absolute_uri(
                 f"/store/{request.business.storefront_token}/"
             ),
-            "special_count": active_special_lots(request.business).count(),
+            "special_count": special_lots[0]._special_total if special_lots else 0,
+            "special_cards": [public_lot_card(lot) for lot in special_lots],
         },
     )
 
@@ -224,6 +227,14 @@ def collection_edit(request: HttpRequest, collection_id) -> HttpResponse:
         business=request.business,
     )
     if request.method == "POST" and form.is_valid():
+        selected_ids = list(form.cleaned_data["products"].values_list("pk", flat=True))
+        selected_set = set(selected_ids)
+        current_ids = list(
+            collection.items.order_by("sort_order", "id").values_list("lot_id", flat=True)
+        )
+        ordered_ids = [lot_id for lot_id in current_ids if lot_id in selected_set]
+        preserved_ids = set(ordered_ids)
+        ordered_ids.extend(lot_id for lot_id in selected_ids if lot_id not in preserved_ids)
         try:
             save_storefront_collection(
                 business=request.business,
@@ -233,7 +244,7 @@ def collection_edit(request: HttpRequest, collection_id) -> HttpResponse:
                 description=form.cleaned_data.get("description", ""),
                 is_active=form.cleaned_data.get("is_active", False),
                 suggestion_kind=form.cleaned_data.get("suggestion_kind", ""),
-                lot_ids=list(form.cleaned_data["products"].values_list("pk", flat=True)),
+                lot_ids=ordered_ids,
             )
         except CatalogError as exc:
             form.add_error(None, exc.message)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Prefetch, Q, QuerySet
+from django.db.models import Count, Prefetch, Q, QuerySet, Window
 
 from apps.businesses.eligibility import business_can_sell
 from apps.businesses.models import Business
@@ -8,7 +8,7 @@ from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
 from apps.inventory.policy import eligible_items, get_eligible_item
 from apps.pricing.models import LotPrice
-from apps.pricing.queries import live_special_subquery
+from apps.pricing.queries import live_special_until_subquery
 
 from .models import CustomCatalog, StorefrontCollection, StorefrontCollectionItem
 
@@ -130,17 +130,25 @@ def catalog_notes(catalog: CustomCatalog) -> dict:
 
 
 def catalogs_for_business(business: Business) -> QuerySet[CustomCatalog]:
-    return CustomCatalog.objects.filter(business=business).only("id", "title").order_by("title")
-
-
-def active_special_lots(business: Business, *, limit: int = 12) -> QuerySet[InventoryLot]:
-    """Current B2C promotions for this seller only, ending soonest first."""
     return (
-        public_catalog_lots(business)
-        .annotate(_live_special=live_special_subquery("b2c"))
-        .filter(_live_special__isnull=False)
-        .order_by("-updated_at")[:limit]
+        CustomCatalog.objects.filter(business=business)
+        .annotate(item_count=Count("items"))
+        .order_by("title")
     )
+
+
+def active_special_lots(
+    business: Business, *, limit: int | None = 12
+) -> QuerySet[InventoryLot]:
+    """Current B2C promotions for this seller only, ending soonest first."""
+    queryset = (
+        public_catalog_lots(business)
+        .annotate(_special_until=live_special_until_subquery("b2c"))
+        .filter(_special_until__isnull=False)
+        .annotate(_special_total=Window(expression=Count("pk")))
+        .order_by("_special_until", "-updated_at")
+    )
+    return queryset[:limit] if limit is not None else queryset
 
 
 def storefront_collection_sections(business: Business) -> QuerySet[StorefrontCollection]:

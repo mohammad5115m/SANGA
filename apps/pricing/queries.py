@@ -13,7 +13,7 @@ These expressions are the query half of that definition. The Python half lives o
 
 from __future__ import annotations
 
-from django.db.models import Case, DecimalField, F, OuterRef, Q, Subquery, When
+from django.db.models import Case, DateTimeField, DecimalField, F, OuterRef, Q, Subquery, When
 from django.utils import timezone
 
 from .models import LotPrice
@@ -75,12 +75,13 @@ def effective_amount_subquery(tier_code: str) -> Subquery:
     )
 
 
-def live_special_subquery(tier_code: str) -> Subquery:
-    """Whether this item has a live special sale on one tier."""
+def live_special_until_subquery(tier_code: str) -> Subquery:
+    """The ending time of a live special sale, or NULL when none is active."""
     return Subquery(
         LotPrice.objects.filter(
             Q(lot=OuterRef("pk"), tier__code=tier_code, tier__is_active=True) & special_is_live_q()
         )
         .exclude(mode=LotPrice.Mode.INQUIRY)
-        .values("pk")[:1]
+        .values("special_until")[:1],
+        output_field=DateTimeField(),
     )

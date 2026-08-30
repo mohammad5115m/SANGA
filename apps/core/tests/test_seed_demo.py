@@ -7,6 +7,8 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.businesses.models import Business, BusinessMembership
+from apps.catalog.models import StorefrontCollection
+from apps.inventory.models import InventoryLot
 
 DEMO_PHONE = "09121111111"
 
@@ -28,6 +30,23 @@ def test_seed_demo_creates_provisioned_demo_login(client, settings):
     assert membership.status == BusinessMembership.Status.ACTIVE
     assert business.status == Business.Status.ACTIVE
     assert business.is_onboarded is True
+
+    special = InventoryLot.objects.get(business=business, lot_code="DEMO-001")
+    b2c = special.prices.select_related("tier").get(tier__code="b2c")
+    assert b2c.special_is_live is True
+    assert business.storefront_collections.filter(
+        suggestion_kind=StorefrontCollection.SuggestionKind.ECONOMIC,
+        is_active=True,
+        items__lot=special,
+    ).exists()
+    storefront = client.get(
+        reverse(
+            "catalog:storefront",
+            kwargs={"storefront_token": business.storefront_token},
+        )
+    ).content.decode()
+    assert "فروش ویژه" in storefront
+    assert "انتخاب‌های اقتصادی" in storefront
 
     client.post(reverse("accounts:login"), {"phone": DEMO_PHONE}, follow=False)
     response = client.get(reverse("accounts:verify"))

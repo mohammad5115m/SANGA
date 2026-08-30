@@ -419,7 +419,9 @@ def suggested_storefront_lots(collection: StorefrontCollection, *, limit: int = 
             _b2c_amount__isnull=False
         ).order_by("_b2c_amount", "-stock_confirmed_at")
     elif collection.suggestion_kind == StorefrontCollection.SuggestionKind.FRESH:
-        qs = qs.order_by(F("stock_confirmed_at").desc(nulls_last=True), "-updated_at")
+        qs = qs.filter(stock_expires_at__gt=timezone.now()).order_by(
+            F("stock_confirmed_at").desc(nulls_last=True), "-updated_at"
+        )
     elif collection.suggestion_kind == StorefrontCollection.SuggestionKind.EXTERIOR:
         qs = qs.filter(product__applications__code="exterior-facade").order_by(
             F("stock_confirmed_at").desc(nulls_last=True), "-updated_at"

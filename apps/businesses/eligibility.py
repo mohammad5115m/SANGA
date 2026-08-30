@@ -18,7 +18,7 @@ The four questions, deliberately kept apart:
 
 ``business_is_network_eligible``
     Should this Business appear to other people — in the colleague directory,
-    the marketplace, public search, a storefront or a share link?
+    the colleague marketplace, a seller storefront or a share link?
 
 ``business_can_sell``
     May this Business be on the selling side of a transaction? Network

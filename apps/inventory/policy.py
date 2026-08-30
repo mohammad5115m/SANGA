@@ -7,7 +7,7 @@ checked ``status`` but forgot ``visibility``, so a private item attached to a
 share link rendered publicly.
 
 Every buyer-facing surface must go through :func:`eligible_items`. Adding a new
-lifecycle rule here fixes marketplace, public search, share links and catalogs at
+lifecycle rule here fixes the marketplace, seller storefronts, share links and catalogs at
 once, which is the entire point.
 """
 

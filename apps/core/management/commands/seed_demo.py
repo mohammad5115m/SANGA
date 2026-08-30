@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
@@ -9,6 +10,11 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import complete_onboarding, create_business_for_owner
+from apps.catalog.models import StorefrontCollection
+from apps.catalog.services import (
+    apply_storefront_suggestions,
+    ensure_default_storefront_collections,
+)
 from apps.inventory.models import Application, InventoryLot, Product, VocabularyTerm
 from apps.pricing.services import ensure_default_tiers, set_lot_price
 
@@ -130,6 +136,32 @@ class Command(BaseCommand):
             if created or not item.prices.exists():
                 set_lot_price(lot=item, tier_code="b2b", amount=Decimal(b2b))
                 set_lot_price(lot=item, tier_code="b2c", amount=Decimal(b2c))
+
+        # Keep the demo storefront visibly representative of the real customer
+        # journey: one current promotion and one editable merchandising section.
+        special_item = InventoryLot.objects.get(business=business, lot_code="DEMO-001")
+        set_lot_price(
+            lot=special_item,
+            tier_code="b2c",
+            amount=Decimal("2600000"),
+            special_amount=Decimal("2190000"),
+            special_until=timezone.now() + timedelta(days=2, hours=6),
+            valid_for_days=7,
+        )
+        membership = BusinessMembership.objects.get(
+            business=business,
+            user=owner,
+            role=BusinessMembership.Role.OWNER,
+        )
+        ensure_default_storefront_collections(business=business)
+        economic = business.storefront_collections.filter(
+            suggestion_kind=StorefrontCollection.SuggestionKind.ECONOMIC
+        ).first()
+        if economic is not None:
+            apply_storefront_suggestions(collection=economic, membership=membership)
+            if not economic.is_active:
+                economic.is_active = True
+                economic.save(update_fields=["is_active", "updated_at"])
 
         # One item is left unpublished so the «موجودی من» / «بازار» split is
         # visible locally. Another has no confirmed quantity and therefore stays

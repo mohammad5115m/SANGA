@@ -17,9 +17,7 @@ from apps.inventory.models import InventoryLot
 from apps.inventory.policy import eligible_items
 
 SESSION_KEY = "public_selection"
-#: Which surface the visitor entered the inquiry flow from, so the seller can
-#: still tell a product-page question from a search-results one now that both go
-#: through the same pipeline.
+#: Which seller-scoped surface the visitor entered the inquiry flow from.
 SOURCE_KEY = "public_selection_source"
 #: A message the entry point pre-filled — «استعلام موجودی» seeds this, so the
 #: customer does not have to type the question they just clicked.
@@ -152,18 +150,3 @@ def resolve(request, business) -> list[dict]:
         for key, value in _raw(request, business).items()
         if key in items
     ]
-
-
-def group_by_seller(rows: list[dict]) -> list[dict]:
-    """Split a selection by seller.
-
-    A customer browsing across the whole platform can pick products from several
-    businesses. Each seller gets their own inquiry containing only their own
-    products — one seller must never see what a customer asked another.
-    """
-    grouped: dict = {}
-    for row in rows:
-        business = row["item"].business
-        bucket = grouped.setdefault(business.id, {"business": business, "rows": []})
-        bucket["rows"].append(row)
-    return list(grouped.values())

@@ -326,6 +326,29 @@
     });
   }
 
+  function initCollectionPickers(root) {
+    elementsWithin(root, "[data-collection-picker]:not([data-ui-ready])").forEach(function (picker) {
+      picker.dataset.uiReady = "true";
+      var query = picker.querySelector("[data-collection-query]");
+      var options = Array.from(picker.querySelectorAll("[data-collection-option]"));
+      var empty = picker.querySelector("[data-collection-empty]");
+      if (!query || !options.length) return;
+
+      function filterOptions() {
+        var needle = query.value.trim().toLocaleLowerCase("fa");
+        var visible = 0;
+        options.forEach(function (option) {
+          var matches = !needle || option.textContent.toLocaleLowerCase("fa").includes(needle);
+          option.hidden = !matches;
+          if (matches) visible += 1;
+        });
+        if (empty) empty.hidden = visible > 0;
+      }
+
+      query.addEventListener("input", filterOptions);
+    });
+  }
+
   function initUnsavedForms(root) {
     elementsWithin(root, "form[data-unsaved-warning]:not([data-ui-ready])").forEach(function (form) {
       form.dataset.uiReady = "true";
@@ -347,6 +370,7 @@
     initShareActions(root);
     initMediaOrder(root);
     initProductPickers(root);
+    initCollectionPickers(root);
     initUnsavedForms(root);
     focusFirstError(root);
   }
