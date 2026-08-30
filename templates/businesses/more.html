@@ -61,10 +61,10 @@
       </a>
     {% endif %}
 
-    {% if current_business %}
+    {% if can_manage_catalogs %}
       <a class="hub-tile" href="{% url 'catalog_manage:list' %}">
-        <div class="hub-title">مدیریت ویترین</div>
-        <div class="muted">لینک خصوصی، فروش ویژه و مجموعه‌ها</div>
+        <div class="hub-title">کانال‌های فروش</div>
+        <div class="muted">ویترین و کاتالوگ‌های مشتری</div>
       </a>
     {% endif %}
   </div>

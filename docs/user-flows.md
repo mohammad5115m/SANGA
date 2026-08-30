@@ -100,7 +100,7 @@ Sending a proposal is **not** selling. See [trading.md](./trading.md).
 ## 7. Public customer
 
 ```text
-/search/  →  filter  →  select several products
+/store/<storefront_token>/  →  filter  →  select several products
           →  /inquiry/  →  quantity per product
           →  identity (name + mobile)
           →  OTP verification
@@ -131,9 +131,9 @@ query count so an N+1 anywhere on the page fails immediately.
 
 | Path | What |
 |------|------|
-| `/search/` | cross-seller product discovery |
-| `/s/<business_slug>/` | one seller's storefront |
-| `/s/<business_slug>/items/<id>/` | product detail |
+| `/store/<storefront_token>/` | one seller's unlisted storefront |
+| `/store/<storefront_token>/items/<id>/` | storefront product detail |
+| `/p/<public_token>/` | one product's public share link |
 | `/p/<public_token>/` | stable per-product share link |
 | `/c/<share_token>/` | shared catalog |
 | `/inquiry/…` | the multi-product inquiry flow |

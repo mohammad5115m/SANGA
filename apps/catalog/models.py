@@ -57,6 +57,23 @@ class CustomCatalog(models.Model):
     def is_publicly_accessible(self) -> bool:
         return self.is_active and not self.is_expired
 
+    @property
+    def effective_status(self) -> str:
+        """The state a seller should see, not just the persisted switch."""
+        if self.is_expired:
+            return "expired"
+        if not self.is_active:
+            return "inactive"
+        return "active"
+
+    @property
+    def effective_status_label(self) -> str:
+        return {
+            "active": "منتشرشده",
+            "inactive": "غیرفعال",
+            "expired": "منقضی‌شده",
+        }[self.effective_status]
+
 
 class CustomCatalogItem(models.Model):
     """One inventory item intentionally selected for a live catalog."""

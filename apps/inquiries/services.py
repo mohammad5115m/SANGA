@@ -228,6 +228,7 @@ def submit_public_inquiry(
             phone=phone,
             message=message,
             items=group["rows"],
+            custom_catalog=group.get("custom_catalog"),
             source=source,
             requester=requester,
             verified=verified,

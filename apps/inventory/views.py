@@ -160,6 +160,14 @@ def lot_list(request: HttpRequest) -> HttpResponse:
         rows.append({"lot": lot, "stock": stock_view(lot), "prices": prices, "primary_media": primary})
     from apps.catalog.selectors import catalogs_for_business
 
+    selected_catalog_id = request.GET.get("catalog") or ""
+    selected_catalog = None
+    if selected_catalog_id:
+        try:
+            selected_catalog = catalogs_for_business(request.business).filter(pk=selected_catalog_id).first()
+        except (DjangoValidationError, TypeError, ValueError):
+            selected_catalog = None
+
     return render(
         request,
         "inventory/lot_list.html",
@@ -170,6 +178,7 @@ def lot_list(request: HttpRequest) -> HttpResponse:
             "can_view_prices": can_view_prices,
             "price_bounds": {"minimum": minimum, "maximum": maximum},
             "catalogs": catalogs_for_business(request.business),
+            "selected_catalog": selected_catalog,
         },
     )
 

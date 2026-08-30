@@ -13,6 +13,7 @@
     <h1 class="page-title">{{ catalog.title }}</h1>
     {% if catalog.customer_name %}<p class="page-lead">برای {{ catalog.customer_name }}</p>{% endif %}
     {% if catalog.custom_message %}<p>{{ catalog.custom_message }}</p>{% endif %}
+    <p class="live-data-note"><span aria-hidden="true">●</span> قیمت، موجودی و تصاویر این کاتالوگ به‌صورت زنده به‌روزرسانی می‌شوند.</p>
   </div>
 
   {% include "catalog/_selection_bar.html" %}
@@ -20,7 +21,7 @@
   <div class="catalog-grid">
     {% for card in cards %}
       {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
-      {% include "inventory/_product_card.html" with show_select=True %}
+      {% include "inventory/_product_card.html" with show_select=True selection_catalog_token=catalog.share_token %}
     {% empty %}
       <div class="empty-state product-empty-state">
         <span class="empty-state-icon" aria-hidden="true">◇</span>

@@ -38,7 +38,7 @@
     <input type="hidden" name="filter_query" value="{{ request.GET.urlencode }}">
 
     {% if can_manage_catalogs %}
-      <details class="panel catalog-builder">
+      <details class="panel catalog-builder"{% if selected_catalog %} open{% endif %}>
         <summary class="catalog-builder-summary">
           <span class="catalog-builder-icon" aria-hidden="true">
             <svg class="catalog-builder-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -58,9 +58,10 @@
             <select class="field-input" name="catalog_id">
               <option value="">ساخت کاتالوگ جدید</option>
               {% for catalog in catalogs %}
-                <option value="{{ catalog.id }}">افزودن به {{ catalog.title }}</option>
+                <option value="{{ catalog.id }}"{% if selected_catalog.id == catalog.id %} selected{% endif %}>افزودن به {{ catalog.title }}</option>
               {% endfor %}
             </select>
+            {% if selected_catalog %}<span class="field-help">پس از افزودن، به «{{ selected_catalog.title }}» بازمی‌گردید.</span>{% endif %}
           </label>
           <div class="btn-row catalog-builder-actions">
             <button class="btn btn-secondary" type="submit" name="selection_scope" value="selected">محصول‌های انتخاب‌شده</button>

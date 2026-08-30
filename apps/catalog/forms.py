@@ -82,6 +82,9 @@ class CustomCatalogForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["expires_at"].label = "تاریخ انقضا"
+        self.fields["is_active"].label = "منتشر شود"
+        self.fields["expires_at"].help_text = "اختیاری؛ پس از این زمان لینک برای مشتری باز نمی‌شود."
         self.fields["expires_at"].input_formats = [
             "%Y-%m-%dT%H:%M",
             "%Y-%m-%d %H:%M:%S",

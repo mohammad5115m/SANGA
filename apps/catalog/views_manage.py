@@ -11,15 +11,17 @@ from apps.inventory.catalog_selection import MAX_CATALOG_ITEMS, get_selection, r
 
 from .forms import CustomCatalogForm, StorefrontCollectionForm
 from .models import CustomCatalog, StorefrontCollection, StorefrontCollectionItem
-from .selectors import active_special_lots, catalogs_for_business, resolve_catalog, selected_catalog_lots
+from .selectors import active_special_lots, catalogs_for_business, resolve_catalog
 from .services import (
     CatalogError,
     apply_storefront_suggestions,
     create_custom_catalog,
-    ensure_default_storefront_collections,
+    duplicate_catalog,
+    move_catalog_lot,
     move_storefront_collection,
     move_storefront_collection_item,
     public_lot_card,
+    regenerate_catalog_token,
     regenerate_storefront_token,
     remove_catalog_lot,
     save_storefront_collection,
@@ -30,7 +32,6 @@ from .services import (
 @business_login_required
 @require_capability(CATALOG_MANAGE)
 def catalog_list(request: HttpRequest) -> HttpResponse:
-    ensure_default_storefront_collections(business=request.business)
     collections = request.business.storefront_collections.prefetch_related(
         "items", "items__lot", "items__lot__product"
     )
@@ -130,13 +131,18 @@ def catalog_edit(request: HttpRequest, catalog_id) -> HttpResponse:
 @require_capability(CATALOG_MANAGE)
 def catalog_detail(request: HttpRequest, catalog_id) -> HttpResponse:
     catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
-    items = selected_catalog_lots(catalog)
+    memberships = list(
+        catalog.items.select_related("lot", "lot__product", "lot__product__stone").order_by(
+            "sort_order", "id"
+        )
+    )
     return render(
         request,
         "catalog/manage_detail.html",
         {
             "catalog": catalog,
-            "items": items,
+            "memberships": memberships,
+            "selected_count": len(memberships),
             "public_count": resolve_catalog(catalog).count(),
             "share_url": request.build_absolute_uri(f"/c/{catalog.share_token}/"),
             "storefront_url": request.build_absolute_uri(
@@ -174,6 +180,54 @@ def catalog_toggle_active(request: HttpRequest, catalog_id) -> HttpResponse:
     else:
         messages.success(request, "وضعیت کاتالوگ تغییر کرد.")
     return redirect("catalog_manage:detail", catalog_id=catalog.id)
+
+
+@business_login_required
+@require_capability(CATALOG_MANAGE)
+@require_POST
+def catalog_item_move(request: HttpRequest, catalog_id, item_id) -> HttpResponse:
+    catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
+    try:
+        moved = move_catalog_lot(
+            catalog=catalog,
+            membership=request.membership,
+            membership_id=item_id,
+            direction=request.POST.get("direction", "down"),
+        )
+    except CatalogError as exc:
+        messages.error(request, exc.message)
+    else:
+        if moved:
+            messages.success(request, "ترتیب محصولات به‌روزرسانی شد.")
+    return redirect("catalog_manage:detail", catalog_id=catalog.id)
+
+
+@business_login_required
+@require_capability(CATALOG_MANAGE)
+@require_POST
+def catalog_token_regenerate(request: HttpRequest, catalog_id) -> HttpResponse:
+    catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
+    try:
+        regenerate_catalog_token(catalog=catalog, membership=request.membership)
+    except CatalogError as exc:
+        messages.error(request, exc.message)
+    else:
+        messages.success(request, "لینک قبلی برای همیشه باطل شد و لینک تازه آماده است.")
+    return redirect("catalog_manage:detail", catalog_id=catalog.id)
+
+
+@business_login_required
+@require_capability(CATALOG_MANAGE)
+@require_POST
+def catalog_duplicate(request: HttpRequest, catalog_id) -> HttpResponse:
+    catalog = get_object_or_404(CustomCatalog, pk=catalog_id, business=request.business)
+    try:
+        copied = duplicate_catalog(catalog=catalog, membership=request.membership)
+    except CatalogError as exc:
+        messages.error(request, exc.message)
+        return redirect("catalog_manage:detail", catalog_id=catalog.id)
+    messages.success(request, "نسخه مشابه در حالت غیرفعال ساخته شد؛ اطلاعات مشتری را تکمیل کنید.")
+    return redirect("catalog_manage:edit", catalog_id=copied.id)
 
 
 @business_login_required

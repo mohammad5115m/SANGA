@@ -283,6 +283,11 @@ def test_shared_catalog_is_b2c_safe(client, seller_setup):
     catalog.refresh_from_db()
     assert catalog.view_count == 1
 
+    # Refreshes and pagination in the same short browsing window are not new opens.
+    client.get(url)
+    catalog.refresh_from_db()
+    assert catalog.view_count == 1
+
 
 @pytest.mark.django_db
 def test_shared_catalog_never_exposes_a_hidden_item(client, seller_setup):

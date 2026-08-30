@@ -11,12 +11,12 @@ capture a lead, because a lead-capture wall is how a discovery surface stops
 being used.
 
 ```text
-/search/  →  select products  →  /inquiry/  →  identify  →  verify  →  saved
+/store/<token>/  →  select products  →  /inquiry/  →  identify  →  verify  →  saved
 ```
 
 ### There is exactly one way in
 
-Every public entry point funnels into that pipeline: a card in search results, the
+Every public entry point funnels into that pipeline: a storefront card, the
 «درخواست استعلام» button on a product page, «استعلام موجودی» on a stale quantity,
 and a shared catalog all add the product to the selection and continue from
 `/inquiry/`.

@@ -176,6 +176,19 @@ def test_discount_context_rounds_from_prices(storefront):
 
 
 @pytest.mark.django_db
+def test_nonzero_special_price_never_claims_a_hundred_percent_discount(storefront):
+    set_lot_price(
+        lot=storefront["first"],
+        tier_code="b2c",
+        amount=Decimal("4500000"),
+        special_amount=Decimal("12000"),
+        special_until=timezone.now() + timedelta(days=1),
+    )
+    storefront["first"].refresh_from_db()
+    assert b2c_price_context(storefront["first"])["discount_percent"] == 99
+
+
+@pytest.mark.django_db
 def test_collection_membership_is_tenant_scoped_and_ordered(storefront):
     collection = save_storefront_collection(
         business=storefront["seller"],

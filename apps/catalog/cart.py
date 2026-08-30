@@ -23,11 +23,18 @@ SOURCE_KEY = "public_selection_source"
 #: customer does not have to type the question they just clicked.
 MESSAGE_SEED_KEY = "public_selection_message"
 MAX_ITEMS = 20
+_PRESERVE_CONTEXT = object()
 
 
-def _raw(request, business) -> dict:
+def _context_value(catalog) -> str:
+    return f"catalog:{catalog.pk}" if catalog is not None else "storefront"
+
+
+def _raw(request, business, *, catalog=_PRESERVE_CONTEXT) -> dict:
     value = request.session.get(SESSION_KEY)
     if not isinstance(value, dict) or value.get("business_id") != str(business.pk):
+        return {}
+    if catalog is not _PRESERVE_CONTEXT and value.get("context", "storefront") != _context_value(catalog):
         return {}
     items = value.get("items")
     return items if isinstance(items, dict) else {}
@@ -38,25 +45,60 @@ def _save(request, business, data: dict) -> None:
     if not isinstance(current, dict) or current.get("business_id") != str(business.pk):
         request.session.pop(SOURCE_KEY, None)
         request.session.pop(MESSAGE_SEED_KEY, None)
-    request.session[SESSION_KEY] = {"business_id": str(business.pk), "items": data}
+    context = current.get("context", "storefront") if isinstance(current, dict) else "storefront"
+    request.session[SESSION_KEY] = {
+        "business_id": str(business.pk),
+        "context": context,
+        "items": data,
+    }
     request.session.modified = True
 
 
-def selected_ids(request, business) -> list[str]:
-    return list(_raw(request, business).keys())
+def set_context(request, business, *, catalog=None) -> None:
+    """Keep storefront and customer-catalog selections intentionally separate."""
+    expected = _context_value(catalog)
+    current = request.session.get(SESSION_KEY)
+    if (
+        isinstance(current, dict)
+        and current.get("business_id") == str(business.pk)
+        and current.get("context", "storefront") == expected
+    ):
+        return
+    request.session[SESSION_KEY] = {
+        "business_id": str(business.pk),
+        "context": expected,
+        "items": {},
+    }
+    request.session.pop(SOURCE_KEY, None)
+    request.session.pop(MESSAGE_SEED_KEY, None)
+    request.session.modified = True
 
 
-def count(request, business) -> int:
-    return len(_raw(request, business))
+def active_catalog_id(request, business) -> str | None:
+    current = request.session.get(SESSION_KEY)
+    if not isinstance(current, dict) or current.get("business_id") != str(business.pk):
+        return None
+    context = current.get("context", "storefront")
+    return context.removeprefix("catalog:") if context.startswith("catalog:") else None
+
+
+def selected_ids(request, business, *, catalog=_PRESERVE_CONTEXT) -> list[str]:
+    return list(_raw(request, business, catalog=catalog).keys())
+
+
+def count(request, business, *, catalog=_PRESERVE_CONTEXT) -> int:
+    return len(_raw(request, business, catalog=catalog))
 
 
 def contains(request, business, item_id) -> bool:
     return str(item_id) in _raw(request, business)
 
 
-def add(request, business, item: InventoryLot, quantity=None) -> None:
+def add(request, business, item: InventoryLot, quantity=None, *, catalog=_PRESERVE_CONTEXT) -> None:
     if item.business_id != business.pk:
         return
+    if catalog is not _PRESERVE_CONTEXT:
+        set_context(request, business, catalog=catalog)
     data = _raw(request, business)
     if len(data) >= MAX_ITEMS and str(item.pk) not in data:
         return
@@ -70,8 +112,9 @@ def remove(request, business, item_id) -> None:
     _save(request, business, data)
 
 
-def toggle(request, business, item: InventoryLot) -> bool:
+def toggle(request, business, item: InventoryLot, *, catalog=None) -> bool:
     """Add or remove. Returns whether the item is now selected."""
+    set_context(request, business, catalog=catalog)
     if contains(request, business, item.pk):
         remove(request, business, item.pk)
         return False

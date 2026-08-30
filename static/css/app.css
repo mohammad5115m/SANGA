@@ -1020,6 +1020,16 @@ input[type="number"], input[type="tel"], input[type="date"] {
 .inventory-special-price { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: var(--space-2); }
 .inventory-special-until { color: var(--color-danger); font-weight: 700; }
 .collection-manage-row form { margin: 0; }
+.section-anchor { scroll-margin-top: 5.5rem; }
+.live-data-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+}
+.live-data-note span { color: var(--color-success); font-size: 0.65rem; }
 
 @media (max-width: 620px) {
   .section-heading-row { align-items: start; }
@@ -1052,7 +1062,8 @@ input[type="number"], input[type="tel"], input[type="date"] {
   .sale-showcase .product-rail {
     grid-auto-flow: row;
     grid-auto-columns: auto;
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 22rem));
+    justify-content: start;
     overflow: visible;
     scroll-snap-type: none;
   }

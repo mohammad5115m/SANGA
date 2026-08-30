@@ -9,6 +9,9 @@ from apps.catalog.services import (
     CatalogError,
     add_catalog_lots,
     create_custom_catalog,
+    duplicate_catalog,
+    move_catalog_lot,
+    regenerate_catalog_token,
     remove_catalog_lot,
     set_catalog_lots,
     update_catalog,
@@ -152,3 +155,71 @@ def test_deactivated_catalog_link_is_not_public(client, shop):
     update_catalog(catalog=catalog, membership=shop["membership"], is_active=False)
     url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
     assert client.get(url).status_code == 404
+
+
+@pytest.mark.django_db
+def test_adding_products_preserves_existing_membership_notes(shop):
+    catalog = _catalog(shop, [shop["first"].id])
+    membership = catalog.items.get(lot=shop["first"])
+    membership.note = "انتخاب اصلی مشتری"
+    membership.save(update_fields=["note"])
+
+    add_catalog_lots(
+        catalog=catalog,
+        membership=shop["membership"],
+        lot_ids=[shop["second"].id],
+    )
+
+    assert catalog.items.get(lot=shop["first"]).note == "انتخاب اصلی مشتری"
+    assert _codes(catalog) == ["T-CAT001", "T-CAT002"]
+
+
+@pytest.mark.django_db
+def test_customer_catalog_can_be_reordered_duplicated_and_revoked(client, shop):
+    catalog = _catalog(shop, [shop["first"].id, shop["second"].id])
+    second_membership = catalog.items.get(lot=shop["second"])
+    assert move_catalog_lot(
+        catalog=catalog,
+        membership=shop["membership"],
+        membership_id=second_membership.id,
+        direction="up",
+    )
+    assert _codes(catalog) == ["T-CAT002", "T-CAT001"]
+
+    copied = duplicate_catalog(catalog=catalog, membership=shop["membership"])
+    assert copied.is_active is False
+    assert copied.customer_name == ""
+    assert copied.share_token != catalog.share_token
+    assert _codes(copied) == ["T-CAT002", "T-CAT001"]
+
+    old_url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
+    regenerate_catalog_token(catalog=catalog, membership=shop["membership"])
+    new_url = reverse("catalog:shared_catalog", kwargs={"share_token": catalog.share_token})
+    assert client.get(old_url).status_code == 404
+    assert client.get(new_url).status_code == 200
+
+
+@pytest.mark.django_db
+def test_catalog_selection_replaces_storefront_context_and_source(client, shop):
+    catalog = _catalog(shop, [shop["first"].id])
+    toggle_url = reverse(
+        "catalog:selection_toggle",
+        kwargs={
+            "storefront_token": shop["seller"].storefront_token,
+            "item_id": shop["second"].id,
+        },
+    )
+    client.post(toggle_url)
+
+    catalog_toggle_url = reverse(
+        "catalog:selection_toggle",
+        kwargs={
+            "storefront_token": shop["seller"].storefront_token,
+            "item_id": shop["first"].id,
+        },
+    )
+    client.post(catalog_toggle_url, {"catalog": catalog.share_token})
+    session = client.session
+    assert session["public_selection"]["context"] == f"catalog:{catalog.pk}"
+    assert list(session["public_selection"]["items"]) == [str(shop["first"].pk)]
+    assert session["public_selection_source"] == "custom_catalog"

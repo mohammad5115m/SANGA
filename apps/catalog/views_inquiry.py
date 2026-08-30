@@ -31,6 +31,8 @@ from apps.inventory.policy import get_eligible_item
 
 from . import cart
 from .forms import CustomerIdentityForm, OTPCodeForm
+from .models import CustomCatalog
+from .selectors import get_shareable_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,21 @@ def _business_or_404(storefront_token: str):
     return business
 
 
+def _catalog_context_for_item(request: HttpRequest, business, item):
+    catalog_id = cart.active_catalog_id(request, business)
+    if not catalog_id:
+        return None
+    catalog = CustomCatalog.objects.filter(pk=catalog_id, business=business).first()
+    if (
+        catalog is not None
+        and catalog.is_publicly_accessible
+        and catalog.items.filter(lot_id=item.pk).exists()
+    ):
+        return catalog
+    cart.set_context(request, business, catalog=None)
+    return None
+
+
 # --- entering the flow --------------------------------------------------------
 
 
@@ -65,9 +82,20 @@ def _business_or_404(storefront_token: str):
 def selection_toggle(request: HttpRequest, storefront_token: str, item_id) -> HttpResponse:
     business = _business_or_404(storefront_token)
     item = get_eligible_item(audience="public", seller_business=business, item_id=item_id)
+    catalog_token = request.POST.get("catalog") or ""
+    catalog = get_shareable_catalog(catalog_token) if catalog_token else None
+    if catalog_token and (
+        catalog is None
+        or catalog.business_id != business.id
+        or not catalog.items.filter(lot_id=item_id).exists()
+    ):
+        return redirect(_safe_next(request, f"/store/{storefront_token}/"))
     if item is not None:
-        cart.toggle(request, business, item)
-        cart.set_source(request, Inquiry.Source.STOREFRONT)
+        cart.toggle(request, business, item, catalog=catalog)
+        cart.set_source(
+            request,
+            Inquiry.Source.CUSTOM_CATALOG if catalog is not None else Inquiry.Source.STOREFRONT,
+        )
     return redirect(_safe_next(request, f"/store/{storefront_token}/"))
 
 
@@ -90,8 +118,12 @@ def inquiry_start(request: HttpRequest, storefront_token: str, item_id) -> HttpR
     if item is None:
         return render(request, "catalog/item_unavailable.html", status=404)
 
+    catalog = _catalog_context_for_item(request, business, item)
     cart.add(request, business, item)
-    cart.set_source(request, Inquiry.Source.ITEM_DETAIL)
+    cart.set_source(
+        request,
+        Inquiry.Source.CUSTOM_CATALOG if catalog is not None else Inquiry.Source.ITEM_DETAIL,
+    )
     return redirect("catalog:inquiry_review", storefront_token=storefront_token)
 
 
@@ -108,8 +140,12 @@ def stock_inquiry(request: HttpRequest, storefront_token: str, item_id) -> HttpR
     if item is None:
         return render(request, "catalog/item_unavailable.html", status=404)
 
+    catalog = _catalog_context_for_item(request, business, item)
     cart.add(request, business, item)
-    cart.set_source(request, Inquiry.Source.ITEM_DETAIL)
+    cart.set_source(
+        request,
+        Inquiry.Source.CUSTOM_CATALOG if catalog is not None else Inquiry.Source.ITEM_DETAIL,
+    )
     cart.set_message_seed(request, STOCK_QUESTION)
     return redirect("catalog:inquiry_identify", storefront_token=storefront_token)
 
@@ -166,6 +202,7 @@ def inquiry_identify(request: HttpRequest, storefront_token: str) -> HttpRespons
                 "phone": phone,
                 "message": form.cleaned_data.get("message", "") or cart.message_seed(request),
                 "source": cart.source(request),
+                "catalog_id": cart.active_catalog_id(request, business),
             }
             request.session.modified = True
             if result.dev_code:
@@ -230,10 +267,21 @@ def _submit(request: HttpRequest, business, storefront_token: str, pending: dict
     OTP was sent, so a failure part-way through leaves nothing behind and the
     retry that follows is handed the same inquiries rather than a second set.
     """
+    custom_catalog = None
+    catalog_id = pending.get("catalog_id")
+    if catalog_id:
+        custom_catalog = CustomCatalog.objects.filter(pk=catalog_id, business=business).first()
+        if custom_catalog is None or not custom_catalog.is_publicly_accessible:
+            messages.error(request, "این کاتالوگ دیگر در دسترس نیست.")
+            return redirect("catalog:storefront", storefront_token=storefront_token)
+        allowed_ids = set(custom_catalog.items.values_list("lot_id", flat=True))
+        if any(row["item"].pk not in allowed_ids for row in rows):
+            messages.error(request, "انتخاب محصولات کاتالوگ معتبر نیست؛ دوباره تلاش کنید.")
+            return redirect("catalog:shared_catalog", share_token=custom_catalog.share_token)
     try:
         created = submit_public_inquiry(
             submission_id=pending["submission_id"],
-            groups=[{"business": business, "rows": rows}],
+            groups=[{"business": business, "rows": rows, "custom_catalog": custom_catalog}],
             name=pending["name"],
             phone=pending["phone"],
             message=pending.get("message", ""),

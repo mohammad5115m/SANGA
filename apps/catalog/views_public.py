@@ -46,7 +46,7 @@ def storefront(request: HttpRequest, storefront_token: str) -> HttpResponse:
     minimum, maximum = effective_price_bounds(base, spec=spec, audience="public")
     page = paginate(request, qs)
     cards = [public_lot_card(lot) for lot in page.object_list]
-    selected = set(cart.selected_ids(request, business))
+    selected = set(cart.selected_ids(request, business, catalog=None))
     for card in cards:
         card["is_selected"] = str(card["lot"].id) in selected
     special_cards = [public_lot_card(lot) for lot in active_special_lots(business)]
@@ -69,7 +69,7 @@ def storefront(request: HttpRequest, storefront_token: str) -> HttpResponse:
             "special_cards": special_cards,
             "collection_sections": collection_sections,
             "page": page,
-            "selection_count": cart.count(request, business),
+            "selection_count": cart.count(request, business, catalog=None),
             "price_bounds": {"minimum": minimum, "maximum": maximum},
         },
     )
@@ -139,14 +139,17 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
     if catalog is None:
         return render(request, "catalog/catalog_unavailable.html", status=404)
 
-    record_catalog_view(catalog)
+    view_cookie = f"catalog_view_{catalog.pk.hex}"
+    is_new_open = request.COOKIES.get(view_cookie) != "1"
+    if is_new_open:
+        record_catalog_view(catalog)
 
     # resolve_catalog already intersected the selected membership with the public
     # eligibility queryset, so everything here is showable.
     # Re-filtering in the template layer is what let a private item slip through
     # before.
     notes = catalog_notes(catalog)
-    selected = set(cart.selected_ids(request, catalog.business))
+    selected = set(cart.selected_ids(request, catalog.business, catalog=catalog))
     page = paginate(request, catalog.resolved_items)
     cards = [
         {
@@ -157,7 +160,7 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
         for item in page.object_list
     ]
 
-    return render(
+    response = render(
         request,
         "catalog/shared_catalog.html",
         {
@@ -166,7 +169,17 @@ def shared_catalog(request: HttpRequest, share_token: str) -> HttpResponse:
             "cards": cards,
             "page": page,
             "share_url": request.build_absolute_uri(),
-            "selection_count": cart.count(request, catalog.business),
+            "selection_count": cart.count(request, catalog.business, catalog=catalog),
             "storefront_token": catalog.business.storefront_token,
         },
     )
+    if is_new_open:
+        response.set_cookie(
+            view_cookie,
+            "1",
+            max_age=1800,
+            httponly=True,
+            secure=request.is_secure(),
+            samesite="Lax",
+        )
+    return response

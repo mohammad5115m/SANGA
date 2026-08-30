@@ -68,10 +68,11 @@ def b2c_price_context(lot: InventoryLot) -> dict:
     regular_amount = b2c.regular_amount if b2c.is_special else None
     discount_percent = None
     if regular_amount and b2c.amount:
-        discount_percent = int(
-            (((regular_amount - b2c.amount) / regular_amount) * Decimal("100")).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
-            )
+        raw_discount = ((regular_amount - b2c.amount) / regular_amount) * Decimal("100")
+        # A non-zero payable price must never be advertised as «100% off».
+        discount_percent = min(
+            99,
+            max(0, int(raw_discount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))),
         )
     return {
         "has_price": True,
@@ -252,10 +253,18 @@ def add_catalog_lots(*, catalog: CustomCatalog, membership: BusinessMembership, 
     if catalog.business_id != membership.business_id:
         raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
     valid_ids = _owned_ids(catalog, lot_ids)
-    existing = list(catalog.items.order_by("sort_order").values_list("lot_id", flat=True))
-    seen = {str(item) for item in existing}
-    merged = existing + [item for item in valid_ids if str(item) not in seen]
-    return set_catalog_lots(catalog=catalog, membership=membership, lot_ids=merged)
+    existing = list(catalog.items.order_by("sort_order", "id"))
+    seen = {str(item.lot_id) for item in existing}
+    additions = [item for item in valid_ids if str(item) not in seen]
+    CustomCatalogItem.objects.bulk_create(
+        [
+            CustomCatalogItem(catalog=catalog, lot_id=lot_id, sort_order=len(existing) + index)
+            for index, lot_id in enumerate(additions)
+        ]
+    )
+    if additions:
+        catalog.save(update_fields=["updated_at"])
+    return catalog
 
 
 @transaction.atomic
@@ -280,11 +289,74 @@ def record_catalog_view(catalog: CustomCatalog) -> CustomCatalog:
     CustomCatalog.objects.filter(pk=catalog.pk).update(
         view_count=F("view_count") + 1,
         last_viewed_at=now,
-        updated_at=now,
     )
     CustomCatalog.objects.filter(pk=catalog.pk, first_viewed_at__isnull=True).update(first_viewed_at=now)
     catalog.refresh_from_db()
     return catalog
+
+
+@transaction.atomic
+def move_catalog_lot(
+    *, catalog: CustomCatalog, membership: BusinessMembership, membership_id, direction: str
+) -> bool:
+    """Move one membership by one position with two bounded updates."""
+    _require_catalog_manage(membership)
+    if catalog.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
+    ordered = list(
+        CustomCatalogItem.objects.select_for_update()
+        .filter(catalog=catalog)
+        .order_by("sort_order", "id")
+    )
+    moved = _move_ordered(ordered, membership_id, direction)
+    if moved:
+        catalog.save(update_fields=["updated_at"])
+    return moved
+
+
+@transaction.atomic
+def regenerate_catalog_token(*, catalog: CustomCatalog, membership: BusinessMembership) -> str:
+    """Permanently revoke the previous customer-catalog URL."""
+    _require_catalog_manage(membership)
+    if catalog.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
+    locked = CustomCatalog.objects.select_for_update().get(pk=catalog.pk)
+    while True:
+        token = secrets.token_urlsafe(16)
+        if not CustomCatalog.objects.filter(share_token=token).exists():
+            break
+    locked.share_token = token
+    locked.save(update_fields=["share_token", "updated_at"])
+    catalog.share_token = token
+    return token
+
+
+@transaction.atomic
+def duplicate_catalog(*, catalog: CustomCatalog, membership: BusinessMembership) -> CustomCatalog:
+    """Copy editable content while resetting recipient, link and analytics."""
+    _require_catalog_manage(membership)
+    if catalog.business_id != membership.business_id:
+        raise CatalogError("دسترسی به این کاتالوگ وجود ندارد.")
+    duplicate = CustomCatalog.objects.create(
+        business=catalog.business,
+        title=f"نسخه مشابه {catalog.title}"[:200],
+        customer_name="",
+        custom_message=catalog.custom_message,
+        expires_at=None,
+        is_active=False,
+    )
+    CustomCatalogItem.objects.bulk_create(
+        [
+            CustomCatalogItem(
+                catalog=duplicate,
+                lot_id=item.lot_id,
+                sort_order=item.sort_order,
+                note=item.note,
+            )
+            for item in catalog.items.order_by("sort_order", "id")
+        ]
+    )
+    return duplicate
 
 
 DEFAULT_STOREFRONT_COLLECTIONS = (
@@ -472,17 +544,19 @@ def move_storefront_collection_item(
     _move_ordered(ordered, membership_item.pk, direction)
 
 
-def _move_ordered(ordered: list, target_id, direction: str) -> None:
+def _move_ordered(ordered: list, target_id, direction: str) -> bool:
     index = next((idx for idx, value in enumerate(ordered) if value.pk == target_id), None)
     if index is None:
-        return
+        return False
     other_index = index - 1 if direction == "up" else index + 1
     if other_index < 0 or other_index >= len(ordered):
-        return
-    ordered[index], ordered[other_index] = ordered[other_index], ordered[index]
-    for sort_order, value in enumerate(ordered):
-        value.sort_order = sort_order
-        value.save(update_fields=["sort_order"])
+        return False
+    current = ordered[index]
+    other = ordered[other_index]
+    current.sort_order, other.sort_order = other.sort_order, current.sort_order
+    current.save(update_fields=["sort_order"])
+    other.save(update_fields=["sort_order"])
+    return True
 
 
 @transaction.atomic

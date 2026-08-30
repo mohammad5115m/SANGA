@@ -13,6 +13,9 @@ now", while ownership and deletion changes cannot smuggle stale IDs into the
 catalog.
 
 Existing catalogs can receive more selected inventory through the same list.
+Opening inventory from a catalog carries the destination in the URL, opens the
+selection panel and preselects that catalog. The destination is still resolved
+inside the current business before it is trusted.
 
 ## 2. Explicit membership, live values
 
@@ -36,10 +39,21 @@ added by either the UI or the service layer.
 
 ## 3. Management and public safety
 
-The management page lists current eligible catalog items, supports removing an
-item, adding more from inventory, editing metadata, deactivating the link and
-deleting the catalog. Deleting a catalog never deletes inventory.
+Management deliberately shows both selected membership and the number currently
+visible to the customer. It supports adding, removing and ordering products,
+editing metadata, making an inactive duplicate, rotating the share token,
+deactivating the catalog and deleting it. Deleting a catalog never deletes
+inventory. Rotating its token invalidates the previous URL permanently; merely
+deactivating and reactivating retains the current URL.
+
+The seller-facing state is effective rather than just the stored switch:
+an enabled catalog past its expiry is labelled expired, not active.
 
 Public catalog pages use the shared B2C price resolver. B2B price rows are absent
 from the public payload. Expired stock and expired prices render as inquiry,
 matching storefront and search behaviour.
+
+Customer selections are catalog-scoped. Moving from the storefront to a
+customer catalog starts a separate selection context, every selected product is
+validated against that catalog membership, and the resulting inquiry stores
+both the `custom_catalog` relation and `custom_catalog` source.
