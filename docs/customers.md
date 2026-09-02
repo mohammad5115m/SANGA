@@ -76,9 +76,19 @@ cannot lose a saved inquiry.
 `CustomerLead` is a light identity keyed by `(business, phone)`. It is not an
 account: no password, no session, no membership, no way to log in.
 
-Deliberately thin — no pipeline, owner, score or activity feed. It answers one
-question, «این مشتری قبلاً چه چیزی پرسیده؟», and stops. Anything more is a CRM,
-which is a different product.
+The identity model stays deliberately thin, while the seller experience now
+adds a practical CRM layer: customer categories and tags, current needs,
+requested-product summaries, notes, an activity timeline, scheduled follow-ups
+and a dedicated work queue. This is intentionally not an enterprise sales
+pipeline.
+
+For the current UI-validation phase, `apps.inquiries.crm.CRMRepository` is the
+replaceable boundary. It enriches real `CustomerLead`, `Inquiry` and
+`InquiryItem` rows and, only when `SANGA_CRM_DEMO_ENABLED` is explicitly enabled,
+adds fictional Persian examples. CRM-only mutations are scoped by Business and
+stored in the browser session. Production forces demo mode off. A production
+repository and persistent note/follow-up models can later implement the same
+view-model contract without changing templates.
 
 Scoped per business, so one seller's customer list is not another's, and two
 sellers can hold different names for the same number without conflict.
@@ -116,11 +126,14 @@ save the inquiry on the server
 Share buttons are a convenience. A seller must never depend on a message the
 customer may not have sent, and the inquiry inbox is the source of truth.
 
-## 6. Seller inbox
+## 6. Seller inbox and CRM follow-up
 
 `/app/leads/inquiries/` lists every inquiry with the customer, phone, product
 count, date and status. `/app/leads/` lists customers, searchable by name or
-phone, each linking to their previous requests.
+phone, with category, CRM state, requested products, last activity and next
+follow-up. `/app/leads/followups/` is the overdue/today/upcoming/completed work
+queue. Due follow-ups also appear in the existing in-app notification center;
+no external follow-up notification channel is used.
 
 Statuses are four, matching what a seller actually does:
 

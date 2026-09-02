@@ -24,6 +24,7 @@ reports numbers nobody has checked.
 6. Per-colleague account ledger
 7. Dynamic catalogs
 8. Freshness-aware price and stock information
+9. Lightweight customer follow-up and relationship history
 
 ## 2. The problem
 
@@ -47,7 +48,7 @@ Not "not yet" — not at all:
 | An ERP or official accounting system | No VAT engine, no tax-authority integration, no fiscal device |
 | A logistics or shipment tracker | Different product |
 | A reverse auction or public demand board | Tried in v1; produced no sale either side could point at |
-| A CRM | `CustomerLead` answers one question and stops |
+| An enterprise CRM or sales-automation suite | SANGA keeps customer follow-up practical and tied to requests |
 | An analytics platform | Reports are tables and totals, not dashboards |
 
 Also deferred: PDF catalogs, per-colleague custom prices, chat, ratings, AI

@@ -6,6 +6,7 @@ from .base import *  # noqa: F403
 from .checks import check_media_storage
 
 DEBUG = False
+SANGA_CRM_DEMO_ENABLED = False
 
 if SECRET_KEY == "unsafe-dev-only-change-me":  # noqa: F405
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set to a strong value in production.")

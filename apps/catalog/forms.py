@@ -25,10 +25,14 @@ class CustomerIdentityForm(forms.Form):
         help_text="کد تأیید به این شماره پیامک می‌شود.",
     )
     message = forms.CharField(
-        label="توضیح (اختیاری)",
+        label="توضیحات پروژه (اختیاری)",
         required=False,
         widget=forms.Textarea(
-            attrs={"class": "field-input", "rows": 3, "placeholder": "زمان نیاز، محل پروژه، شرایط..."}
+            attrs={
+                "class": "field-input",
+                "rows": 3,
+                "placeholder": "مثلاً محل پروژه، کاربرد، زمان مورد نیاز یا نکته مهم دیگر",
+            }
         ),
     )
 

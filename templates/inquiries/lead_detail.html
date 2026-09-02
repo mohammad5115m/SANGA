@@ -3,36 +3,128 @@
 {% block title %}{{ lead.name }} | مشتریان{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <div class="toolbar">
-    <div>
-      <h1 class="page-title">{{ lead.name }}</h1>
-      <p class="page-lead" dir="ltr">{{ lead.phone }}</p>
-    </div>
-    {% if lead.is_verified %}<span class="badge badge-accent">شماره تأیید شده</span>{% endif %}
-  </div>
+<section class="stack-lg crm-page crm-detail-page">
+  {% include "inquiries/_crm_tabs.html" %}
+  <a class="back-link" href="{% url 'inquiries:leads' %}"><span aria-hidden="true">→</span> بازگشت به مشتریان</a>
 
-  <section class="stack-md">
-    <h2 class="section-title">درخواست‌های خرید قبلی</h2>
-    <div class="list-stack">
-      {% for inquiry in inquiries %}
-        <a class="list-item" href="{% url 'inquiries:detail' inquiry.id %}">
-          <div>
-            <div class="list-title">{{ inquiry.created_at|date:"Y/m/d" }}</div>
-            <div class="muted">
-              {% for line in inquiry.items.all %}
-                {{ line.product_name }}{% if not forloop.last %}، {% endif %}
-              {% empty %}
-                بدون محصول مشخص
-              {% endfor %}
-            </div>
-          </div>
-          <span class="badge">{{ inquiry.get_status_display }}</span>
-        </a>
-      {% empty %}
-        <div class="empty-state">درخواست خریدی ثبت نشده است.</div>
-      {% endfor %}
+  <header class="panel crm-profile-header">
+    <div class="crm-customer-identity">
+      <span class="crm-avatar crm-avatar-lg" aria-hidden="true">{{ lead.name|first }}</span>
+      <div><h1 class="page-title">{{ lead.name }}</h1><a class="page-lead phone-link" href="tel:{{ lead.phone }}" dir="ltr">{{ lead.phone }}</a></div>
     </div>
-  </section>
+    <div class="badge-row">
+      <span class="badge">{{ lead.category_label }}</span>
+      <span class="badge badge-soft">{{ lead.crm_status_label }}</span>
+      {% if lead.is_verified %}<span class="badge badge-accent">شماره تأییدشده</span>{% endif %}
+    </div>
+    <div class="crm-profile-actions">
+      <a class="btn btn-primary" href="tel:{{ lead.phone }}">تماس با مشتری</a>
+      {% if can_manage %}<a class="btn btn-secondary" href="#schedule-followup">زمان‌بندی پیگیری</a>{% endif %}
+    </div>
+  </header>
+
+  {% if crm_notice %}<div class="alert alert-info" role="note">{{ crm_notice }}</div>{% endif %}
+
+  <div class="crm-detail-layout">
+    <div class="stack-md">
+      <section class="panel stack-md" aria-labelledby="needs-heading">
+        <div class="section-heading-row"><div><span class="section-kicker">خلاصه پرونده</span><h2 class="section-title" id="needs-heading">نیاز فعلی مشتری</h2></div></div>
+        <p class="crm-need-text">{{ lead.current_needs|default:"نیاز فعلی هنوز ثبت نشده است." }}</p>
+        {% if lead.tags %}<div class="chip-row" aria-label="برچسب‌های مشتری">{% for tag in lead.tags %}<span class="chip">{{ tag }}</span>{% endfor %}</div>{% endif %}
+        <div>
+          <span class="crm-label">محصولات مورد نیاز یا درخواست‌شده</span>
+          <div class="crm-product-tags">{% for product in lead.requested_products %}<span>{{ product }}</span>{% empty %}<span class="muted">هنوز محصولی ثبت نشده است.</span>{% endfor %}</div>
+        </div>
+      </section>
+
+      <section class="panel stack-md" aria-labelledby="inquiries-heading">
+        <div class="section-heading-row">
+          <div><span class="section-kicker">{{ lead.inquiry_count }} مورد</span><h2 class="section-title" id="inquiries-heading">درخواست‌های خرید قبلی</h2></div>
+          <a class="btn btn-ghost btn-sm" href="{% url 'inquiries:inbox' %}?q={{ lead.phone|urlencode }}">همه درخواست‌ها</a>
+        </div>
+        <div class="list-stack">
+          {% for inquiry in inquiries %}
+            {% if inquiry.url %}<a class="list-item" href="{{ inquiry.url }}">{% else %}<div class="list-item">{% endif %}
+              <div><div class="list-title">{{ inquiry.title }}</div><div class="muted">{{ inquiry.created_at|date:"Y/m/d H:i" }}</div></div>
+              <span class="badge">{{ inquiry.status_label }}</span>
+            {% if inquiry.url %}</a>{% else %}</div>{% endif %}
+          {% empty %}<div class="empty-state">درخواست خریدی برای این مشتری ثبت نشده است.</div>{% endfor %}
+        </div>
+      </section>
+
+      <section class="panel stack-md" aria-labelledby="timeline-heading">
+        <h2 class="section-title" id="timeline-heading">تاریخچه فعالیت</h2>
+        <ol class="crm-timeline">
+          {% for activity in lead.activities %}
+            <li>
+              <span class="crm-timeline-dot" aria-hidden="true"></span>
+              <div>
+                <div class="crm-timeline-meta"><span>{{ activity.kind }}</span><time>{{ activity.created_at|date:"Y/m/d H:i" }}</time></div>
+                {% if activity.url %}<a class="list-title" href="{{ activity.url }}">{{ activity.title }}</a>{% else %}<strong class="list-title">{{ activity.title }}</strong>{% endif %}
+                <p class="muted">{{ activity.detail }}</p>
+              </div>
+            </li>
+          {% empty %}<li class="muted">فعالیتی ثبت نشده است.</li>{% endfor %}
+        </ol>
+      </section>
+    </div>
+
+    <aside class="stack-md crm-detail-sidebar">
+      <section class="panel stack-md crm-next-card followup-state-{{ lead.followup_state }}" aria-labelledby="next-followup-heading">
+        <div><span class="section-kicker">اقدام بعدی</span><h2 class="section-title" id="next-followup-heading">پیگیری بعدی</h2></div>
+        {% if lead.next_followup %}
+          <strong class="crm-next-title">{{ lead.next_followup.title }}</strong>
+          <span class="crm-due">{{ lead.next_followup.due_label }}</span>
+          {% if lead.next_followup.related_context %}<p class="muted">{{ lead.next_followup.related_context }}</p>{% endif %}
+          <div class="badge-row"><span class="badge priority-{{ lead.next_followup.priority }}">{{ lead.next_followup.priority_label }}</span><span class="badge">{{ lead.next_followup.status_label }}</span></div>
+        {% else %}<p class="muted">برای این مشتری پیگیری بازی برنامه‌ریزی نشده است.</p>{% endif %}
+      </section>
+
+      {% if can_manage %}
+        <details class="panel crm-record-followup crm-profile-editor">
+          <summary>ویرایش دسته‌بندی و نیاز مشتری</summary>
+          <form method="post" action="{% url 'inquiries:lead_update_profile' lead.id %}" class="stack-md">
+            {% csrf_token %}
+            {% for field in profile_form %}
+              <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.help_text %}<span class="field-help">{{ field.help_text }}</span>{% endif %}</label>
+            {% endfor %}
+            <button class="btn btn-secondary btn-block" type="submit">ذخیره پرونده مشتری</button>
+          </form>
+        </details>
+      {% endif %}
+
+      <section class="panel stack-md" aria-labelledby="notes-heading">
+        <h2 class="section-title" id="notes-heading">یادداشت‌ها</h2>
+        <div class="crm-note-list">
+          {% for note in lead.notes %}<article><p>{{ note.text }}</p><time class="muted">{{ note.created_at|date:"Y/m/d H:i" }}</time></article>{% empty %}<p class="muted">یادداشتی ثبت نشده است.</p>{% endfor %}
+        </div>
+        {% if can_manage %}
+          <form method="post" action="{% url 'inquiries:lead_add_note' lead.id %}" class="stack-sm">
+            {% csrf_token %}<label class="field"><span class="field-label">{{ note_form.text.label }}</span>{{ note_form.text }}</label>
+            <button class="btn btn-secondary btn-block" type="submit">افزودن یادداشت</button>
+          </form>
+        {% endif %}
+      </section>
+
+      {% if can_manage %}
+        <section class="panel stack-md" id="schedule-followup" aria-labelledby="schedule-heading">
+          <div><span class="section-kicker">یادآوری داخل سنگا</span><h2 class="section-title" id="schedule-heading">زمان‌بندی پیگیری</h2></div>
+          <form method="post" action="{% url 'inquiries:lead_schedule_followup' lead.id %}" class="stack-md" novalidate>
+            {% csrf_token %}
+            {% for field in followup_form %}<label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>{% endfor %}
+            <button class="btn btn-primary btn-block" type="submit">ثبت پیگیری بعدی</button>
+          </form>
+        </section>
+
+        <details class="panel crm-record-followup">
+          <summary>پیگیری انجام‌شده را ثبت کنید</summary>
+          <form method="post" action="{% url 'inquiries:lead_record_followup' lead.id %}" class="stack-sm">
+            {% csrf_token %}<label class="field"><span class="field-label">{{ complete_form.note.label }}</span>{{ complete_form.note }}</label>
+            <button class="btn btn-secondary btn-block" type="submit">ثبت به‌عنوان انجام‌شده</button>
+          </form>
+        </details>
+      {% endif %}
+    </aside>
+  </div>
 </section>
 {% endblock %}

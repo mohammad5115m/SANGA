@@ -68,6 +68,17 @@ def test_token_storefront_is_login_free_noindex_and_seller_scoped(client, storef
 
 
 @pytest.mark.django_db
+def test_storefront_leads_with_plain_language_and_progressive_filters(client, storefront):
+    body = client.get(storefront_url(storefront)).content.decode()
+    assert "چه سنگی برای کار شما مناسب است؟" in body
+    assert "سنگ را برای کجا می‌خواهید؟" in body
+    assert "مثلاً سنگ روشن برای نمای ساختمان" in body
+    assert "فیلترهای دقیق‌تر" in body
+    assert "فیلتر و مرتب‌سازی" in body
+    assert "نتیجه" in body
+
+
+@pytest.mark.django_db
 def test_product_id_cannot_cross_the_storefront_boundary(client, storefront):
     url = reverse(
         "catalog:lot_detail",

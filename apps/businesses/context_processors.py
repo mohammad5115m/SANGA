@@ -57,10 +57,27 @@ def business_context(request: HttpRequest) -> dict:
         # Business, which can still read everything it already has.
         "business_can_write": business_can_use_app(business),
         "business_block_reason": _block_reason(business),
+        "notification_badge_count": _notification_badge_count(request, membership, business),
     }
     for name, (capability, entitlement) in _UI_ACTIONS.items():
         context[name] = capability in capabilities and entitlement in entitlements
     return context
+
+
+def _notification_badge_count(request: HttpRequest, membership, business: Business | None) -> int:
+    if not request.user.is_authenticated or business is None or membership is None:
+        return 0
+
+    from apps.businesses.permissions import LEADS_MANAGE
+
+    if membership.has_capability(LEADS_MANAGE):
+        from apps.inquiries.crm import CRMRepository
+
+        # Session/demo follow-up reminders can be counted without a database
+        # query. Persisted notification counts stay on the notification page;
+        # adding a COUNT to every shell render would regress every list budget.
+        return CRMRepository(request).unread_reminder_count()
+    return 0
 
 
 def _capability_codes(membership) -> frozenset[str]:

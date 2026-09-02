@@ -104,12 +104,19 @@ def _promotion_remaining(ends_at) -> str:
 
 def public_lot_card(lot: InventoryLot) -> dict:
     primary = next((m for m in lot.media.all() if m.is_primary), None) or next(iter(lot.media.all()), None)
+    dimensions = []
+    if lot.length_cm:
+        dimensions.append(f"{lot.length_cm:g}")
+    if lot.width_cm:
+        dimensions.append(f"{lot.width_cm:g}")
     return {
         "lot": lot,
         "product": lot.product,
         "price": b2c_price_context(lot),
         "stock": stock_view(lot),
         "primary_media": primary,
+        "applications": list(lot.product.applications.all())[:2],
+        "size_label": " × ".join(dimensions) + " سانتی‌متر" if dimensions else "ابعاد آزاد",
     }
 
 

@@ -18,7 +18,8 @@ removed, and what is genuinely left.
 | Buying and selling | Product-bound requests, accept separated from finalize, snapshot-bearing trades |
 | Money | Business-counterparty ledger, exactly-once posting, four manual entry types, FIFO aging |
 | Invoicing | Snapshot invoices, locked per-seller numbering, print view |
-| Public customers | Login-free browsing, multi-product inquiries, stock inquiries, customer-purpose OTP, seller inbox |
+| Public customers | Login-free guided browsing, multi-product inquiries, stock inquiries, customer-purpose OTP, seller inbox |
+| Customer follow-up | Categorized customer view, needs and notes, activity history, follow-up queue and in-app reminders; persistence remains deferred |
 | Catalogs | Inventory-first explicit selection, with values resolved live against eligibility |
 | Reports | Ten operational reports with date ranges and print views |
 | UI | Six-destination navigation, operational dashboard, 4-step product creation, media management |
@@ -36,8 +37,8 @@ business creation.
 Online payment · escrow · cheque management · tax-authority integration ·
 logistics · automatic stock synchronisation · reverse auctions · chat · ratings ·
 AI recommendations · image similarity search · native apps · advanced BI · PDF
-catalogs · complex subscription billing · per-colleague custom prices · CRM
-pipelines.
+catalogs · complex subscription billing · per-colleague custom prices · advanced
+CRM automation and persistent pipeline entities.
 
 ## Remaining technical debt
 

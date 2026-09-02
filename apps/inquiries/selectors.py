@@ -47,7 +47,7 @@ def get_lead(business: Business, lead_id) -> CustomerLead | None:
 
 
 def filter_leads(qs: QuerySet[CustomerLead], *, q: str = "") -> QuerySet[CustomerLead]:
-    """Sellers look customers up by name or phone, and by nothing else."""
+    """Database-level identity search used outside the CRM presenter."""
     if not q:
         return qs
     term = normalize_persian_text(q)

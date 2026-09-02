@@ -165,6 +165,7 @@ def storefront_collection_sections(business: Business) -> QuerySet[StorefrontCol
                 ),
             ),
             "lot__media",
+            "lot__product__applications",
         )
         .order_by("sort_order", "id")
     )

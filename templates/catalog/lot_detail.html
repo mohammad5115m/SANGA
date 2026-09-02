@@ -51,8 +51,9 @@
       <div class="detail-primary-actions stack-sm">
         <form method="post" action="{% url 'catalog:inquiry_start' business.storefront_token lot.id %}">
           {% csrf_token %}
-          <button class="btn btn-primary btn-block" type="submit">ثبت درخواست خرید</button>
+          <button class="btn btn-primary btn-block" type="submit">افزودن و ادامه درخواست</button>
         </form>
+        {% if business.phone %}<a class="btn btn-secondary btn-block" href="tel:{{ business.phone }}">مشاوره درباره این سنگ</a>{% endif %}
       </div>
     </aside>
   </div>

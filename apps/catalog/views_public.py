@@ -40,6 +40,8 @@ def _business_or_404(token: str):
 def storefront(request: HttpRequest, storefront_token: str) -> HttpResponse:
     business = _business_or_404(storefront_token)
     form = ItemFilterForm(request.GET or None)
+    form.fields["q"].label = "جست‌وجوی ساده"
+    form.fields["q"].widget.attrs["placeholder"] = "مثلاً سنگ روشن برای نمای ساختمان"
     spec = form.to_spec()
     base = public_catalog_lots(business)
     qs = filter_public_lots(base, spec=spec)
@@ -71,6 +73,8 @@ def storefront(request: HttpRequest, storefront_token: str) -> HttpResponse:
             "page": page,
             "selection_count": cart.count(request, business, catalog=None),
             "price_bounds": {"minimum": minimum, "maximum": maximum},
+            "guided_applications": list(form.fields["applications"].queryset[:6]),
+            "selected_applications": set(spec.applications),
         },
     )
 

@@ -45,7 +45,9 @@ hourly, so the primary bar stays short enough to read on a phone.
     </nav>
 
     <div class="topbar-actions">
-      <a class="btn btn-ghost btn-sm" href="{% url 'notifications:list' %}">اعلان‌ها</a>
+      <a class="btn btn-ghost btn-sm notification-link" href="{% url 'notifications:list' %}">
+        اعلان‌ها{% if notification_badge_count %}<span class="notification-count" aria-label="{{ notification_badge_count }} اعلان خوانده‌نشده">{{ notification_badge_count }}</span>{% endif %}
+      </a>
       <a class="btn btn-ghost btn-sm" href="{% url 'accounts:profile' %}">پروفایل</a>
     </div>
   </header>

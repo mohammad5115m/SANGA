@@ -6,14 +6,33 @@
 <section class="stack-lg">
   <div class="storefront-hero">
     <div class="storefront-eyebrow">فروشگاه آنلاین {{ business.name }}</div>
-    <h1 class="page-title">{{ business.name }}</h1>
-    <p class="page-lead">سنگ مورد نظرتان را پیدا کنید و درخواست خرید را مستقیم برای همین فروشنده بفرستید.</p>
+    <h1 class="page-title">چه سنگی برای کار شما مناسب است؟</h1>
+    <p class="page-lead">لازم نیست اسم سنگ‌ها را بدانید؛ کاربرد پروژه را انتخاب کنید یا با چند کلمه ساده جست‌وجو کنید.</p>
     <div class="storefront-trust-row" aria-label="اطلاعات فروشگاه">
       {% if business.city %}<span>ارسال از {{ business.city }}</span>{% endif %}
       <span>قیمت مخصوص مشتری</span>
       <span>موجودی زمان‌دار و قابل پیگیری</span>
     </div>
   </div>
+
+  <section class="guided-discovery panel" aria-labelledby="guided-heading">
+    <div class="guided-copy">
+      <span class="section-kicker">شروع ساده</span>
+      <h2 class="section-title" id="guided-heading">سنگ را برای کجا می‌خواهید؟</h2>
+      <p class="muted">یکی از کاربردها را بزنید؛ فقط محصولاتی می‌آیند که فروشنده برای همان کار ثبت کرده است.</p>
+    </div>
+    <div class="guided-options" role="list">
+      {% for application in guided_applications %}
+        <a class="guided-option{% if application.code in selected_applications %} is-active{% endif %}"
+           href="?applications={{ application.code }}#all-products-heading" role="listitem">
+          <span class="guided-option-icon" aria-hidden="true">{{ forloop.counter }}</span>
+          <span>{{ application.name }}</span>
+        </a>
+      {% endfor %}
+      <a class="guided-option guided-option-more" href="#product-filters" role="listitem"><span aria-hidden="true">＋</span><span>فیلترهای دقیق‌تر</span></a>
+    </div>
+    {% if business.phone %}<p class="guided-help">هنوز مطمئن نیستید؟ <a href="tel:{{ business.phone }}">برای انتخاب سنگ مشاوره بگیرید</a>.</p>{% endif %}
+  </section>
 
   {% if special_cards %}
   <section class="sale-showcase stack-md" aria-labelledby="special-sale-heading">
@@ -52,7 +71,7 @@
 
   <section class="stack-md" aria-labelledby="all-products-heading">
   <div class="section-heading-row"><div><span class="section-kicker">تمام موجودی فروشگاه</span><h2 class="section-title" id="all-products-heading">همه محصولات</h2></div></div>
-  {% include "inventory/_filter_bar.html" %}
+  <div id="product-filters">{% include "inventory/_filter_bar.html" %}</div>
 
   {% include "catalog/_selection_bar.html" %}
 
@@ -65,7 +84,10 @@
         <span class="empty-state-icon" aria-hidden="true">⌕</span>
         <h2>محصولی با این جست‌وجو پیدا نشد</h2>
         <p>عبارت جست‌وجو یا فیلترها را ساده‌تر کنید و دوباره ببینید.</p>
-        {% if filter_form.active_filter_count %}<a class="btn btn-secondary" href="{{ request.path }}">پاک‌کردن فیلترها</a>{% endif %}
+        <div class="empty-state-actions">
+          {% if filter_form.active_filter_count %}<a class="btn btn-secondary" href="{{ request.path }}">پاک‌کردن فیلترها</a>{% endif %}
+          {% if business.phone %}<a class="btn btn-ghost" href="tel:{{ business.phone }}">مشاوره برای انتخاب سنگ</a>{% endif %}
+        </div>
       </div>
     {% endfor %}
   </div>

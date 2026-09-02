@@ -14,8 +14,8 @@ Six primary destinations, matching the six things a seller does:
 | بیشتر | everything visited weekly rather than hourly |
 
 «بیشتر» holds the colleague directory, ledger, invoices, inquiries, customers,
-reports, team and settings. Keeping the primary bar to six items is what makes it
-readable on a phone.
+customer follow-ups, reports, team and settings. Keeping the primary bar to six
+items is what makes it readable on a phone.
 
 Gone from the interface entirely: تابلوی تقاضا (the demand board), مخاطبین
 (private contacts) and انبارها (warehouses). Navigation follows capabilities, so
@@ -110,6 +110,11 @@ Sending a proposal is **not** selling. See [trading.md](./trading.md).
 
 No login wall, and identity is asked for once, at the end. See
 [customers.md](./customers.md).
+
+The storefront begins with a plain-language application choice and a simple
+search. Technical filters stay behind progressive disclosure. Seller follow-up
+then continues at `/app/leads/`: customer profile → note or next follow-up →
+overdue/today queue → in-app reminder.
 
 ## 8. Dashboard
 

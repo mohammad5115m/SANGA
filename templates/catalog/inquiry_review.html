@@ -6,8 +6,9 @@
 {% block content %}
 <section class="stack-lg">
   <div>
-    <h1 class="page-title">درخواست شما</h1>
-    <p class="page-lead">متراژ مورد نیاز هر محصول را وارد کنید</p>
+    <span class="section-kicker">مرحله ۱ از ۳</span>
+    <h1 class="page-title">مرور درخواست خرید</h1>
+    <p class="page-lead">محصولات را بررسی کنید و متراژ تقریبی هر مورد را بنویسید؛ عدد دقیق می‌تواند بعداً با فروشنده نهایی شود.</p>
   </div>
 
   {% if rows %}
@@ -43,7 +44,7 @@
         </section>
       {% endfor %}
 
-      <button class="btn btn-primary btn-block" type="submit">ادامه</button>
+      <button class="btn btn-primary btn-block" type="submit">ادامه و افزودن توضیحات پروژه</button>
       <a class="btn btn-ghost btn-block" href="{% url 'catalog:storefront' business.storefront_token %}">افزودن محصول بیشتر</a>
     </form>
   {% else %}

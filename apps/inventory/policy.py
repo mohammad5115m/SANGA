@@ -117,7 +117,7 @@ def eligible_items(
 
     return (
         qs.select_related("product", "product__stone", "business")
-        .prefetch_related(_price_prefetch(audience), "media")
+        .prefetch_related(_price_prefetch(audience), "media", "product__applications")
         .order_by("-is_urgent_sale", "-stock_confirmed_at", "-updated_at")
     )
 

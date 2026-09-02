@@ -2,19 +2,25 @@
 {% block title %}اعلان‌ها | سنگا{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <h1 class="page-title">اعلان‌ها</h1>
-  <div class="list-stack">
+<section class="stack-lg notification-page">
+  <div>
+    <span class="section-kicker">مرکز کارهای مهم</span>
+    <h1 class="page-title">اعلان‌ها</h1>
+    <p class="page-lead">درخواست‌های تازه و یادآوری پیگیری مشتریان در همین بخش نمایش داده می‌شوند.</p>
+  </div>
+  <div class="list-stack notification-list">
     {% for note in notifications %}
-      <article class="list-item">
-        <div>
-          <div class="list-title">{{ note.title }}</div>
-          <div class="muted">{{ note.body }}</div>
+      <article class="notification-item{% if not note.is_read %} is-unread{% endif %}">
+        <span class="notification-dot" aria-hidden="true"></span>
+        <div class="notification-copy">
+          <div class="notification-meta"><span>{{ note.kind_label }}</span><time>{{ note.created_at|date:"Y/m/d H:i" }}</time></div>
+          <h2 class="list-title">{{ note.title }}</h2>
+          {% if note.body %}<p class="muted">{{ note.body }}</p>{% endif %}
         </div>
-        {% if note.link %}<a class="btn btn-ghost btn-sm" href="{{ note.link }}">مشاهده</a>{% endif %}
+        {% if note.link %}<a class="btn btn-secondary btn-sm" href="{{ note.link }}">مشاهده و اقدام</a>{% endif %}
       </article>
     {% empty %}
-      <div class="empty-state">اعلانی نیست.</div>
+      <div class="empty-state stack-md"><h2 class="section-title">اعلان تازه‌ای ندارید</h2><p>وقتی درخواست یا پیگیری جدیدی نیاز به توجه داشته باشد، اینجا دیده می‌شود.</p></div>
     {% endfor %}
   </div>
 </section>

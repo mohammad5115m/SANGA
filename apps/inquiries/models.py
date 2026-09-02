@@ -23,9 +23,10 @@ from django.db import models
 class CustomerLead(models.Model):
     """A retail customer, identified by phone, scoped to one seller.
 
-    Deliberately thin. This is not a CRM: there are no pipelines, owners, scores
-    or activity feeds. It answers one question — «این مشتری قبلاً چه چیزی
-    پرسیده؟» — and stops there.
+    The persistent identity remains deliberately small. CRM presentation fields,
+    notes and follow-up activities currently live behind ``CRMRepository`` so
+    this phase can validate the workflow without prematurely fixing a database
+    schema. A later persistent CRM service can replace that boundary.
 
     Scoped per business rather than platform-wide so one seller's customer list
     is not another seller's, which is both a privacy property and the reason two

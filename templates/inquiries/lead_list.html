@@ -3,37 +3,106 @@
 {% block title %}مشتریان | سنگا{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <div class="toolbar">
+<section class="stack-lg crm-page">
+  {% include "inquiries/_crm_tabs.html" %}
+
+  <div class="toolbar crm-page-heading">
     <div>
+      <span class="section-kicker">مدیریت ارتباط با مشتری</span>
       <h1 class="page-title">مشتریان</h1>
-      <p class="page-lead">کسانی که از صفحات عمومی درخواست خرید ثبت کرده‌اند</p>
+      <p class="page-lead">نیاز مشتری، محصول درخواستی و اقدام بعدی را یک‌جا ببینید.</p>
     </div>
-    <a class="btn btn-ghost" href="{% url 'inquiries:inbox' %}">درخواست‌های خرید</a>
+    <a class="btn btn-primary" href="{% url 'inquiries:followups' %}">کارهای پیگیری امروز</a>
   </div>
 
-  <form method="get" class="panel filter-bar">
-    <label class="field field-grow">
-      <span class="field-label">جست‌وجو</span>
-      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="نام یا شماره موبایل">
+  {% if crm_notice %}<div class="alert alert-info" role="note">{{ crm_notice }}</div>{% endif %}
+
+  <form method="get" class="panel crm-filter" role="search" aria-label="جست‌وجو و فیلتر مشتریان">
+    <label class="field crm-search-field">
+      <span class="field-label">جست‌وجوی مشتری</span>
+      <input class="field-input" type="search" name="q" value="{{ q }}"
+             placeholder="نام یا شماره موبایل" autocomplete="off">
     </label>
-    <button class="btn btn-secondary" type="submit">جست‌وجو</button>
+    <label class="field">
+      <span class="field-label">دسته‌بندی</span>
+      <select class="field-input" name="category">
+        <option value="">همه دسته‌ها</option>
+        {% for value, label in category_choices %}
+          <option value="{{ value }}"{% if category == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">پیگیری</span>
+      <select class="field-input" name="followup">
+        <option value="">همه زمان‌ها</option>
+        {% for value, label in followup_filters %}
+          {% if value %}<option value="{{ value }}"{% if followup_state == value %} selected{% endif %}>{{ label }}</option>{% endif %}
+        {% endfor %}
+        <option value="none"{% if followup_state == 'none' %} selected{% endif %}>بدون پیگیری</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">وضعیت مشتری</span>
+      <select class="field-input" name="status">
+        <option value="">همه وضعیت‌ها</option>
+        {% for value, label in customer_status_choices %}
+          <option value="{{ value }}"{% if crm_status == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="crm-filter-actions">
+      <button class="btn btn-primary" type="submit">نمایش نتایج</button>
+      {% if q or category or followup_state or crm_status %}<a class="btn btn-ghost" href="{% url 'inquiries:leads' %}">پاک‌کردن فیلترها</a>{% endif %}
+    </div>
   </form>
 
-  <div class="list-stack">
+  <div class="results-heading" aria-live="polite">
+    <strong>{{ page.total }} مشتری</strong>
+    <span class="muted">مرتب‌شده بر اساس فوریت پیگیری و آخرین فعالیت</span>
+  </div>
+
+  <div class="crm-customer-list" role="list">
     {% for lead in leads %}
-      <a class="list-item" href="{% url 'inquiries:lead_detail' lead.id %}">
-        <div>
-          <div class="list-title">{{ lead.name }}</div>
-          <div class="muted" dir="ltr">{{ lead.phone }}</div>
-        </div>
-        <div class="badge-row">
-          <span class="badge">{{ lead.inquiry_count }} درخواست</span>
-          {% if lead.is_verified %}<span class="badge badge-accent">تأیید شده</span>{% endif %}
-        </div>
-      </a>
+      <article class="crm-customer-card followup-state-{{ lead.followup_state }}" role="listitem">
+        <a class="crm-customer-main" href="{{ lead.url }}">
+          <div class="crm-customer-identity">
+            <span class="crm-avatar" aria-hidden="true">{{ lead.name|first }}</span>
+            <div><h2 class="list-title">{{ lead.name }}</h2><span class="muted" dir="ltr">{{ lead.phone }}</span></div>
+          </div>
+          <div class="badge-row crm-customer-badges">
+            <span class="badge">{{ lead.inquiry_count }} درخواست</span>
+            <span class="badge">{{ lead.category_label }}</span>
+            <span class="badge badge-soft">{{ lead.crm_status_label }}</span>
+            {% if lead.is_verified %}<span class="badge badge-accent">شماره تأییدشده</span>{% endif %}
+          </div>
+          <div class="crm-customer-products">
+            <span class="crm-label">محصولات درخواستی</span>
+            <strong>
+              {% for product in lead.requested_products|slice:":2" %}{{ product }}{% if not forloop.last %}، {% endif %}{% empty %}هنوز محصولی ثبت نشده{% endfor %}
+              {% if lead.requested_products|length > 2 %} و {{ lead.requested_products|length|add:"-2" }} مورد دیگر{% endif %}
+            </strong>
+          </div>
+          <div class="crm-customer-activity"><span class="crm-label">آخرین فعالیت</span><strong>{{ lead.last_activity_label }}</strong></div>
+          <div class="crm-customer-next">
+            <span class="crm-label">پیگیری بعدی</span>
+            {% if lead.next_followup %}<strong>{{ lead.next_followup.due_label }}</strong><small>{{ lead.next_followup.title }}</small>{% else %}<strong class="muted">برنامه‌ریزی نشده</strong>{% endif %}
+          </div>
+          <span class="crm-card-arrow" aria-hidden="true">←</span>
+        </a>
+      </article>
     {% empty %}
-      <div class="empty-state">هنوز مشتری‌ای درخواست خرید ثبت نکرده است.</div>
+      <div class="empty-state stack-md">
+        {% if q or category or followup_state or crm_status %}
+          <h2 class="section-title">مشتری‌ای با این فیلتر پیدا نشد</h2>
+          <p>عبارت جست‌وجو یا یکی از فیلترها را ساده‌تر کنید.</p>
+          <a class="btn btn-secondary" href="{% url 'inquiries:leads' %}">پاک‌کردن فیلترها</a>
+        {% else %}
+          <h2 class="section-title">هنوز مشتری‌ای ثبت نشده است</h2>
+          <p>پس از اولین درخواست خرید عمومی، پرونده مشتری اینجا ساخته می‌شود.</p>
+          <a class="btn btn-secondary" href="{% url 'inquiries:inbox' %}">مشاهده درخواست‌های خرید</a>
+        {% endif %}
+      </div>
     {% endfor %}
   </div>
 

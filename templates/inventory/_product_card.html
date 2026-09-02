@@ -39,9 +39,9 @@ Optional: show_marketplace_meta, show_marketplace_actions, show_select
       <h3 class="list-title product-card-title">{{ card.product.commercial_name }}</h3>
 
       <div class="product-specs product-card-specs">
-        {% if card.product.stone %}<span>{{ card.product.stone.name }}</span>{% endif %}
+        {% for application in card.applications %}<span class="product-use">مناسب {{ application.name }}</span>{% empty %}{% if card.product.stone %}<span>{{ card.product.stone.name }}</span>{% endif %}{% endfor %}
+        {% if card.size_label %}<span>{{ card.size_label }}</span>{% elif card.lot.thickness_cm %}<span>{{ card.lot.thickness_cm }} سانتی‌متر</span>{% endif %}
         {% if card.lot.processing_type %}<span>{{ card.lot.processing_type }}</span>{% endif %}
-        {% if card.lot.thickness_cm %}<span>{{ card.lot.thickness_cm }} سانتی‌متر</span>{% endif %}
       </div>
 
       <div class="product-card-commercial">
