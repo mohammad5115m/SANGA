@@ -73,9 +73,8 @@ def _notification_badge_count(request: HttpRequest, membership, business: Busine
     if membership.has_capability(LEADS_MANAGE):
         from apps.inquiries.crm import CRMRepository
 
-        # Session/demo follow-up reminders can be counted without a database
-        # query. Persisted notification counts stay on the notification page;
-        # adding a COUNT to every shell render would regress every list budget.
+        # One indexed, tenant-scoped COUNT keeps the shell badge consistent
+        # across browsers. The query is flat in the number of customers.
         return CRMRepository(request).unread_reminder_count()
     return 0
 

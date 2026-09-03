@@ -21,7 +21,3 @@ SANGA_LOGIN_PHONE_ALLOWLIST = env.list(  # noqa: F405
     "SANGA_LOGIN_PHONE_ALLOWLIST",
     default=["09121111111", "09122222222"],
 )
-
-# Real CustomerLead/Inquiry rows remain the source of truth. This adds isolated,
-# fictional CRM examples and keeps demo mutations in the current browser session.
-SANGA_CRM_DEMO_ENABLED = env.bool("SANGA_CRM_DEMO_ENABLED", default=True)  # noqa: F405

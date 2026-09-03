@@ -251,11 +251,6 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@sanga.local")
 #: an empty site; it is not a way to run production with an open network.
 SANGA_REQUIRE_VERIFIED_FOR_NETWORK = env.bool("SANGA_REQUIRE_VERIFIED_FOR_NETWORK", default=True)
 
-# CRM-specific fields are presentation-only in this phase. Fictional customers
-# and session-backed actions are fail-closed here and are enabled explicitly by
-# development settings; production forces them off again below.
-SANGA_CRM_DEMO_ENABLED = False
-
 # Content-Security-Policy knobs; see apps.core.middleware.
 # Report-only first is how a policy survives contact with a live site.
 CSP_REPORT_ONLY = env.bool("CSP_REPORT_ONLY", default=False)

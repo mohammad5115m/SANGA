@@ -11,7 +11,6 @@
     <a class="btn btn-secondary" href="{% url 'inquiries:leads' %}">همه مشتریان</a>
   </div>
 
-  {% if crm_notice %}<div class="alert alert-info" role="note">{{ crm_notice }}</div>{% endif %}
 
   <nav class="followup-summary" aria-label="فیلتر وضعیت پیگیری">
     {% for value, label in followup_filters %}

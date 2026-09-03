@@ -38,7 +38,7 @@ Online payment · escrow · cheque management · tax-authority integration ·
 logistics · automatic stock synchronisation · reverse auctions · chat · ratings ·
 AI recommendations · image similarity search · native apps · advanced BI · PDF
 catalogs · complex subscription billing · per-colleague custom prices · advanced
-CRM automation and persistent pipeline entities.
+CRM automation and independent deal-pipeline entities.
 
 ## Remaining technical debt
 

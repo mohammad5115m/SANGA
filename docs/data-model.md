@@ -156,7 +156,13 @@ meaningful value is copied at issue time.
 
 `CustomerLead` is identity by `(business, phone)`. It is **not an account**: no
 password, no session, no membership. `phone_verified_at` records that the number
-was reachable at that moment.
+was reachable at that moment. Category, CRM status, tags and current needs are
+durable profile fields on this tenant-scoped identity.
+
+`CustomerNote` is append-only seller context for one lead. `CustomerFollowUp`
+stores the scheduled action, priority, status, reminder time and completion
+result. `FollowUpReminderRead` records reminder read state per staff user. The
+repository always filters these records through the active Business.
 
 `Inquiry` is the request; `InquiryItem` is one product plus the metres needed.
 Lines keep a `product_name` snapshot, because an inquiry is often *why* the

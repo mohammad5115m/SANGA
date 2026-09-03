@@ -76,19 +76,18 @@ cannot lose a saved inquiry.
 `CustomerLead` is a light identity keyed by `(business, phone)`. It is not an
 account: no password, no session, no membership, no way to log in.
 
-The identity model stays deliberately thin, while the seller experience now
-adds a practical CRM layer: customer categories and tags, current needs,
-requested-product summaries, notes, an activity timeline, scheduled follow-ups
-and a dedicated work queue. This is intentionally not an enterprise sales
-pipeline.
+The seller experience adds a practical, persistent CRM layer: customer
+categories and tags, current needs, requested-product summaries, notes, an
+activity timeline, scheduled follow-ups and a dedicated work queue. This is
+intentionally not an enterprise sales pipeline.
 
-For the current UI-validation phase, `apps.inquiries.crm.CRMRepository` is the
-replaceable boundary. It enriches real `CustomerLead`, `Inquiry` and
-`InquiryItem` rows and, only when `SANGA_CRM_DEMO_ENABLED` is explicitly enabled,
-adds fictional Persian examples. CRM-only mutations are scoped by Business and
-stored in the browser session. Production forces demo mode off. A production
-repository and persistent note/follow-up models can later implement the same
-view-model contract without changing templates.
+`apps.inquiries.crm.CRMRepository` is the presentation/service boundary. It
+combines real `CustomerLead`, `Inquiry`, `InquiryItem`, `CustomerNote` and
+`CustomerFollowUp` rows into the view-model used by the templates. All CRM
+mutations are written to the database inside the current Business boundary;
+there are no fictional customers or browser-session CRM records. Reminder read
+state is also persistent per staff user. The models use portable Django fields
+and constraints, so the same migration runs on SQLite and PostgreSQL.
 
 Scoped per business, so one seller's customer list is not another's, and two
 sellers can hold different names for the same number without conflict.

@@ -96,7 +96,9 @@ def _login(client, business):
         # Measured counts are 5-9, including the paginator's COUNT. The budget
         # leaves room for a session or shell change without leaving room for
         # eight extra per-row queries — which is the only thing it is guarding.
-        ("inventory:lot_list", 12),
+        # Inventory uses the full prior budget; the operational CRM reminder
+        # badge adds one indexed, row-count-independent query to the shell.
+        ("inventory:lot_list", 13),
         ("marketplace:home", 12),
         ("trading:received_list", 12),
         ("trading:trade_list", 12),

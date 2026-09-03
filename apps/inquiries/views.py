@@ -16,7 +16,6 @@ from .crm import (
     CUSTOMER_STATUS_CHOICES,
     FOLLOWUP_FILTERS,
     CRMRepository,
-    crm_mode_notice,
 )
 from .forms import (
     CompleteFollowUpForm,
@@ -134,7 +133,6 @@ def lead_list(request: HttpRequest) -> HttpResponse:
             "category_choices": CATEGORY_CHOICES,
             "followup_filters": FOLLOWUP_FILTERS,
             "customer_status_choices": CUSTOMER_STATUS_CHOICES,
-            "crm_notice": crm_mode_notice(),
             "can_manage": request.membership.has_capability(LEADS_MANAGE),
         },
     )
@@ -166,7 +164,6 @@ def lead_detail(request: HttpRequest, lead_id) -> HttpResponse:
             ),
             "followup_form": FollowUpForm(initial={"related_context": related_context}),
             "complete_form": CompleteFollowUpForm(),
-            "crm_notice": crm_mode_notice(),
             "can_manage": request.membership.has_capability(LEADS_MANAGE),
         },
     )
@@ -191,7 +188,6 @@ def followup_list(request: HttpRequest) -> HttpResponse:
             "state": state,
             "followup_filters": FOLLOWUP_FILTERS,
             "counts": counts,
-            "crm_notice": crm_mode_notice(),
             "can_manage": request.membership.has_capability(LEADS_MANAGE),
         },
     )
