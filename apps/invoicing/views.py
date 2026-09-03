@@ -4,6 +4,7 @@ import logging
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db.models import Count
 from django.http import FileResponse, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
@@ -221,6 +222,7 @@ def invoice_list(request: HttpRequest) -> HttpResponse:
     q = request.GET.get("q", "").strip()
     direction = request.GET.get("direction", "")
     origin = request.GET.get("origin", "")
+    sort = request.GET.get("sort", "newest")
     date_filter_form = DateRangeForm(request.GET, start_name="date_from", end_name="date_to")
     valid_dates = date_filter_form.is_valid()
     date_from = date_filter_form.canonical("date_from")
@@ -234,6 +236,7 @@ def invoice_list(request: HttpRequest) -> HttpResponse:
             q=q,
             direction=direction,
             origin=origin,
+            sort=sort,
             date_from=date_filter_form.cleaned_data.get("date_from"),
             date_to=date_filter_form.cleaned_data.get("date_to"),
         ),
@@ -249,6 +252,7 @@ def invoice_list(request: HttpRequest) -> HttpResponse:
             "q": q,
             "direction": direction,
             "origin": origin,
+            "sort": sort,
             "date_filter_form": date_filter_form,
             "date_from": date_from,
             "date_to": date_to,
@@ -265,6 +269,13 @@ def invoice_detail(request: HttpRequest, invoice_id) -> HttpResponse:
     if invoice is None:
         return redirect("invoicing:list")
     current_settings = getattr(request.business, "invoice_settings", None)
+    cheque_rows = [
+        {
+            "cheque": cheque,
+            "form": ChequeStatusForm(prefix=f"cheque-{cheque.id}", initial={"status": cheque.status}),
+        }
+        for cheque in invoice.cheques.all()
+    ]
     return render(
         request,
         "invoicing/detail.html",
@@ -284,7 +295,7 @@ def invoice_detail(request: HttpRequest, invoice_id) -> HttpResponse:
             "offline_form": OfflineApprovalForm(
                 initial={"confirmed_at": timezone.localtime().strftime("%Y-%m-%dT%H:%M")}
             ),
-            "cheque_form": ChequeStatusForm(),
+            "cheque_rows": cheque_rows,
             "cancel_form": InvoiceCancelForm(),
             "template_form": InvoiceTemplateNameForm(initial={"name": f"قالب {invoice.buyer_name}"}),
         },
@@ -419,6 +430,7 @@ def _shared_item_initial(business, item_id):
 def invoice_create(request: HttpRequest) -> HttpResponse:
     initial = None
     line_initial = None
+    invoice = None
     template_id = request.GET.get("template")
     if template_id:
         try:
@@ -511,6 +523,23 @@ def invoice_create(request: HttpRequest) -> HttpResponse:
                 if action == "issue" and invoice.counterparty_type == SalesInvoice.Counterparty.BUSINESS:
                     invoice = send_partner_invoice(invoice=invoice, membership=request.membership)
         except InvoiceError as exc:
+            # Partner draft creation and sending are separate durable
+            # operations. If sending fails (for example because settlement or
+            # signatures are incomplete), take the user to the saved draft so
+            # their work remains recoverable and the idempotency token cannot
+            # trap later retries on the create form.
+            submission_id = form.cleaned_data.get("submission_id")
+            saved_draft = invoice
+            if saved_draft is None and submission_id:
+                saved_draft = SalesInvoice.objects.filter(
+                    seller_business=request.business,
+                    submission_id=submission_id,
+                    status=SalesInvoice.Status.DRAFT,
+                ).first()
+            if action == "issue" and saved_draft is not None and saved_draft.status == SalesInvoice.Status.DRAFT:
+                messages.error(request, exc.message)
+                messages.info(request, "پیش‌نویس ذخیره شد؛ اطلاعات را اصلاح و دوباره نهایی کنید.")
+                return redirect("invoicing:edit", invoice_id=saved_draft.id)
             form.add_error(None, exc.message)
         else:
             messages.success(request, _saved_invoice_message(action=action, invoice=invoice))
@@ -676,7 +705,12 @@ def invoice_issue(request: HttpRequest, invoice_id) -> HttpResponse:
     except InvoiceError as exc:
         messages.error(request, exc.message)
     else:
-        messages.success(request, "فاکتور صادر شد.")
+        messages.success(
+            request,
+            "فاکتور برای تأیید همکار ارسال شد."
+            if invoice.counterparty_type == SalesInvoice.Counterparty.BUSINESS
+            else "فاکتور صادر شد.",
+        )
     return redirect("invoicing:detail", invoice_id=invoice.id)
 
 
@@ -782,10 +816,10 @@ def cheque_status_update(request: HttpRequest, cheque_id) -> HttpResponse:
         .select_related("invoice")
         .first()
     )
-    form = ChequeStatusForm(request.POST)
     if cheque is None:
         messages.error(request, "چک یافت نشد.")
         return redirect("invoicing:list")
+    form = ChequeStatusForm(request.POST, prefix=f"cheque-{cheque.id}")
     if form.is_valid():
         try:
             change_cheque_status(
@@ -961,6 +995,10 @@ def invoice_save_template(request: HttpRequest, invoice_id) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def invoice_settings(request: HttpRequest) -> HttpResponse:
     can_manage_business_signature = request.membership.has_capability(BUSINESS_SIGNATURE_MANAGE)
+    can_manage_templates = request.membership.has_capability(INVOICE_CREATE)
+    can_manage_counterparty_links = request.membership.has_capability(
+        COUNTERPARTY_LINK_PROPOSE
+    ) or request.membership.has_capability(COUNTERPARTY_LINK_APPROVE)
     if request.method == "POST" and not can_manage_business_signature:
         messages.error(request, "فقط مالک یا مدیر مجاز می‌تواند امضای رسمی کسب‌وکار را تغییر دهد.")
         return redirect("invoicing:settings")
@@ -981,9 +1019,11 @@ def invoice_settings(request: HttpRequest) -> HttpResponse:
             "form": form,
             "settings_row": settings_row,
             "personal_signature": UserInvoiceSignature.objects.filter(user=request.user).first(),
-            "personal_signature_form": PersonalSignatureForm(),
+            "personal_signature_form": PersonalSignatureForm(prefix="personal"),
             "templates": InvoiceTemplate.objects.filter(business=request.business),
             "can_manage_business_signature": can_manage_business_signature,
+            "can_manage_templates": can_manage_templates,
+            "can_manage_counterparty_links": can_manage_counterparty_links,
         },
     )
 
@@ -995,11 +1035,10 @@ def counterparty_links(request: HttpRequest) -> HttpResponse:
     if not (can_propose or can_approve):
         messages.error(request, "دسترسی لازم برای مدیریت اتصال همکاران را ندارید.")
         return redirect("businesses:dashboard")
-    local_rows = (
-        LocalCounterparty.objects.filter(owner_business=request.business)
-        .select_related("linked_business")
-        .prefetch_related("invoices", "ledger_entries")
+    local_rows = list(
+        LocalCounterparty.objects.filter(owner_business=request.business, linked_business__isnull=True).order_by("name")
     )
+    targets = list(colleague_businesses(request.business))
     outgoing = (
         CounterpartyLinkProposal.objects.filter(local_counterparty__owner_business=request.business)
         .select_related("local_counterparty", "target_business")
@@ -1008,7 +1047,10 @@ def counterparty_links(request: HttpRequest) -> HttpResponse:
     incoming = (
         CounterpartyLinkProposal.objects.filter(target_business=request.business)
         .select_related("local_counterparty", "local_counterparty__owner_business")
-        .prefetch_related("local_counterparty__invoices", "local_counterparty__ledger_entries")
+        .annotate(
+            invoice_count=Count("local_counterparty__invoices", distinct=True),
+            ledger_entry_count=Count("local_counterparty__ledger_entries", distinct=True),
+        )
         .order_by("-created_at")
     )
     return render(
@@ -1016,7 +1058,7 @@ def counterparty_links(request: HttpRequest) -> HttpResponse:
         "invoicing/counterparty_links.html",
         {
             "local_counterparties": local_rows,
-            "targets": colleague_businesses(request.business),
+            "targets": targets,
             "outgoing_proposals": outgoing,
             "incoming_proposals": incoming,
             "can_propose": can_propose,
@@ -1093,7 +1135,7 @@ def counterparty_link_cancel(request: HttpRequest, proposal_id) -> HttpResponse:
 @require_POST
 def personal_signature_update(request: HttpRequest) -> HttpResponse:
     instance = UserInvoiceSignature.objects.filter(user=request.user).first()
-    form = PersonalSignatureForm(request.POST, request.FILES, instance=instance)
+    form = PersonalSignatureForm(request.POST, request.FILES, instance=instance, prefix="personal")
     if not form.is_valid():
         messages.error(request, "فایل امضای شخصی معتبر نیست.")
         return redirect("invoicing:settings")

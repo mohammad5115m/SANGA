@@ -3,7 +3,7 @@
 {% load static %}
 
 {% block title %}فاکتورها | سنگا{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=4">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=5">{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
@@ -24,6 +24,7 @@
     </label>
     <label class="field"><span class="field-label">جهت</span><select class="field-input" name="direction"><option value="">همه</option><option value="sent" {% if direction == 'sent' %}selected{% endif %}>صادرشده</option><option value="received" {% if direction == 'received' %}selected{% endif %}>دریافتی</option></select></label>
     <label class="field"><span class="field-label">مبدأ</span><select class="field-input" name="origin"><option value="">همه</option><option value="manual" {% if origin == 'manual' %}selected{% endif %}>دستی</option><option value="trade" {% if origin == 'trade' %}selected{% endif %}>معامله</option></select></label>
+    <label class="field"><span class="field-label">ترتیب</span><select class="field-input" name="sort"><option value="newest" {% if sort == 'newest' %}selected{% endif %}>جدیدترین</option><option value="oldest" {% if sort == 'oldest' %}selected{% endif %}>قدیمی‌ترین</option></select></label>
     <div class="field"><label class="field-label" for="{{ date_filter_form.date_from.id_for_label }}">از تاریخ</label>{{ date_filter_form.date_from }}{{ date_filter_form.date_from.errors }}</div>
     <div class="field"><label class="field-label" for="{{ date_filter_form.date_to.id_for_label }}">تا تاریخ</label>{{ date_filter_form.date_to }}{{ date_filter_form.date_to.errors }}</div>
     <label class="field">
@@ -37,7 +38,7 @@
     </label>
     <div class="invoice-filter-actions">
       <button class="btn btn-secondary" type="submit">اعمال فیلتر</button>
-      {% if q or status or direction or origin or date_from or date_to %}<a class="btn btn-ghost" href="{% url 'invoicing:list' %}">پاک‌کردن فیلترها</a>{% endif %}
+      {% if q or status or direction or origin or date_from or date_to or sort == 'oldest' %}<a class="btn btn-ghost" href="{% url 'invoicing:list' %}">پاک‌کردن فیلترها</a>{% endif %}
     </div>
   </form>
 

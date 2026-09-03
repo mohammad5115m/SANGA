@@ -24,6 +24,8 @@
   var customerOptions = editor.querySelector("#invoice-customer-options");
   var modeHint = editor.querySelector("[data-mode-hint]");
   var primaryAction = editor.querySelector("[data-invoice-primary-action]");
+  var settlementAutofill = editor.querySelector("[data-settlement-autofill]");
+  var settlementStatus = editor.querySelector("[data-settlement-status]");
   var modePresentation = {
     customer: {
       controls: "invoice-customer-fields invoice-customer-paid",
@@ -108,6 +110,31 @@
     return new Intl.NumberFormat("fa-IR", {maximumFractionDigits: 2}).format(value || 0);
   }
 
+  function numericValue(name) {
+    var control = form.elements[name];
+    return Number(window.SangaInvoiceCalculator.normalizeNumber((control && control.value) || 0)) || 0;
+  }
+
+  function syncSettlementStatus(result) {
+    if (!settlementStatus || selectedCounterpartyMode() === "customer") return;
+    settlementStatus.classList.remove("is-complete", "is-error");
+    if (!result.valid) {
+      settlementStatus.textContent = "پس از تکمیل اقلام، وضعیت تسویه محاسبه می‌شود.";
+      return;
+    }
+    var allocated = numericValue("cash_amount") + numericValue("credit_amount") + numericValue("cheque_amount");
+    var remaining = Math.round((result.total_amount - allocated + Number.EPSILON) * 100) / 100;
+    if (remaining === 0) {
+      settlementStatus.textContent = "جمع تسویه با مبلغ نهایی برابر است.";
+      settlementStatus.classList.add("is-complete");
+    } else if (remaining > 0) {
+      settlementStatus.textContent = format(remaining) + " از مبلغ نهایی هنوز تخصیص نیافته است.";
+    } else {
+      settlementStatus.textContent = format(Math.abs(remaining)) + " بیشتر از مبلغ نهایی تخصیص یافته است.";
+      settlementStatus.classList.add("is-error");
+    }
+  }
+
   function liveTotals() {
     var activeRows = [];
     var payload = {lines: []};
@@ -138,13 +165,43 @@
         if (invalidOutput) invalidOutput.textContent = "—";
       });
       editor.querySelector("[data-invoice-total]").textContent = "—";
-      return;
+      syncSettlementStatus(result);
+      return result;
     }
     activeRows.forEach(function (row, index) {
       var output = row.querySelector("[data-line-total]");
       if (output) output.textContent = format(result.lines[index].line_total);
     });
     editor.querySelector("[data-invoice-total]").textContent = format(Math.max(0, result.amount_due));
+    syncSettlementStatus(result);
+    return result;
+  }
+
+  function autofillSettlement() {
+    var result = liveTotals();
+    if (!result || !result.valid) return;
+    var method = form.elements.settlement_method.value;
+    var total = result.total_amount;
+    if (method === "cash") {
+      form.elements.cash_amount.value = total;
+      form.elements.credit_amount.value = 0;
+      form.elements.cheque_amount.value = 0;
+    } else if (method === "credit") {
+      form.elements.cash_amount.value = 0;
+      form.elements.credit_amount.value = total;
+      form.elements.cheque_amount.value = 0;
+    } else if (method === "cheque") {
+      form.elements.cash_amount.value = 0;
+      form.elements.credit_amount.value = 0;
+      form.elements.cheque_amount.value = total;
+    } else {
+      form.elements.credit_amount.value = Math.max(
+        0,
+        Math.round((total - numericValue("cash_amount") - numericValue("cheque_amount") + Number.EPSILON) * 100) / 100
+      );
+    }
+    syncChequeFields();
+    changed();
   }
 
   function renumber() {
@@ -428,6 +485,10 @@
         requestPreview(true);
       }
     });
+  }
+  if (settlementAutofill) {
+    settlementAutofill.hidden = false;
+    settlementAutofill.addEventListener("click", autofillSettlement);
   }
   lines.querySelectorAll("[data-invoice-line]").forEach(initRow);
   syncCounterpartyMode();

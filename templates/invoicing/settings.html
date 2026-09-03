@@ -1,10 +1,10 @@
 {% extends "layouts/app_shell.html" %}
 {% load static %}
 {% block title %}تنظیمات فاکتور | سنگا{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=4">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=5">{% endblock %}
 {% block content %}
 <section class="stack-lg">
-  <div class="toolbar"><div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div><a class="btn btn-secondary" href="{% url 'invoicing:counterparty_links' %}">همکاران محلی و اتصال سابقه</a></div>
+  <div class="toolbar"><div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div>{% if can_manage_counterparty_links %}<a class="btn btn-secondary" href="{% url 'invoicing:counterparty_links' %}">همکاران محلی و اتصال سابقه</a>{% endif %}</div>
   {% if can_manage_business_signature %}
   <form method="post" enctype="multipart/form-data" class="stack-lg" novalidate data-invoice-settings>
     {% csrf_token %}
@@ -12,11 +12,12 @@
     <section class="panel stack-md">
       <h2 class="section-title">اطلاعات فروشنده</h2>
       <div class="form-grid">
-        {% for field in form %}
-          {% if field.name in 'legal_name tax_id bank_information payment_terms default_currency default_display_unit' %}
-          <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
-          {% endif %}
-        {% endfor %}
+        <label class="field"><span class="field-label">{{ form.legal_name.label }}</span>{{ form.legal_name }}{% if form.legal_name.errors %}<span class="field-error">{{ form.legal_name.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.tax_id.label }}</span>{{ form.tax_id }}{% if form.tax_id.errors %}<span class="field-error">{{ form.tax_id.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.bank_information.label }}</span>{{ form.bank_information }}{% if form.bank_information.errors %}<span class="field-error">{{ form.bank_information.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.payment_terms.label }}</span>{{ form.payment_terms }}{% if form.payment_terms.errors %}<span class="field-error">{{ form.payment_terms.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.default_currency.label }}</span>{{ form.default_currency }}{% if form.default_currency.errors %}<span class="field-error">{{ form.default_currency.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.default_display_unit.label }}</span>{{ form.default_display_unit }}{% if form.default_display_unit.errors %}<span class="field-error">{{ form.default_display_unit.errors|striptags }}</span>{% endif %}</label>
       </div>
     </section>
     <section class="panel stack-md">
@@ -56,11 +57,11 @@
         {% if form.primary_color.errors %}<span class="field-error">{{ form.primary_color.errors|striptags }}</span>{% endif %}
       </fieldset>
       <div class="form-grid form-grid-compact">
-        {% for field in form %}
-          {% if field.name in 'header_style logo_size show_bank_information show_stamp show_signature' %}
-          <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>
-          {% endif %}
-        {% endfor %}
+        <label class="field"><span class="field-label">{{ form.header_style.label }}</span>{{ form.header_style }}{% if form.header_style.errors %}<span class="field-error">{{ form.header_style.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.logo_size.label }}</span>{{ form.logo_size }}{% if form.logo_size.errors %}<span class="field-error">{{ form.logo_size.errors|striptags }}</span>{% endif %}</label>
+        <label class="checkbox-field">{{ form.show_bank_information }} <span class="field-label">{{ form.show_bank_information.label }}</span>{% if form.show_bank_information.errors %}<span class="field-error">{{ form.show_bank_information.errors|striptags }}</span>{% endif %}</label>
+        <label class="checkbox-field">{{ form.show_stamp }} <span class="field-label">{{ form.show_stamp.label }}</span>{% if form.show_stamp.errors %}<span class="field-error">{{ form.show_stamp.errors|striptags }}</span>{% endif %}</label>
+        <label class="checkbox-field">{{ form.show_signature }} <span class="field-label">{{ form.show_signature.label }}</span>{% if form.show_signature.errors %}<span class="field-error">{{ form.show_signature.errors|striptags }}</span>{% endif %}</label>
       </div>
     </section>
     <button class="btn btn-primary" type="submit">ذخیره تنظیمات</button>
@@ -78,7 +79,7 @@
       <button class="btn btn-secondary" type="submit">ذخیره امضای شخصی</button>
     </form>
   </section>
-  {% if can_manage_business_signature %}<section class="panel stack-md">
+  {% if can_manage_templates %}<section class="panel stack-md">
     <h2 class="section-title">قالب‌های پرکاربرد</h2>
     {% for saved in templates %}<div class="list-item"><a href="{% url 'invoicing:create' %}?template={{ saved.id }}"><strong>{{ saved.name }}</strong></a><form method="post" action="{% url 'invoicing:template_delete' saved.id %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit" data-confirm="این قالب حذف شود؟">حذف</button></form></div>{% empty %}<div class="empty-state">هنوز قالبی ذخیره نشده است.</div>{% endfor %}
   </section>{% endif %}

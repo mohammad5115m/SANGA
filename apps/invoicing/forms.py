@@ -150,7 +150,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     tax_amount = forms.DecimalField(
         label="مالیات",
@@ -159,7 +159,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     shipping_amount = forms.DecimalField(
         label="هزینه ارسال",
@@ -168,7 +168,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     adjustment_amount = forms.DecimalField(
         label="افزایش مبلغ (اختیاری)",
@@ -177,7 +177,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     paid_amount = forms.DecimalField(
         label="مبلغ کامل دریافت‌شده از مشتری",
@@ -186,7 +186,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     settlement_method = forms.ChoiceField(
         label="روش تسویه",
@@ -202,7 +202,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     credit_amount = forms.DecimalField(
         label="اعتبار",
@@ -211,7 +211,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     cheque_amount = forms.DecimalField(
         label="چک",
@@ -220,7 +220,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
         max_digits=16,
         decimal_places=2,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     cheque_reference = forms.CharField(
         label="شماره چک", required=False, max_length=100, widget=forms.TextInput(attrs=_TEXT)
@@ -422,7 +422,7 @@ class InvoiceLineForm(PersianNumericFormMixin, forms.Form):
         min_value=Decimal("0.001"),
         decimal_places=3,
         max_digits=12,
-        widget=forms.NumberInput(attrs={**_TEXT, "step": "0.001"}),
+        widget=forms.TextInput(attrs={**_TEXT, "inputmode": "decimal", "min": "0.001", "step": "0.001"}),
     )
     unit = forms.ChoiceField(label="واحد", choices=UNIT_CHOICES, widget=forms.Select(attrs=_TEXT))
     unit_price = forms.DecimalField(
@@ -431,7 +431,7 @@ class InvoiceLineForm(PersianNumericFormMixin, forms.Form):
         min_value=Decimal("0.01"),
         decimal_places=2,
         max_digits=14,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
     discount_type = forms.ChoiceField(
         label="نوع تخفیف",
@@ -446,7 +446,7 @@ class InvoiceLineForm(PersianNumericFormMixin, forms.Form):
         decimal_places=2,
         max_digits=16,
         initial=0,
-        widget=forms.NumberInput(attrs=_MONEY),
+        widget=forms.TextInput(attrs=_MONEY),
     )
 
     def __init__(self, *args, business=None, **kwargs):
@@ -553,8 +553,25 @@ class BusinessInvoiceSettingsForm(forms.ModelForm):
             "primary_color": forms.TextInput(attrs={**_TEXT, "type": "color"}),
             "header_style": forms.Select(attrs=_TEXT),
             "logo_size": forms.Select(attrs=_TEXT),
+            "show_bank_information": forms.CheckboxInput(attrs={"class": "field-checkbox"}),
+            "show_stamp": forms.CheckboxInput(attrs={"class": "field-checkbox"}),
+            "show_signature": forms.CheckboxInput(attrs={"class": "field-checkbox"}),
             "default_currency": forms.Select(attrs=_TEXT),
             "default_display_unit": forms.Select(attrs=_TEXT),
+        }
+        labels = {
+            "logo": "لوگو",
+            "stamp": "مهر",
+            "signature": "امضای رسمی کسب‌وکار",
+            "palette": "رنگ‌بندی",
+            "primary_color": "رنگ اصلی",
+            "header_style": "سبک سربرگ",
+            "logo_size": "اندازه لوگو",
+            "show_bank_information": "نمایش اطلاعات بانکی",
+            "show_stamp": "نمایش مهر",
+            "show_signature": "نمایش امضای فروشنده",
+            "default_currency": "ارز پیش‌فرض",
+            "default_display_unit": "واحد نمایش پیش‌فرض",
         }
 
     def clean_primary_color(self):

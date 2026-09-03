@@ -1,7 +1,7 @@
 {% extends "layouts/app_shell.html" %}
 {% load static %}
 {% block title %}فاکتور {{ invoice.display_number }} | سنگا{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=4">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=5">{% endblock %}
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar">
@@ -16,7 +16,7 @@
   <div class="invoice-detail-facts" aria-label="خلاصه فاکتور">
     <div><span class="muted">مبلغ نهایی</span><strong>{{ document.total_amount }} {{ document.unit_label }}</strong></div>
     <div><span class="muted">قابل پرداخت</span><strong>{{ document.amount_due }} {{ document.unit_label }}</strong></div>
-    <div><span class="muted">اقلام</span><strong>{% for line in document.lines %}{{ line.product_name }}{% if not forloop.last %}، {% endif %}{% endfor %}</strong></div>
+    <div><span class="muted">اقلام</span><strong>{{ document.lines|length }} ردیف{% if document.lines %} · {{ document.lines.0.product_name }}{% if document.lines|length > 1 %} و موارد دیگر{% endif %}{% endif %}</strong></div>
     <div><span class="muted">مبدأ</span><strong>{% if invoice.trade_id %}معامله ثبت‌شده{% else %}فاکتور دستی{% endif %}</strong></div>
     <div><span class="muted">نوع خریدار</span><strong>{{ invoice.get_counterparty_type_display }}</strong></div>
     <div><span class="muted">روش تسویه</span><strong>{{ invoice.get_settlement_method_display }}</strong></div>
@@ -38,7 +38,7 @@
     <h2 class="section-title">تصمیم خریدار</h2>
     <div class="alert alert-info">با تأیید، امضای رسمی کسب‌وکار و امضای شخصی شما روی همین نسخه ثابت می‌شود و فروش نهایی اثر مالی می‌گذارد.</div>
     <form method="post" action="{% url 'invoicing:confirm' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="این نسخه فاکتور تأیید شود؟">تأیید فاکتور</button></form>
-    <form class="stack-sm" method="post" action="{% url 'invoicing:reject' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">{{ decision_form.reason.label }}</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit">رد و بازگرداندن برای اصلاح</button></form>
+    <form class="stack-sm" method="post" action="{% url 'invoicing:reject' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">{{ decision_form.reason.label }}</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="این نسخه رد و برای اصلاح به فروشنده بازگردانده شود؟">رد و بازگرداندن برای اصلاح</button></form>
   </section>
   {% endif %}
   <iframe class="invoice-document-frame" title="نسخه نهایی فاکتور" src="{% url 'invoicing:print' invoice.id %}?embedded=1"></iframe>
@@ -60,7 +60,7 @@
       {% endif %}
       {% if can_manage %}<form class="invoice-destructive-action" method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>{% endif %}
       {% elif invoice.status == 'awaiting_confirmation' %}
-      {% if can_send %}<form class="stack-sm invoice-destructive-action" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit">لغو فاکتور در انتظار</button></form>{% endif %}
+      {% if can_send %}<form class="stack-sm invoice-destructive-action" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="فاکتور در انتظار لغو شود؟">لغو فاکتور در انتظار</button></form>{% endif %}
       {% elif invoice.status == 'issued' and can_cancel %}
       <form class="stack-sm invoice-destructive-action" method="post">
         {% csrf_token %}
@@ -88,8 +88,8 @@
     {% endfor %}
   </section>
   {% endif %}
-  {% if invoice.cheques.all %}
-  <section class="panel stack-md"><h2 class="section-title">چرخه چک‌ها</h2>{% for cheque in invoice.cheques.all %}<div class="list-item"><div><strong>{{ cheque.reference_number }} · {{ cheque.amount }} {{ cheque.currency }}</strong><div class="muted">سررسید {{ cheque.due_date|jdate }} · {{ cheque.get_status_display }}</div></div>{% if is_seller and can_manage_cheques %}<form method="post" action="{% url 'invoicing:cheque_status' cheque.id %}" class="btn-row">{% csrf_token %}{{ cheque_form.status }}{{ cheque_form.reason }}<button class="btn btn-secondary btn-sm" type="submit">ثبت وضعیت</button></form>{% endif %}</div>{% endfor %}</section>
+  {% if cheque_rows %}
+  <section class="panel stack-md"><h2 class="section-title">چرخه چک‌ها</h2>{% for row in cheque_rows %}<div class="list-item"><div><strong>{{ row.cheque.reference_number }} · {{ row.cheque.amount }} {{ row.cheque.currency }}</strong><div class="muted">سررسید {{ row.cheque.due_date|jdate }} · {{ row.cheque.get_status_display }}</div></div>{% if is_seller and can_manage_cheques %}<form method="post" action="{% url 'invoicing:cheque_status' row.cheque.id %}" class="invoice-cheque-form">{% csrf_token %}<label class="field"><span class="field-label">{{ row.form.status.label }}</span>{{ row.form.status }}</label><label class="field"><span class="field-label">{{ row.form.reason.label }}</span>{{ row.form.reason }}</label><button class="btn btn-secondary btn-sm" type="submit">ثبت وضعیت</button></form>{% endif %}</div>{% endfor %}</section>
   {% endif %}
   <p class="muted">اثر مالی فقط هنگام نهایی‌شدن فاکتور ثبت می‌شود؛ رویدادهای چک و برگشت‌ها نیز بدون ویرایش تاریخچه، سند مستقل می‌سازند.</p>
 </section>

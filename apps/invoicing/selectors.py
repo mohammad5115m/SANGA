@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.db.models import Q, QuerySet
 
 from apps.businesses.models import Business
+from apps.core.persian import normalize_digits
 
 from .models import SalesInvoice
 
@@ -35,7 +36,6 @@ def invoices_for(business: Business) -> QuerySet[SalesInvoice]:
             Q(seller_business=business) | Q(buyer_business=business, status__in=BUYER_VISIBLE_STATUSES)
         )
         .select_related("seller_business", "buyer_business", "local_counterparty", "trade")
-        .prefetch_related("revisions", "settlement_events", "cheques")
     )
 
 
@@ -48,7 +48,12 @@ def invoices_between(business: Business, colleague: Business) -> QuerySet[SalesI
 
 def get_invoice(business: Business, invoice_id) -> SalesInvoice | None:
     """Visible to both parties, and to nobody else."""
-    return invoices_for(business).filter(pk=invoice_id).first()
+    return (
+        invoices_for(business)
+        .prefetch_related("items", "revisions", "settlement_events", "cheques")
+        .filter(pk=invoice_id)
+        .first()
+    )
 
 
 def recent_customers(business: Business, *, limit: int = 12) -> list[dict]:
@@ -89,13 +94,19 @@ def filter_invoices(
     q: str = "",
     direction: str = "",
     origin: str = "",
+    sort: str = "newest",
     date_from=None,
     date_to=None,
 ) -> QuerySet[SalesInvoice]:
     if status:
         qs = qs.filter(status=status)
     if q:
-        qs = qs.filter(Q(number__icontains=q) | Q(buyer_name__icontains=q) | Q(seller_business__name__icontains=q))
+        normalized_q = normalize_digits(q)
+        qs = qs.filter(
+            Q(number__icontains=normalized_q)
+            | Q(buyer_name__icontains=q)
+            | Q(seller_business__name__icontains=q)
+        )
     if direction == "sent":
         qs = qs.filter(seller_business=business)
     elif direction == "received":
@@ -108,4 +119,8 @@ def filter_invoices(
         qs = qs.filter(issue_date__gte=date_from)
     if date_to:
         qs = qs.filter(issue_date__lte=date_to)
-    return qs
+    ordering = {
+        "oldest": ("issue_date", "created_at"),
+        "newest": ("-issue_date", "-created_at"),
+    }
+    return qs.order_by(*ordering.get(sort, ordering["newest"]))

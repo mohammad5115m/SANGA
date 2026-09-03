@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}{% if invoice %}ویرایش پیش‌نویس{% else %}فاکتور جدید{% endif %} | سنگا{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=4">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=5">{% endblock %}
 
 {% block content %}
 <section class="stack-lg invoice-editor" data-invoice-editor>
@@ -113,6 +113,10 @@
               {% endif %}
             {% endfor %}
           </div>
+          <div class="invoice-settlement-tools">
+            <span class="invoice-settlement-status" data-settlement-status role="status">پس از تکمیل اقلام، وضعیت تسویه محاسبه می‌شود.</span>
+            <button class="btn btn-ghost btn-sm" type="button" data-settlement-autofill hidden>تکمیل خودکار تسویه</button>
+          </div>
           <div class="form-grid form-grid-compact" data-cheque-fields>
             {% for field in form %}
               {% if field.name in 'cheque_reference cheque_bank cheque_due_date cheque_drawer' %}
@@ -152,4 +156,4 @@
 </section>
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}?v=4"></script><script src="{% static 'js/invoice_editor.js' %}?v=6"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}?v=4"></script><script src="{% static 'js/invoice_editor.js' %}?v=7"></script>{% endblock %}

@@ -1,66 +1,115 @@
 {% extends "layouts/app_shell.html" %}
-{% load money %}
+{% load money static %}
 
-{% block title %}همکاران محلی و اتصال سابقه{% endblock %}
+{% block title %}همکاران محلی و اتصال سابقه | سنگا{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=5">{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div><h1>همکاران محلی و اتصال سابقه</h1><p class="muted">اتصال فقط پس از تأیید کسب‌وکار مقصد انجام می‌شود.</p></div>
-</div>
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">همکاران محلی و اتصال سابقه</h1>
+      <p class="page-lead">تبدیل سابقه آفلاین به سابقه مشترک، فقط پس از تأیید کسب‌وکار مقصد</p>
+    </div>
+    <a class="btn btn-ghost" href="{% url 'invoicing:settings' %}">بازگشت به تنظیمات</a>
+  </div>
 
-{% if can_propose %}
-<section class="card stack">
-  <h2>پیشنهاد اتصال</h2>
-  <form method="post" action="{% url 'invoicing:counterparty_link_propose' %}" class="form-grid">
-    {% csrf_token %}
-    <label>همکار محلی
-      <select name="local_counterparty" required>
-        <option value="">انتخاب کنید</option>
-        {% for local in local_counterparties %}{% if not local.linked_business_id %}<option value="{{ local.id }}">{{ local.name }}{% if local.phone %} · {{ local.phone }}{% endif %}</option>{% endif %}{% endfor %}
-      </select>
-    </label>
-    <label>کسب‌وکار مقصد
-      <select name="target_business" required>
-        <option value="">انتخاب کنید</option>
-        {% for target in targets %}<option value="{{ target.id }}">{{ target.name }} · {{ target.city }}</option>{% endfor %}
-      </select>
-    </label>
-    <button class="button" type="submit">ارسال برای تأیید مقصد</button>
-  </form>
-</section>
-{% endif %}
+  <div class="alert alert-info">
+    تأیید اتصال، برای فاکتورهای آفلاین قطعی همکار محلی در دفتر مقصد سند متناظر می‌سازد؛
+    فاکتورها و دفتر فروشنده تغییر یا تکثیر نمی‌شوند.
+  </div>
 
-{% if can_approve %}
-<section class="stack">
-  <h2>درخواست‌های ورودی</h2>
-  {% for proposal in incoming_proposals %}
-    <article class="card stack">
-      <h3>{{ proposal.local_counterparty.name }}</h3>
-      <p>{{ proposal.local_counterparty.phone|default:"بدون تلفن" }} · ثبت‌شده نزد {{ proposal.local_counterparty.owner_business.name }}</p>
-      <p class="muted">پیامد تأیید: برای هر فاکتور آفلاین قطعی، سند خرید و تسویهٔ متناظر با provenance یک import batch در دفتر شما ساخته می‌شود؛ دفتر و اسناد فروشنده تغییر یا تکثیر نمی‌شوند.</p>
-      <h4>فاکتورها</h4>
-      <ul>{% for invoice in proposal.local_counterparty.invoices.all %}<li>{{ invoice.display_number }} · {{ invoice.get_status_display }} · {{ invoice.total_amount|rial }} {{ invoice.currency }}</li>{% empty %}<li>فاکتوری ثبت نشده است.</li>{% endfor %}</ul>
-      <h4>سابقه دفتر فروشنده</h4>
-      <ul>{% for entry in proposal.local_counterparty.ledger_entries.all %}<li>{{ entry.occurred_on|jdate }} · {{ entry.get_entry_type_display }} · {{ entry.amount|rial }} · مانده {{ entry.balance_after|rial }}</li>{% empty %}<li>سند مالی ثبت نشده است.</li>{% endfor %}</ul>
-      <p>وضعیت: {{ proposal.get_status_display }}</p>
-      {% if proposal.status == 'pending' %}
-      <form method="post" action="{% url 'invoicing:counterparty_link_decide' proposal.id %}" class="inline-actions">
-        {% csrf_token %}<input name="reason" maxlength="250" placeholder="توضیح تصمیم (اختیاری)">
-        <button class="button" name="decision" value="approve" type="submit">تأیید و انتقال یک‌باره</button>
-        <button class="button button-secondary" name="decision" value="reject" type="submit">رد</button>
-      </form>
-      {% endif %}
-    </article>
-  {% empty %}<div class="empty-state">درخواست ورودی ندارید.</div>{% endfor %}
-</section>
-{% endif %}
+  {% if can_propose %}
+  <section class="panel stack-md" aria-labelledby="link-proposal-title">
+    <div>
+      <h2 class="section-title" id="link-proposal-title">پیشنهاد اتصال</h2>
+      <p class="muted">همکار محلی را به کسب‌وکار واقعی او در سنگا پیشنهاد دهید.</p>
+    </div>
+    {% if local_counterparties and targets %}
+    <form method="post" action="{% url 'invoicing:counterparty_link_propose' %}" class="form-grid">
+      {% csrf_token %}
+      <label class="field">
+        <span class="field-label">همکار محلی</span>
+        <select class="field-input" name="local_counterparty" required>
+          <option value="">انتخاب کنید</option>
+          {% for local in local_counterparties %}<option value="{{ local.id }}">{{ local.name }}{% if local.phone %} · {{ local.phone }}{% endif %}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">کسب‌وکار مقصد</span>
+        <select class="field-input" name="target_business" required>
+          <option value="">انتخاب کنید</option>
+          {% for target in targets %}<option value="{{ target.id }}">{{ target.name }}{% if target.city %} · {{ target.city }}{% endif %}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit" data-confirm="پیشنهاد اتصال برای تأیید کسب‌وکار مقصد ارسال شود؟">ارسال پیشنهاد</button>
+    </form>
+    {% elif not local_counterparties %}
+    <div class="empty-state stack-sm">
+      <span>همکار محلیِ بدون اتصال ندارید. هنگام ساخت فاکتور، حالت «همکار محلی» را انتخاب کنید.</span>
+      <a class="btn btn-primary" href="{% url 'invoicing:create' %}">ساخت فاکتور همکار محلی</a>
+    </div>
+    {% else %}
+    <div class="empty-state">کسب‌وکار فعالی برای پیشنهاد اتصال پیدا نشد.</div>
+    {% endif %}
+  </section>
+  {% endif %}
 
-<section class="stack">
-  <h2>پیشنهادهای ارسالی</h2>
-  {% for proposal in outgoing_proposals %}
-    <article class="card"><strong>{{ proposal.local_counterparty.name }}</strong> ← {{ proposal.target_business.name }} · {{ proposal.get_status_display }}
-      {% if proposal.status == 'pending' and can_propose %}<form method="post" action="{% url 'invoicing:counterparty_link_cancel' proposal.id %}" class="inline-form">{% csrf_token %}<button class="button button-secondary" type="submit">لغو پیشنهاد</button></form>{% endif %}
-    </article>
-  {% empty %}<div class="empty-state">پیشنهاد ارسالی ندارید.</div>{% endfor %}
+  {% if can_approve %}
+  <section class="stack-md" aria-labelledby="incoming-links-title">
+    <div>
+      <h2 class="section-title" id="incoming-links-title">درخواست‌های ورودی</h2>
+      <p class="muted">پیش از تأیید، تعداد اسناد قابل انتقال را بررسی کنید.</p>
+    </div>
+    <div class="list-stack">
+      {% for proposal in incoming_proposals %}
+      <article class="panel stack-sm">
+        <div class="toolbar">
+          <div>
+            <h3 class="section-subtitle">{{ proposal.local_counterparty.name }}</h3>
+            <p class="muted">ثبت‌شده نزد {{ proposal.local_counterparty.owner_business.name }}{% if proposal.local_counterparty.phone %} · <span dir="ltr">{{ proposal.local_counterparty.phone }}</span>{% endif %}</p>
+          </div>
+          <span class="badge invoice-status-badge">{{ proposal.get_status_display }}</span>
+        </div>
+        <div class="btn-row" aria-label="خلاصه سابقه قابل انتقال">
+          <span class="badge">{{ proposal.invoice_count }} فاکتور</span>
+          <span class="badge">{{ proposal.ledger_entry_count }} سند مالی</span>
+        </div>
+        {% if proposal.status == 'pending' %}
+        <form method="post" action="{% url 'invoicing:counterparty_link_decide' proposal.id %}" class="stack-sm">
+          {% csrf_token %}
+          <label class="field"><span class="field-label">توضیح تصمیم (اختیاری)</span><input class="field-input" name="reason" maxlength="250"></label>
+          <div class="btn-row">
+            <button class="btn btn-primary" name="decision" value="approve" type="submit" data-confirm="اتصال تأیید و سابقه قطعی یک‌باره منتقل شود؟">تأیید و انتقال سابقه</button>
+            <button class="btn btn-danger" name="decision" value="reject" type="submit" data-confirm="این پیشنهاد اتصال رد شود؟">رد پیشنهاد</button>
+          </div>
+        </form>
+        {% elif proposal.decision_reason %}<p class="muted">توضیح تصمیم: {{ proposal.decision_reason }}</p>{% endif %}
+      </article>
+      {% empty %}<div class="empty-state">درخواست ورودی ندارید.</div>{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="stack-md" aria-labelledby="outgoing-links-title">
+    <div>
+      <h2 class="section-title" id="outgoing-links-title">پیشنهادهای ارسالی</h2>
+      <p class="muted">وضعیت پیشنهادهایی که برای کسب‌وکارهای دیگر فرستاده‌اید.</p>
+    </div>
+    <div class="list-stack">
+      {% for proposal in outgoing_proposals %}
+      <article class="list-item invoice-list-item">
+        <div>
+          <div class="list-title">{{ proposal.local_counterparty.name }} ← {{ proposal.target_business.name }}</div>
+          <div class="muted">{{ proposal.created_at|jdatetime }}{% if proposal.decision_reason %} · {{ proposal.decision_reason }}{% endif %}</div>
+        </div>
+        <div class="btn-row">
+          <span class="badge invoice-status-badge">{{ proposal.get_status_display }}</span>
+          {% if proposal.status == 'pending' and can_propose %}<form method="post" action="{% url 'invoicing:counterparty_link_cancel' proposal.id %}">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit" data-confirm="این پیشنهاد اتصال لغو شود؟">لغو</button></form>{% endif %}
+        </div>
+      </article>
+      {% empty %}<div class="empty-state">پیشنهاد ارسالی ندارید.</div>{% endfor %}
+    </div>
+  </section>
 </section>
 {% endblock %}

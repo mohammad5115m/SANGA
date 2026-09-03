@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 from io import BytesIO
 from zipfile import ZipFile
@@ -190,6 +191,31 @@ def test_create_and_edit_views_add_delete_reorder_and_issue_lines(client, seller
     assert invoice.items.count() == 1
     assert invoice.items.get().product_name == "سنگ ویرایش‌شده"
     assert invoice.items.get().quantity == Decimal("3.000")
+
+
+@pytest.mark.django_db
+def test_failed_partner_send_redirects_to_the_recoverable_draft(client, seller):
+    _login(client, seller[0])
+    buyer = make_business(name="خریدار همکار", owner_phone="09121117702")
+    payload = _form_payload(action="issue")
+    payload.update(
+        {
+            "submission_id": str(uuid.uuid4()),
+            "counterparty_mode": SalesInvoice.Counterparty.BUSINESS,
+            "buyer_business": str(buyer.id),
+            "settlement_method": SalesInvoice.SettlementMethod.CREDIT,
+            "cash_amount": "0",
+            "credit_amount": "0",
+            "cheque_amount": "0",
+        }
+    )
+
+    response = client.post(reverse("invoicing:create"), payload)
+    invoice = SalesInvoice.objects.get(buyer_business=buyer)
+
+    assert response.status_code == 302
+    assert response.url == reverse("invoicing:edit", kwargs={"invoice_id": invoice.id})
+    assert invoice.status == SalesInvoice.Status.DRAFT
 
 
 @pytest.mark.django_db
