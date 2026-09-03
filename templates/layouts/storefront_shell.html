@@ -1,24 +1,36 @@
 {% extends "base.html" %}
 
+{% block extra_head %}<meta name="robots" content="noindex,nofollow,noarchive">{% block storefront_extra_head %}{% endblock %}{% endblock %}
+
 {% block body_class %}storefront-body{% endblock %}
 
 {% block shell %}
 <div class="storefront-shell">
   <header class="storefront-top">
-    <a class="brand-lockup" href="{% url 'catalog:storefront' business.slug %}">
-      {% if business.logo %}
-        <img class="business-logo" src="{{ business.logo.url }}" alt="{{ business.name }}">
-      {% else %}
+    {% if business %}
+      <a class="brand-lockup storefront-brand" href="{% url 'catalog:storefront' business.storefront_token %}">
+        {% if business.logo %}
+          <img class="business-logo" src="{{ business.logo.url }}" alt="نشان {{ business.name }}" decoding="async">
+        {% else %}
+          <span class="brand-mark" aria-hidden="true"></span>
+        {% endif %}
+        <div>
+          <div class="brand-name">{{ business.name }}</div>
+          <div class="brand-sub">{% if business.city %}{{ business.city }} · {% endif %}سنگا</div>
+        </div>
+      </a>
+    {% else %}
+      <span class="brand-lockup storefront-brand">
         <span class="brand-mark" aria-hidden="true"></span>
-      {% endif %}
-      <div>
-        <div class="brand-name">{{ business.name }}</div>
-        <div class="brand-sub">{% if business.city %}{{ business.city }} · {% endif %}کاتالوگ سنگا</div>
-      </div>
-    </a>
-    {% block storefront_actions %}{% endblock %}
+        <div>
+          <div class="brand-name">سنگا</div>
+          <div class="brand-sub">ویترین خصوصی فروشنده</div>
+        </div>
+      </span>
+    {% endif %}
+    <div class="storefront-actions">{% block storefront_actions %}{% endblock %}</div>
   </header>
-  <main class="storefront-main">
+  <main class="storefront-main" id="main-content" tabindex="-1">
     {% block content %}{% endblock %}
   </main>
   <footer class="storefront-footer">

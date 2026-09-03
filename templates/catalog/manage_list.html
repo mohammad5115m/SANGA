@@ -1,32 +1,49 @@
 {% extends "layouts/app_shell.html" %}
-{% block title %}کاتالوگ‌ها | سنگا{% endblock %}
-
+{% block title %}مدیریت ویترین | سنگا{% endblock %}
 {% block content %}
 <section class="stack-lg">
-  <div class="toolbar">
-    <div>
-      <h1 class="page-title">کاتالوگ‌های اختصاصی</h1>
-      <p class="page-lead">برای مشتری لینک انتخاب‌شده بسازید</p>
+  <div class="toolbar"><div><h1 class="page-title">کانال‌های فروش</h1><p class="page-lead">ویترین عمومی و کاتالوگ‌های مشتری را جدا و شفاف مدیریت کنید.</p></div><a class="btn btn-primary" href="{{ storefront_url }}" target="_blank" rel="noopener">پیش‌نمایش ویترین</a></div>
+  <nav class="surface-switcher" aria-label="بخش‌های کانال فروش"><a class="surface-switcher-item is-active" href="#storefront-management"><span>ویترین فروشگاه</span></a><a class="surface-switcher-item" href="#customer-catalogs"><span>کاتالوگ‌های مشتری</span></a></nav>
+  <div id="storefront-management" class="section-anchor" tabindex="-1"></div>
+  <section class="panel stack-md storefront-link-panel" aria-labelledby="share-storefront-heading">
+    <div><h2 class="section-title" id="share-storefront-heading">لینک اشتراک ویترین</h2><p class="muted">هرکس این لینک را داشته باشد بدون ورود می‌تواند محصولات منتشرشده فروشگاه را با قیمت مشتری ببیند.</p></div>
+    <div class="secure-link" dir="ltr">{{ storefront_url }}</div>
+    {% with share_url=storefront_url product=current_business %}{% include "catalog/_share_actions.html" %}{% endwith %}
+    <details class="danger-disclosure"><summary>باطل‌کردن لینک قبلی</summary><p class="muted">با ساخت لینک تازه، لینک قبلی فوراً دیگر کار نمی‌کند.</p><form method="post" action="{% url 'catalog_manage:storefront_token_regenerate' %}">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit">ساخت لینک تازه و ابطال قبلی</button></form></details>
+  </section>
+  <section class="panel storefront-status-grid" aria-label="وضعیت ویترین"><div><strong>{{ special_count }}</strong><span>فروش ویژه فعال</span><a href="{% url 'inventory:lot_list' %}">مدیریت قیمت محصولات</a></div><div><strong>{{ collections|length }}</strong><span>مجموعه قابل ویرایش</span><a href="{% url 'catalog_manage:collection_create' %}">مجموعه تازه</a></div></section>
+  <section class="stack-md" aria-labelledby="specials-manage-heading">
+    <div class="toolbar">
+      <div><h2 class="section-title" id="specials-manage-heading">فروش‌های ویژه فعال</h2><p class="muted">قیمت عادی، قیمت ویژه و زمان پایان از قیمت مشتری هر محصول خوانده می‌شود.</p></div>
+      {% if 'prices.edit' in capabilities %}<a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">تعریف فروش ویژه برای محصول</a>{% endif %}
     </div>
-    <a class="btn btn-primary" href="{% url 'catalog_manage:create' %}">کاتالوگ جدید</a>
-  </div>
-
-  <div class="list-stack">
-    {% for catalog in catalogs %}
-      <a class="list-item" href="{% url 'catalog_manage:detail' catalog.id %}">
-        <div>
-          <div class="list-title">{{ catalog.title }}</div>
-          <div class="muted">{% if catalog.customer_name %}{{ catalog.customer_name }} · {% endif %}{{ catalog.items.count }} قلم · {{ catalog.view_count }} بازدید</div>
-        </div>
-        <span class="badge {% if catalog.is_active %}badge-accent{% else %}badge-muted{% endif %}">
-          {% if catalog.is_active %}فعال{% else %}غیرفعال{% endif %}
-        </span>
-      </a>
-    {% empty %}
-      <div class="empty-state">هنوز کاتالوگی نساخته‌اید.</div>
-    {% endfor %}
-  </div>
-
-  <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}">مشاهده ویترین عمومی</a>
+    <div class="list-stack">
+      {% for card in special_cards %}
+        <article class="list-item special-manage-row">
+          <div>
+            <div class="list-title">{{ card.product.commercial_name }}</div>
+            <div class="special-manage-prices"><span class="catalog-price-old">{{ card.price.regular_label }}</span><strong>{{ card.price.label }}</strong><span class="badge badge-special">{{ card.price.discount_percent }}٪ تخفیف</span></div>
+            <div class="muted">{{ card.price.remaining_label }}</div>
+          </div>
+          <div class="btn-row">
+            <a class="btn btn-ghost btn-sm" href="{% url 'catalog:lot_detail' current_business.storefront_token card.lot.id %}" target="_blank" rel="noopener">نمایش به مشتری</a>
+            {% if 'inventory.edit' in capabilities and 'prices.edit' in capabilities %}<a class="btn btn-secondary btn-sm" href="{% url 'inventory:lot_edit' card.lot.id %}">ویرایش پیشنهاد</a>{% endif %}
+          </div>
+        </article>
+      {% empty %}
+        <div class="empty-state special-empty-state"><h3>فروش ویژه فعالی ندارید</h3><p>برای نمایش بخش «فروش ویژه» در ویترین، قیمت مشتری یک محصول و زمان پایان پیشنهاد را ثبت کنید.</p>{% if 'prices.edit' in capabilities %}<a class="btn btn-primary" href="{% url 'inventory:lot_list' %}">انتخاب محصول و ثبت پیشنهاد</a>{% endif %}</div>
+      {% endfor %}
+    </div>
+  </section>
+  <section class="stack-md" aria-labelledby="collections-heading">
+    <div class="toolbar"><div><h2 class="section-title" id="collections-heading">مجموعه‌های ویترین</h2><p class="muted">مجموعه‌های فعال و دارای محصول در ویترین مشتری نمایش داده می‌شوند.</p></div><a class="btn btn-secondary" href="{% url 'catalog_manage:collection_create' %}">ساخت مجموعه</a></div>
+    <div class="list-stack">
+      {% for collection in collections %}<article class="list-item collection-manage-row"><div><a class="list-title" href="{% url 'catalog_manage:collection_edit' collection.id %}">{{ collection.title }}</a><div class="muted">{{ collection.items.all|length }} محصول · {% if collection.is_active %}نمایش در ویترین{% else %}پنهان{% endif %}</div>{% if collection.suggestion_kind %}<span class="badge">پیشنهاد: {{ collection.get_suggestion_kind_display }}</span>{% endif %}</div><div class="btn-row collection-order-actions"><form method="post" action="{% url 'catalog_manage:collection_move' collection.id %}">{% csrf_token %}<input type="hidden" name="direction" value="up"><button class="btn btn-ghost btn-sm" type="submit" aria-label="انتقال {{ collection.title }} به بالا">بالا</button></form><form method="post" action="{% url 'catalog_manage:collection_move' collection.id %}">{% csrf_token %}<input type="hidden" name="direction" value="down"><button class="btn btn-ghost btn-sm" type="submit" aria-label="انتقال {{ collection.title }} به پایین">پایین</button></form><a class="btn btn-secondary btn-sm" href="{% url 'catalog_manage:collection_edit' collection.id %}">ویرایش</a></div></article>{% empty %}<div class="empty-state">هنوز مجموعه‌ای برای ویترین ندارید.</div>{% endfor %}
+    </div>
+  </section>
+  <section class="stack-md section-anchor" id="customer-catalogs" aria-labelledby="custom-catalogs-heading" tabindex="-1">
+    <div class="toolbar"><div><h2 class="section-title" id="custom-catalogs-heading">کاتالوگ‌های اختصاصی مشتریان</h2><p class="muted">فهرست‌های جداگانه برای یک مشتری یا پروژه مشخص.</p></div><a class="btn btn-secondary" href="{% url 'inventory:lot_list' %}">ساخت از موجودی</a></div>
+    <div class="list-stack">{% for catalog in catalogs %}<a class="list-item" href="{% url 'catalog_manage:detail' catalog.id %}"><div><div class="list-title">{{ catalog.title }}</div><div class="muted">{% if catalog.customer_name %}{{ catalog.customer_name }} · {% endif %}{{ catalog.item_count }} محصول · {{ catalog.view_count }} بازدید ثبت‌شده</div></div><span class="badge {% if catalog.effective_status == 'active' %}badge-accent{% elif catalog.effective_status == 'expired' %}badge-danger{% else %}badge-muted{% endif %}">{{ catalog.effective_status_label }}</span></a>{% empty %}<div class="empty-state">هنوز کاتالوگ مشتری نساخته‌اید.</div>{% endfor %}</div>
+  </section>
 </section>
 {% endblock %}

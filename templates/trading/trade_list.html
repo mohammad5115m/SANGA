@@ -1,0 +1,39 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}معاملات نهایی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">خرید و فروش</h1>
+    <p class="page-lead">همه خریدها و فروش‌های نهایی کسب‌وکار شما</p>
+  </div>
+
+  <div class="tab-row">
+    <a class="tab" href="{% url 'trading:proposal_list' %}">توافق‌های معامله</a>
+    <a class="tab is-active" href="{% url 'trading:trade_list' %}">معاملات نهایی</a>
+    <a class="tab" href="{% url 'trading:received_list' %}">سوابق درخواست قدیمی</a>
+  </div>
+
+  <div class="btn-row">
+    <a class="btn btn-primary" href="{% url 'trading:proposal_create' %}">ثبت توافق معامله</a>
+  </div>
+
+  <div class="list-stack">
+    {% for trade in trades %}
+      <a class="lot-card" href="{% url 'trading:trade_detail' trade.id %}">
+        <div class="lot-body">
+          <div class="list-title">{{ trade.summary_label }}</div>
+          <div class="muted">{{ trade.seller_business.name }} ← {{ trade.counterparty_label }} · {{ trade.finalized_at|jdate }}</div>
+          <div class="muted" dir="ltr">{{ trade.total_amount|rial }} {{ trade.currency }}</div>
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state">هنوز معامله‌ای نهایی نشده است.</div>
+    {% endfor %}
+  </div>
+
+  {% include "_pager.html" %}
+</section>
+{% endblock %}

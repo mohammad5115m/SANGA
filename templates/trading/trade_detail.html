@@ -1,0 +1,102 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}معامله | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{{ trade.summary_label }}</h1>
+    <p class="page-lead">{{ trade.finalized_at|jdatetime }}</p>
+  </div>
+
+  {% comment %}Every value here is the snapshot taken at finalization, not a live lookup:
+  renaming or deleting the product must not rewrite what was sold.{% endcomment %}
+  <section class="panel stack-sm">
+    <div class="kv"><span>فروشنده</span><strong>{{ trade.seller_business.name }}</strong></div>
+    <div class="kv"><span>خریدار</span><strong>{{ trade.counterparty_label }}</strong></div>
+    {% if trade.customer_phone %}
+      <div class="kv"><span>موبایل مشتری</span><strong dir="ltr">{{ trade.customer_phone }}</strong></div>
+    {% endif %}
+    {% if trade.note %}<div class="kv"><span>توضیح</span><strong>{{ trade.note }}</strong></div>{% endif %}
+  </section>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">اقلام فروش</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">محصول</th>
+            <th scope="col">متراژ</th>
+            <th scope="col">قیمت واحد</th>
+            <th scope="col">جمع</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in trade.items.all %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>
+                {{ line.product_name }}
+                {% if line.stone_type or line.grade %}
+                  <div class="muted">
+                    {{ line.stone_type }}{% if line.grade %} · {{ line.grade }}{% endif %}
+                  </div>
+                {% endif %}
+              </td>
+              <td class="num">{{ line.quantity }} m²</td>
+              <td class="num" dir="ltr">{{ line.unit_price|rial }}</td>
+              <td class="num" dir="ltr">{{ line.line_total|rial }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row" colspan="4">مبلغ کل</th>
+            <td class="num" dir="ltr">{{ trade.total_amount|rial }} {{ trade.currency }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel stack-md">
+    <h2 class="section-title">فاکتور</h2>
+    {% if invoice %}
+      <div class="kv">
+        <span>شماره</span>
+        <strong><a href="{% url 'invoicing:detail' invoice.id %}">{{ invoice.display_number }}</a></strong>
+      </div>
+      <div class="kv"><span>وضعیت</span><strong>{{ invoice.get_status_display }}</strong></div>
+    {% else %}
+      <p class="muted">این سابقه قدیمی فاکتور متصل ندارد و فقط خواندنی است.</p>
+    {% endif %}
+  </section>
+
+  {% comment %}One link per sold line, not one for the trade: a multi-line sale leaves
+  trade.item blank on purpose, and keying off it meant a seller who sold three
+  stones was offered no way to update any of them.{% endcomment %}
+  {% if is_seller %}
+    <section class="panel stack-md">
+      <h2 class="section-title">موجودی محصولات</h2>
+      <p class="muted">
+        موجودی این محصولات به‌صورت خودکار کم نشده است. اگر مقدار تغییر کرده، آن را
+        به‌روزرسانی کنید.
+      </p>
+      <div class="btn-row">
+        {% for line in trade.items.all %}
+          {% if line.item_id %}
+            <a class="btn btn-secondary" href="{% url 'inventory:lot_confirm_stock' line.item_id %}">
+              {{ line.product_name }}
+            </a>
+          {% endif %}
+        {% empty %}
+          <p class="muted">این فروش به محصولی در فهرست شما متصل نیست.</p>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

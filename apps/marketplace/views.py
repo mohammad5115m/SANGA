@@ -3,85 +3,80 @@ from __future__ import annotations
 import logging
 
 from django.contrib import messages
+from django.db import models
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.views.decorators.http import require_http_methods, require_POST
+from django.urls import reverse
+from django.views.decorators.http import require_GET
 
 from apps.businesses.decorators import business_login_required
-from apps.inquiries.models import Inquiry
-from apps.inquiries.services import InquiryError, create_inquiry
+from apps.core.pagination import paginate
+from apps.inventory.filters import effective_price_bounds
+from apps.inventory.forms import MarketplaceItemFilterForm
+from apps.inventory.selectors import lots_for_business
 
-from .forms import MarketplaceFilterForm, SaveSearchForm
+from .models import PartnerInquiry
 from .selectors import (
     filter_marketplace_lots,
     get_marketplace_lot,
+    get_marketplace_lot_by_token,
     marketplace_lots_for,
-    saved_searches_for,
 )
-from .services import MarketplaceError, b2b_price_context, marketplace_lot_card, save_search
+from .services import b2b_price_context, marketplace_lot_card
 
 logger = logging.getLogger(__name__)
 
 
+def _partner_share_url(request: HttpRequest, lot) -> str:
+    return request.build_absolute_uri(
+        reverse("marketplace:shared_item", args=[lot.public_token])
+    )
+
+
 @business_login_required
+@require_GET
 def marketplace_home(request: HttpRequest) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
 
-    form = MarketplaceFilterForm(request.GET or None)
-    qs = marketplace_lots_for(request.business)
-    if form.is_valid():
-        qs = filter_marketplace_lots(
-            qs,
-            q=form.cleaned_data.get("q", ""),
-            stone_type=form.cleaned_data.get("stone_type", ""),
-            color=form.cleaned_data.get("color", ""),
-            only_urgent=bool(form.cleaned_data.get("only_urgent")),
-            min_qty=form.cleaned_data.get("min_qty", ""),
-        )
-    cards = [marketplace_lot_card(lot, request.business) for lot in qs[:80]]
-    save_form = SaveSearchForm()
+    form = MarketplaceItemFilterForm(request.GET or None)
+    spec = form.to_spec()
+    base = marketplace_lots_for(request.business)
+    qs = filter_marketplace_lots(base, spec=spec)
+    minimum, maximum = effective_price_bounds(
+        base, spec=spec, audience="colleague"
+    )
+    page = paginate(request, qs)
+    cards = []
+    for lot in page.object_list:
+        card = marketplace_lot_card(lot, request.business)
+        card["share_url"] = _partner_share_url(request, lot)
+        cards.append(card)
     return render(
         request,
         "marketplace/home.html",
         {
             "filter_form": form,
-            "save_form": save_form,
             "cards": cards,
-            "saved_searches": saved_searches_for(request.business, request.user)[:10],
+            "page": page,
+            "price_bounds": {"minimum": minimum, "maximum": maximum},
         },
     )
 
 
 @business_login_required
-@require_http_methods(["GET", "POST"])
 def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
     if not request.business:
-        return redirect("businesses:onboarding_start")
+        return redirect("businesses:no_business")
     lot = get_marketplace_lot(request.business, lot_id)
     if lot is None:
-        messages.error(request, "این محموله در شبکه همکاران قابل مشاهده نیست.")
+        messages.error(
+            request,
+            "این محصول اکنون با قیمت و موجودی معتبر در بازار قابل مشاهده نیست.",
+        )
         return redirect("marketplace:home")
 
-    from apps.catalog.forms import InquiryForm
-
-    form = InquiryForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            create_inquiry(
-                business=lot.business,
-                lot=lot,
-                name=form.cleaned_data["name"],
-                phone=form.cleaned_data["phone"],
-                message=form.cleaned_data.get("message", ""),
-                source=Inquiry.Source.MARKETPLACE,
-                requester=request.user,
-            )
-        except InquiryError as exc:
-            form.add_error(None, exc.message)
-        else:
-            messages.success(request, "استعلام برای تأمین‌کننده ارسال شد.")
-            return redirect("marketplace:lot_detail", lot_id=lot.id)
+    from apps.inventory.freshness import stock_view
 
     return render(
         request,
@@ -91,38 +86,69 @@ def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             "product": lot.product,
             "supplier": lot.business,
             "price": b2b_price_context(lot, request.business),
-            "media_items": [m for m in lot.media.all() if m.kind == "image"],
-            "inquiry_form": form,
+            "stock": stock_view(lot),
+            "media_items": lot.media.all(),
+            "share_url": _partner_share_url(request, lot),
         },
     )
 
 
 @business_login_required
-@require_POST
-def save_current_search(request: HttpRequest) -> HttpResponse:
+@require_GET
+def marketplace_shared_item(
+    request: HttpRequest, public_token: str
+) -> HttpResponse:
+    """Resolve one opaque B2B link according to the signed-in business.
+
+    A seller lands on their own inventory record; another eligible colleague
+    lands on the B2B detail page. Anonymous visitors never reach this view.
+    """
     if not request.business:
-        return redirect("businesses:onboarding_start")
-    form = SaveSearchForm(request.POST)
-    filters = MarketplaceFilterForm(request.POST)
-    if form.is_valid() and filters.is_valid():
-        try:
-            save_search(
-                business=request.business,
-                user=request.user,
-                name=form.cleaned_data["name"],
-                notify_enabled=form.cleaned_data.get("notify_enabled", True),
-                query={
-                    "q": filters.cleaned_data.get("q", ""),
-                    "stone_type": filters.cleaned_data.get("stone_type", ""),
-                    "color": filters.cleaned_data.get("color", ""),
-                    "min_qty": filters.cleaned_data.get("min_qty", ""),
-                    "only_urgent": bool(filters.cleaned_data.get("only_urgent")),
-                },
-            )
-        except MarketplaceError as exc:
-            messages.error(request, exc.message)
-        else:
-            messages.success(request, "جستجو ذخیره شد.")
-    else:
-        messages.error(request, "ذخیره جستجو ممکن نشد.")
-    return redirect("marketplace:home")
+        return redirect("businesses:no_business")
+
+    own_lot = (
+        lots_for_business(request.business)
+        .filter(public_token=public_token)
+        .first()
+    )
+    if own_lot is not None:
+        return redirect("inventory:lot_detail", lot_id=own_lot.id)
+
+    lot = get_marketplace_lot_by_token(request.business, public_token)
+    if lot is None:
+        messages.error(
+            request,
+            "این لینک دیگر محصول آماده معامله‌ای را نشان نمی‌دهد.",
+        )
+        return redirect("marketplace:home")
+    return redirect("marketplace:lot_detail", lot_id=lot.id)
+
+
+@business_login_required
+@require_GET
+def archived_inquiry_detail(
+    request: HttpRequest, inquiry_id
+) -> HttpResponse:
+    """Read-only compatibility page for partner inquiries created in the past."""
+    inquiry = (
+        PartnerInquiry.objects.filter(pk=inquiry_id)
+        .filter(
+            models.Q(buyer_business=request.business)
+            | models.Q(seller_business=request.business)
+        )
+        .select_related(
+            "buyer_business",
+            "seller_business",
+            "converted_invoice",
+        )
+        .prefetch_related("items")
+        .first()
+    )
+    if inquiry is None:
+        messages.error(request, "سابقه موردنظر یافت نشد.")
+        return redirect("marketplace:home")
+    return render(
+        request,
+        "marketplace/inquiry_detail.html",
+        {"inquiry": inquiry},
+    )

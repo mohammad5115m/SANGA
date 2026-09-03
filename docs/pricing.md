@@ -1,98 +1,105 @@
-# Pricing Strategy — سنگا (SANGA)
+# Pricing — سنگا (SANGA)
 
-## 1. Initial Tiers
+## 1. Two channels, and only two
 
 | Code | Audience | Visible where |
 |------|----------|---------------|
-| `b2c` | Public/retail | Storefront, custom catalogs, share cards |
-| `b2b` | Colleagues («همکاران») — any business with an account — + authorized staff | Colleague marketplace, owner inventory |
+| `b2c` | Public / retail customers | Public search, storefront, share links, catalogs |
+| `b2b` | Colleagues («همکاران») — any active business with an account — and authorised staff | Colleague marketplace, owner inventory |
 
-No other tiers in v1. Architecture allows adding tiers later via `PriceTier` + policy mapping.
+The two channels are completely independent: setting one says nothing about the
+other. A product may have a fixed B2B number and «استعلام قیمت» for the public,
+or the reverse.
+
+**There is no third, per-counterparty channel.** `ContactPrice` existed in v1 and
+was removed in V2 (`pricing.0003`). It made "what does this cost?" depend on who
+was asking in a way sellers could not audit, and it hung off a manually created
+Contact — an object the Business directory replaces.
+
+All money is **IRR**. Nothing converts to Toman anywhere; a number stored here is
+a number of Rials.
 
 ## 2. Storage
 
-`LotPrice(lot, tier, amount, currency, unit)` with unique `(lot, tier)`.
+`LotPrice(lot, tier, mode, amount, currency, …)` with unique `(lot, tier)`.
+Every numeric amount is a positive per-square-metre IRR price; the old `unit`
+switch has been removed.
 
-- `amount`: `Decimal(14, 2)`  
-- `currency`: explicit (default `IRR`)  
-- `unit`: `per_sqm` | `per_slab` | `inquiry_only`
+| Field | Meaning |
+|-------|---------|
+| `mode` | `fixed` \| `inquiry` |
+| `amount` | `Decimal(14, 2)`, null when `mode=inquiry` |
+| `price_confirmed_at` | When the seller last vouched for this number |
+| `price_valid_for_days` | How long that vouching lasts |
+| `price_expires_at` | Derived on write from the two above; exists so "which prices are stale?" is an indexed query |
+| `special_amount` | فروش ویژه price for **this audience** |
+| `special_until` | Required future end time when `special_amount` is present |
 
-A lot may be `inquiry_only` for B2C while still having a numeric B2B price.
+Database constraints make a fixed price without a positive amount impossible.
+Special amount and end time must appear together, and the special amount must be
+positive and lower than the normal amount. Forms and services additionally
+require the end time to be in the future.
 
-### Contact-specific override — `pricing.ContactPrice`
+### Why special-sale pricing lives on the tier row
 
-`ContactPrice(contact, lot, amount, currency, unit, created_by, timestamps)` with
-unique `(contact, lot)`. Same `amount`/`currency`/`unit` semantics as `LotPrice`.
+This is a security decision, not a modelling preference.
 
-This is **not** a rules engine — it is one plain number for one contact on one lot:
+A single `special_price` column on the item would be an unlabelled number
+sitting outside the tier gate, and the first public template to render it would
+leak a B2B figure. On `LotPrice` it inherits exactly the protection `amount`
+already has: the audience filter that hides the B2B tier hides its special price
+too.
 
-- Tenant scoping rides on `contact.business`. `set_contact_price` refuses unless
-  `contact.business_id == lot.business_id`, so a business can never price another
-  business's lot or price against another business's contact.
-- An override reaches a viewer **only** when the viewer *is* the business that the
-  contact's `linked_business` points at, and only through the `b2b_partner`
-  audience. A contact with no `linked_business` can hold an override, but nobody
-  ever sees it.
-- Since `contacts.Contact` enforces one contact per linked business per business
-  (`uniq_linked_business_per_business`), a colleague can never match two overrides.
-- Archiving the contact (`is_active = False`) withdraws the override; the colleague
-  falls back to the B2B tier.
-- Managing overrides requires `prices.edit`, enforced in the service, not only in
-  the view. The screen is still served at
-  `/app/inventory/lots/<lot_id>/partner-prices/` (the URL name predates the
-  terminology change); the contact detail page shows a contact's overrides
-  read-only.
+## 3. Resolution
 
-## 3. Resolution API
+`pricing.services.resolve_visible_prices(item, audience)` is the only way to read
+a price.
 
 ```python
-resolve_visible_prices(lot, audience) -> dict[str, PriceView]
-resolve_prices_for_viewer(lot, audience, viewer_business=None) -> dict[str, PriceView]
-effective_price(prices, audience) -> PriceView | None
+_AUDIENCE_TIERS = {
+    "owner_staff":    ("b2b", "b2c"),
+    "b2b_partner":    ("b2b",),
+    "b2c_public":     ("b2c",),
+    "platform_admin": ("b2b", "b2c"),
+}
 ```
 
-`resolve_visible_prices` is unchanged and remains the audience filter.
-`resolve_prices_for_viewer` calls it first and then *adds* any applicable override
-under the `"contact"` key, so an override goes through the same filter rather than
-around it. `resolve_contact_price` returns `None` for every audience except
-`b2b_partner` and for `viewer_business is None`, so the public catalog and
-anonymous visitors are excluded by construction, not by caller discipline.
+A disallowed tier is **absent from the result**, not blanked. Callers serialize
+this dict into templates and JSON, so absence is the only reliable protection.
 
-Examples:
+Every row goes through `price_view()`, which applies expiry and special-sale
+rules once so no individual caller can forget them:
 
-- `b2c_public` → `{ "b2c": ... }` only — never `"b2b"`, never `"contact"`  
-- `b2b_partner` → `{ "b2b": ... }`, plus `{ "contact": ... }` for the linked colleague  
-- `owner_staff` with `prices.view` → `{ "b2b": ..., "b2c": ... }`  
+| Situation | `amount` | Displayed |
+|-----------|----------|-----------|
+| `mode=inquiry` | `None` | استعلام قیمت |
+| Fixed, fresh | the amount | the number |
+| Fixed, live special sale | `special_amount` | the special number, flagged |
+| Fixed, **expired** | `None` | استعلام قیمت |
 
-### Fallback order
+An expired price keeps its stored `amount` so the seller can still see what they
+last set. It simply stops being presented as current — a stale number that looks
+authoritative is worse than no number.
 
-`effective_price` picks exactly one price to display:
+## 4. Defence in depth
 
-| Audience | Order |
-|----------|-------|
-| `b2b_partner` | contact-specific override → `b2b` tier → nothing |
-| `b2c_public` | `b2c` tier → nothing |
-| `owner_staff`, `platform_admin` | `b2b` → `b2c` |
+Two independent layers, either of which would be sufficient:
 
-"Nothing" — no applicable price, or an `inquiry_only` unit — renders as
-**«استعلام بگیرید»**, never a blank or a zero.
+1. **Query layer** — `inventory.policy` prefetches only the tiers the audience
+   may see, so a B2B row is never even loaded in memory on a public page.
+2. **Resolution layer** — `resolve_visible_prices` filters by audience again.
 
-`marketplace.services.b2b_price_context(lot, viewer_business)` is the single B2B
-payload builder and returns `is_partner_price` so the UI can say whose price it is.
-`marketplace.selectors.marketplace_lots_for` prefetches only the viewer's own
-overrides, so list pages cost no extra query per lot and no other colleague's
-negotiated price is ever loaded into memory.
+Templates receive flat, pre-resolved dicts (`b2c_price_context`,
+`b2b_price_context`) rather than the tier map, so there is nothing for a
+template to walk even by accident. Open Graph metadata uses the same flat
+payload.
 
-## 4. Leakage Prevention
+## 5. Freshness is per channel
 
-See [permissions.md](./permissions.md). Critical rule:
+Price validity is independent of **stock** validity, and the two B2B/B2C windows
+are independent of each other. A seller may trust their stock for ten days, their
+colleague price for five, and their retail price for two.
 
-> If a field is not allowed for the audience, it must not exist in the response payload.
-
-## 5. Future Extensibility
-
-Possible later tiers: contractor, export, VIP.  
-Add tier row + audience mapping + tests — avoid rewriting inventory models.
-A per-contact override is intentionally *not* a tier: it belongs to one contact,
-not to an audience, which is why it lives in its own table and its own pseudo-code
-(`"contact"`) rather than in `PriceTier`.
+`confirm_lot_price()` restarts a window without changing the number — the common
+case after an expiry, when the seller looks at the price and decides it is still
+right.

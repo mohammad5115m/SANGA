@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from .models import InventoryLot, LotMedia, Product
+from .models import Application, InventoryLot, LotMedia, Product, VocabularyTerm
+from .taxonomy import clear_cache
 
 
 class LotMediaInline(admin.TabularInline):
@@ -8,11 +9,43 @@ class LotMediaInline(admin.TabularInline):
     extra = 0
 
 
+@admin.register(Application)
+class ApplicationAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "sort_order", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("name", "code")
+    prepopulated_fields = {"code": ("name",)}
+
+
+@admin.register(VocabularyTerm)
+class VocabularyTermAdmin(admin.ModelAdmin):
+    """The platform's controlled discovery vocabulary.
+
+    Editing a term changes how the next product saved is spelled, not how the
+    existing ones are: a rename here is a decision about future data, and
+    rewriting what sellers already entered is a migration somebody should look
+    at, not a side effect of an admin save.
+    """
+
+    list_display = ("name", "code_prefix", "sort_order", "is_active")
+    list_filter = ("kind", "is_active")
+    search_fields = ("name",)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        clear_cache()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        clear_cache()
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("commercial_name", "business", "stone_type", "primary_color", "is_active")
-    list_filter = ("is_active", "stone_type")
+    list_display = ("commercial_name", "business", "stone", "is_active")
+    list_filter = ("is_active", "stone")
     search_fields = ("commercial_name", "slug", "business__name")
+    filter_horizontal = ("applications",)
 
 
 @admin.register(InventoryLot)
@@ -22,12 +55,16 @@ class InventoryLotAdmin(admin.ModelAdmin):
         "business",
         "product",
         "status",
-        "visibility",
+        "is_visible",
+        "availability_status",
         "available_sqm",
-        "inventory_confirmed_at",
+        "stock_expires_at",
+        "deleted_at",
     )
-    list_filter = ("status", "visibility", "is_urgent_sale")
-    search_fields = ("lot_code", "product__commercial_name", "business__name")
+    list_filter = ("status", "is_visible", "availability_status", "is_urgent_sale")
+    search_fields = ("lot_code", "product__commercial_name", "business__name", "public_token")
+    readonly_fields = ("lot_code", "public_token", "stock_expires_at")
+    exclude = ("description_private", "private_address")
     inlines = [LotMediaInline]
 
 

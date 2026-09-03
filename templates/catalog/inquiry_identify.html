@@ -1,0 +1,35 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}اطلاعات تماس | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <span class="section-kicker">مرحله ۲ از ۳</span>
+    <h1 class="page-title">اطلاعات تماس شما</h1>
+    <p class="page-lead">{{ rows|length }} محصول انتخاب کرده‌اید. اطلاعات تماس فقط همین یک‌بار گرفته می‌شود.</p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.help_text %}<span class="field-help">{{ field.help_text }}</span>{% endif %}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-block" type="submit">دریافت کد تأیید</button>
+    <a class="btn btn-ghost btn-block" href="{% url 'catalog:inquiry_review' business.storefront_token %}">بازگشت</a>
+  </form>
+
+  <p class="muted">
+    برای ارسال درخواست نیازی به ثبت‌نام یا ساخت حساب کاربری نیست. شماره شما فقط
+    برای تأیید درخواست و تماس همین فروشنده استفاده می‌شود.
+  </p>
+</section>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}محصول در دسترس نیست | سنگا{% endblock %}
+
+{% block content %}
+{% comment %}Hidden, unavailable and deleted remain indistinguishable to protect seller privacy.{% endcomment %}
+<section class="empty-state product-empty-state">
+  <span class="empty-state-icon" aria-hidden="true">◇</span>
+  <h1 class="page-title">این محصول در حال حاضر در دسترس نیست</h1>
+  <p>این محصول موجود نیست یا فروشنده آن را از ویترین برداشته است.</p>
+  <p class="muted">برای دریافت لینک تازه با همان فروشنده تماس بگیرید.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+{% load static %}
+
+{% block title %}فاکتورها | سنگا{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=5">{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">فاکتورها</h1>
+      <p class="page-lead">فاکتورهای صادرشده و دریافتی</p>
+    </div>
+    {% if can_manage %}
+      <div class="btn-row"><a class="btn btn-ghost" href="{% url 'invoicing:settings' %}">تنظیمات</a><a class="btn btn-primary" href="{% url 'invoicing:create' %}">فاکتور جدید</a></div>
+    {% endif %}
+  </div>
+
+  <form method="get" class="panel filter-bar invoice-filter" aria-label="فیلتر فاکتورها">
+    <label class="field field-grow">
+      <span class="field-label">جست‌وجو</span>
+      <input class="field-input" type="search" name="q" value="{{ q }}" placeholder="شماره فاکتور یا نام طرف حساب">
+    </label>
+    <label class="field"><span class="field-label">جهت</span><select class="field-input" name="direction"><option value="">همه</option><option value="sent" {% if direction == 'sent' %}selected{% endif %}>صادرشده</option><option value="received" {% if direction == 'received' %}selected{% endif %}>دریافتی</option></select></label>
+    <label class="field"><span class="field-label">مبدأ</span><select class="field-input" name="origin"><option value="">همه</option><option value="manual" {% if origin == 'manual' %}selected{% endif %}>دستی</option><option value="trade" {% if origin == 'trade' %}selected{% endif %}>معامله</option></select></label>
+    <label class="field"><span class="field-label">ترتیب</span><select class="field-input" name="sort"><option value="newest" {% if sort == 'newest' %}selected{% endif %}>جدیدترین</option><option value="oldest" {% if sort == 'oldest' %}selected{% endif %}>قدیمی‌ترین</option></select></label>
+    <div class="field"><label class="field-label" for="{{ date_filter_form.date_from.id_for_label }}">از تاریخ</label>{{ date_filter_form.date_from }}{{ date_filter_form.date_from.errors }}</div>
+    <div class="field"><label class="field-label" for="{{ date_filter_form.date_to.id_for_label }}">تا تاریخ</label>{{ date_filter_form.date_to }}{{ date_filter_form.date_to.errors }}</div>
+    <label class="field">
+      <span class="field-label">وضعیت</span>
+      <select class="field-input" name="status">
+        <option value="">همه</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="invoice-filter-actions">
+      <button class="btn btn-secondary" type="submit">اعمال فیلتر</button>
+      {% if q or status or direction or origin or date_from or date_to or sort == 'oldest' %}<a class="btn btn-ghost" href="{% url 'invoicing:list' %}">پاک‌کردن فیلترها</a>{% endif %}
+    </div>
+  </form>
+
+  <div class="list-stack">
+    {% for invoice in invoices %}
+      <a class="list-item invoice-list-item" href="{% url 'invoicing:detail' invoice.id %}">
+        <div>
+          <div class="list-title" dir="ltr">{{ invoice.display_number }}</div>
+          <div class="muted">{% if invoice.seller_business_id == current_business.id %}{{ invoice.buyer_name }}{% else %}{{ invoice.seller_business.name }}{% endif %} · {{ invoice.issue_date|jdate }}</div>
+          <div class="btn-row"><span class="badge">{% if invoice.seller_business_id == current_business.id %}صادرشده{% else %}دریافتی{% endif %}</span><span class="badge">{% if invoice.trade_id %}از معامله{% else %}دستی{% endif %}</span></div>
+        </div>
+        <div class="ledger-amounts">
+          <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>
+          <span class="badge invoice-status-badge">{{ invoice.get_status_display }}</span>
+        </div>
+      </a>
+    {% empty %}
+      <div class="empty-state stack-sm">{% if q or status or direction or origin or date_from or date_to %}<span>فاکتوری مطابق فیلترها پیدا نشد.</span><a class="btn btn-secondary" href="{% url 'invoicing:list' %}">نمایش همه فاکتورها</a>{% else %}{% if can_manage %}<span>هنوز فاکتوری ندارید. برای مشتری یا همکار اولین فاکتور را بسازید.</span><a class="btn btn-primary" href="{% url 'invoicing:create' %}">ساخت اولین فاکتور</a>{% else %}هنوز فاکتور صادرشده یا دریافتی ندارید.{% endif %}{% endif %}</div>
+    {% endfor %}
+  </div>
+
+  {% include "_pager.html" %}
+</section>
+{% endblock %}

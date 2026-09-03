@@ -1,0 +1,34 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}حذف محصول | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">حذف محصول</h1>
+    <p class="page-lead">{{ lot.product.commercial_name }} · <span dir="ltr">{{ lot.lot_code }}</span></p>
+  </div>
+
+  <div class="panel stack-md">
+    <div class="alert alert-warn">این عملیات قابل بازگشت نیست.</div>
+    <p>پس از حذف، این محصول از موجودی شما، بازار همکاران، ویترین فروشنده و همه کاتالوگ‌ها حذف می‌شود.</p>
+
+    {% if has_history %}
+      {% comment %}Deliberately not phrased as "soft delete": the seller does not need to
+      know the mechanism, only that their invoices stay correct.{% endcomment %}
+      <p class="muted">
+        این محصول در سوابق مالی شما (فاکتور یا معامله) استفاده شده است. فاکتورهای
+        گذشته بدون تغییر باقی می‌مانند.
+      </p>
+    {% endif %}
+
+    <div class="btn-row">
+      <form method="post">
+        {% csrf_token %}
+        <button class="btn btn-danger" type="submit">بله، حذف کن</button>
+      </form>
+      <a class="btn btn-ghost" href="{% url 'inventory:lot_detail' lot.id %}">انصراف</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

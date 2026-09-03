@@ -1,49 +1,98 @@
 {% extends "layouts/storefront_shell.html" %}
 
-{% block title %}{{ business.name }} | کاتالوگ سنگا{% endblock %}
-
-{% block storefront_actions %}
-  {% if compare_ids %}
-    <a class="btn btn-secondary btn-sm" href="{% url 'catalog:compare' business.slug %}">مقایسه ({{ compare_ids|length }})</a>
-  {% endif %}
-{% endblock %}
+{% block title %}{{ business.name }} | سنگا{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
   <div class="storefront-hero">
-    <h1 class="page-title">{{ business.name }}</h1>
-    <p class="page-lead">انتخاب سنگ با قیمت مشتری و موجودی به‌روز</p>
+    <div class="storefront-eyebrow">فروشگاه آنلاین {{ business.name }}</div>
+    <h1 class="page-title">چه سنگی برای کار شما مناسب است؟</h1>
+    <p class="page-lead">لازم نیست اسم سنگ‌ها را بدانید؛ کاربرد پروژه را انتخاب کنید یا با چند کلمه ساده جست‌وجو کنید.</p>
+    <div class="storefront-trust-row" aria-label="اطلاعات فروشگاه">
+      {% if business.city %}<span>ارسال از {{ business.city }}</span>{% endif %}
+      <span>قیمت مخصوص مشتری</span>
+      <span>موجودی زمان‌دار و قابل پیگیری</span>
+    </div>
   </div>
 
-  <form method="get" class="panel filter-bar">
-    <label class="field"><span class="field-label">جستجو</span>{{ filter_form.q }}</label>
-    <label class="field"><span class="field-label">نوع</span>{{ filter_form.stone_type }}</label>
-    <label class="field"><span class="field-label">رنگ</span>{{ filter_form.color }}</label>
-    <label class="field checkbox-field">{{ filter_form.only_urgent }} <span>{{ filter_form.only_urgent.label }}</span></label>
-    <button class="btn btn-secondary" type="submit">فیلتر</button>
-  </form>
+  <section class="guided-discovery panel" aria-labelledby="guided-heading">
+    <div class="guided-copy">
+      <span class="section-kicker">شروع ساده</span>
+      <h2 class="section-title" id="guided-heading">سنگ را برای کجا می‌خواهید؟</h2>
+      <p class="muted">یکی از کاربردها را بزنید؛ فقط محصولاتی می‌آیند که فروشنده برای همان کار ثبت کرده است.</p>
+    </div>
+    <nav class="guided-options" aria-label="انتخاب کاربرد سنگ">
+      {% for application in guided_applications %}
+        <a class="guided-option{% if application.code in selected_applications %} is-active{% endif %}"
+           href="?applications={{ application.code }}#all-products-heading">
+          <span class="guided-option-icon" aria-hidden="true">{{ forloop.counter }}</span>
+          <span>{{ application.name }}</span>
+        </a>
+      {% endfor %}
+      <a class="guided-option guided-option-more" href="#product-filters"><span aria-hidden="true">＋</span><span>فیلترهای دقیق‌تر</span></a>
+    </nav>
+    {% if business.phone %}<p class="guided-help">هنوز مطمئن نیستید؟ <a href="tel:{{ business.phone }}">برای انتخاب سنگ مشاوره بگیرید</a>.</p>{% endif %}
+  </section>
+
+  {% if special_cards %}
+  <section class="sale-showcase stack-md" aria-labelledby="special-sale-heading">
+    <div class="section-heading-row">
+      <div>
+        <span class="section-kicker">پیشنهادهای محدود</span>
+        <h2 class="section-title" id="special-sale-heading">فروش ویژه</h2>
+      </div>
+      <span class="sale-section-note">تا پایان زمان درج‌شده</span>
+    </div>
+    <div class="product-rail" role="list">
+      {% for card in special_cards %}
+        {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+        <div>{% include "inventory/_product_card.html" with show_select=True %}</div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% for section in collection_sections %}
+  <section class="collection-section stack-md" aria-labelledby="collection-{{ section.collection.id }}">
+    <div class="section-heading-row">
+      <div>
+        <h2 class="section-title" id="collection-{{ section.collection.id }}">{{ section.collection.title }}</h2>
+        {% if section.collection.description %}<p class="muted">{{ section.collection.description }}</p>{% endif %}
+      </div>
+    </div>
+    <div class="product-rail" role="list">
+      {% for card in section.cards %}
+        {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+        <div>{% include "inventory/_product_card.html" with show_select=True %}</div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <section class="stack-md" aria-labelledby="all-products-heading">
+  <div class="section-heading-row"><div><span class="section-kicker">تمام موجودی فروشگاه</span><h2 class="section-title" id="all-products-heading">همه محصولات</h2></div></div>
+  <div id="product-filters">{% include "inventory/_filter_bar.html" %}</div>
+
+  {% include "catalog/_selection_bar.html" %}
 
   <div class="catalog-grid">
     {% for card in cards %}
-      <a class="catalog-card" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">
-        <div class="catalog-card-media">
-          {% if card.primary_media %}
-            <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
-          {% else %}
-            <div class="lot-thumb-fallback"></div>
-          {% endif %}
-          {% if card.lot.is_urgent_sale %}<span class="card-flag">فروش فوری</span>{% endif %}
-        </div>
-        <div class="catalog-card-body">
-          <div class="list-title">{{ card.product.commercial_name }}</div>
-          <div class="muted">{{ card.product.stone_type|default:"" }} {% if card.product.primary_color %}· {{ card.product.primary_color }}{% endif %}</div>
-          <div class="catalog-price">{{ card.price.label }}</div>
-          <div class="muted">{{ card.lot.available_sqm }} متر مربع</div>
-        </div>
-      </a>
+      {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" with show_select=True %}
     {% empty %}
-      <div class="empty-state">فعلاً سنگی برای نمایش عمومی ثبت نشده است.</div>
+      <div class="empty-state product-empty-state">
+        <span class="empty-state-icon" aria-hidden="true">⌕</span>
+        <h2>محصولی با این جست‌وجو پیدا نشد</h2>
+        <p>عبارت جست‌وجو یا فیلترها را ساده‌تر کنید و دوباره ببینید.</p>
+        <div class="empty-state-actions">
+          {% if filter_form.active_filter_count %}<a class="btn btn-secondary" href="{{ request.path }}">پاک‌کردن فیلترها</a>{% endif %}
+          {% if business.phone %}<a class="btn btn-ghost" href="tel:{{ business.phone }}">مشاوره برای انتخاب سنگ</a>{% endif %}
+        </div>
+      </div>
     {% endfor %}
   </div>
+
+  {% include "_pager.html" %}
+  </section>
 </section>
 {% endblock %}

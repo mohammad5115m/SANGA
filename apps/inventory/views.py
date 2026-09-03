@@ -1,113 +1,185 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal, InvalidOperation
+import uuid
+from decimal import Decimal
 
 from django.contrib import messages
-from django.core.exceptions import ValidationError
-from django.http import HttpRequest, HttpResponse
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import HttpRequest, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
-from django.views.decorators.http import require_http_methods, require_POST
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
+from apps.businesses.entitlements import ISSUE_INVOICES, has_entitlement
+from apps.businesses.models import BusinessMembership
 from apps.businesses.permissions import (
+    CATALOG_MANAGE,
     INVENTORY_CONFIRM,
     INVENTORY_CREATE,
     INVENTORY_EDIT,
+    INVENTORY_MEDIA,
     INVENTORY_PUBLISH,
     INVENTORY_VIEW,
+    INVOICE_CREATE,
+    INVOICE_MANAGE,
     PRICES_EDIT,
     PRICES_VIEW,
+    TRADE_CONFIRM,
 )
-from apps.contacts.models import Contact
-from apps.contacts.selectors import get_contact
-from apps.pricing.selectors import contact_prices_for_lot
-from apps.pricing.services import (
-    PricingError,
-    remove_contact_price,
-    resolve_visible_prices,
-    set_contact_price,
-)
+from apps.core.pagination import paginate
+from apps.pricing.services import resolve_visible_prices
 
-from .forms import (
-    ContactPriceForm,
-    InventoryFilterForm,
-    LotDetailsForm,
-    LotEditForm,
-    LotMediaForm,
-    LotPricesForm,
-    LotQuantityForm,
-    LotVisibilityForm,
-    ProductPickForm,
-)
-from .freshness import evaluate_freshness
-from .selectors import filter_lots, get_business_lot, lots_for_business, products_for_business
+from .catalog_selection import MAX_CATALOG_ITEMS, create_selection, resolve_selection
+from .filters import effective_price_bounds
+from .forms import ItemMediaForm, ItemStockForm, OwnerItemFilterForm, ProductItemForm, TierPriceForm
+from .freshness import stock_view
+from .policy import eligible_items
+from .selectors import filter_owned_lots, get_business_lot, lots_for_business, search_lot_options
 from .services import (
     InventoryError,
     add_lot_media,
-    archive_lot,
-    confirm_lot_inventory,
-    create_draft_lot,
-    create_or_get_product,
-    duplicate_lot,
-    hide_lot,
-    mark_lot_sold,
-    set_visibility_and_status,
-    update_lot_fields,
-    update_lot_prices,
+    confirm_item_stock,
+    create_product_item,
+    delete_item,
+    delete_lot_media,
+    duplicate_item,
+    item_has_commercial_history,
+    reorder_lot_media,
+    set_item_availability,
+    set_item_visibility,
+    set_primary_media,
+    update_product_item,
 )
 
 logger = logging.getLogger(__name__)
 
-WIZARD_SESSION_KEY = "inventory_quick_add"
+
+@business_login_required
+@require_GET
+def product_options(request: HttpRequest) -> JsonResponse:
+    """Search only the caller's own products for invoice and sale pickers."""
+    allowed = any(
+        request.membership.has_capability(capability)
+        for capability in (INVENTORY_VIEW, INVOICE_MANAGE, TRADE_CONFIRM)
+    )
+    if not allowed:
+        return JsonResponse({"error": "دسترسی لازم را ندارید."}, status=403)
+    items = search_lot_options(
+        lots_for_business(request.business),
+        q=request.GET.get("q", ""),
+    )
+    return JsonResponse({"items": items})
 
 
-def _wizard_data(request: HttpRequest) -> dict:
-    return request.session.get(WIZARD_SESSION_KEY, {})
+def _price_spec(form: TierPriceForm) -> dict:
+    return {
+        "mode": form.cleaned_data["mode"],
+        "amount": form.cleaned_data.get("amount"),
+        "valid_for_days": form.cleaned_data.get("valid_for_days"),
+        "special_amount": form.cleaned_data.get("special_amount"),
+        "special_until": form.cleaned_data.get("special_until"),
+    }
 
 
-def _save_wizard(request: HttpRequest, data: dict) -> None:
-    request.session[WIZARD_SESSION_KEY] = data
-    request.session.modified = True
+def _price_initial(lot, tier_code: str) -> dict:
+    price = next((item for item in lot.prices.all() if item.tier.code == tier_code), None)
+    if price is None:
+        return {}
+    return {
+        "mode": price.mode,
+        "amount": price.amount,
+        "valid_for_days": price.price_valid_for_days,
+        "special_amount": price.special_amount,
+        "special_until": price.special_until,
+    }
 
 
-def _clear_wizard(request: HttpRequest) -> None:
-    request.session.pop(WIZARD_SESSION_KEY, None)
+def _product_fields(form: ProductItemForm) -> dict:
+    return {
+        "stone": form.cleaned_data["stone"],
+        "name_suffix": form.cleaned_data.get("name_suffix", ""),
+        "description_public": form.cleaned_data.get("description_public", ""),
+        "description_colleague": form.cleaned_data.get("description_colleague", ""),
+    }
 
 
-def _parse_decimal(value: str | None) -> Decimal | None:
-    if value in (None, ""):
-        return None
-    try:
-        return Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        return None
+def _item_fields(form: ProductItemForm, *, may_publish: bool, may_use_private: bool, lot=None) -> dict:
+    fields = {
+        "processing_type": form.cleaned_data.get("processing_type", "ساب خورده"),
+        "available_sqm": form.cleaned_data.get("available_sqm"),
+        "stock_valid_for_days": form.cleaned_data["stock_valid_for_days"],
+        "length_cm": form.cleaned_data.get("length_cm"),
+        "width_cm": form.cleaned_data.get("width_cm"),
+        "thickness_mm": form.thickness_mm,
+        "min_sale_qty": form.cleaned_data.get("min_sale_qty") or Decimal("0"),
+        "availability_status": form.cleaned_data["availability_status"],
+        "is_visible": (
+            bool(form.cleaned_data.get("is_visible"))
+            if may_publish
+            else (lot.is_visible if lot is not None else False)
+        ),
+        "is_urgent_sale": bool(form.cleaned_data.get("is_urgent_sale")),
+    }
+    if may_use_private:
+        fields.update(
+            description_private=form.cleaned_data.get("description_private", ""),
+            private_address=form.cleaned_data.get("private_address", ""),
+        )
+    return fields
+
+
+def _seller_processing_suggestions(business) -> list[str]:
+    return list(
+        lots_for_business(business)
+        .exclude(processing_type="")
+        .order_by("processing_type")
+        .values_list("processing_type", flat=True)
+        .distinct()[:50]
+    )
 
 
 @business_login_required
 @require_capability(INVENTORY_VIEW)
+@require_GET
 def lot_list(request: HttpRequest) -> HttpResponse:
-    form = InventoryFilterForm(request.GET or None)
-    qs = lots_for_business(request.business)
-    if form.is_valid():
-        qs = filter_lots(
-            qs,
-            q=form.cleaned_data.get("q", ""),
-            status=form.cleaned_data.get("status", ""),
-            visibility=form.cleaned_data.get("visibility", ""),
-            freshness=form.cleaned_data.get("freshness", ""),
-        )
+    form = OwnerItemFilterForm(request.GET or None)
+    spec = form.to_spec()
+    base = lots_for_business(request.business)
+    qs = filter_owned_lots(base, spec=spec, state=form.state_value)
+    minimum, maximum = effective_price_bounds(base, spec=spec, audience="owner")
+    page = paginate(request, qs)
     can_view_prices = request.membership.has_capability(PRICES_VIEW)
     rows = []
-    for lot in qs[:100]:
-        freshness = evaluate_freshness(lot)
+    for lot in page.object_list:
         prices = resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices)
-        primary = next((m for m in lot.media.all() if m.is_primary), None) or next(iter(lot.media.all()), None)
-        rows.append({"lot": lot, "freshness": freshness, "prices": prices, "primary_media": primary})
+        primary = next((item for item in lot.media.all() if item.is_primary), None) or next(
+            iter(lot.media.all()), None
+        )
+        rows.append({"lot": lot, "stock": stock_view(lot), "prices": prices, "primary_media": primary})
+    from apps.catalog.selectors import catalogs_for_business
+
+    selected_catalog_id = request.GET.get("catalog") or ""
+    selected_catalog = None
+    if selected_catalog_id:
+        try:
+            selected_catalog = catalogs_for_business(request.business).filter(pk=selected_catalog_id).first()
+        except (DjangoValidationError, TypeError, ValueError):
+            selected_catalog = None
+
     return render(
         request,
         "inventory/lot_list.html",
-        {"filter_form": form, "rows": rows, "can_view_prices": can_view_prices},
+        {
+            "filter_form": form,
+            "rows": rows,
+            "page": page,
+            "can_view_prices": can_view_prices,
+            "price_bounds": {"minimum": minimum, "maximum": maximum},
+            "catalogs": catalogs_for_business(request.business),
+            "selected_catalog": selected_catalog,
+        },
     )
 
 
@@ -116,18 +188,122 @@ def lot_list(request: HttpRequest) -> HttpResponse:
 def lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
     lot = get_business_lot(request.business, lot_id)
     if lot is None:
-        messages.error(request, "محموله یافت نشد.")
+        messages.error(request, "محصول یافت نشد.")
         return redirect("inventory:lot_list")
     can_view_prices = request.membership.has_capability(PRICES_VIEW)
-    context = {
-        "lot": lot,
-        "freshness": evaluate_freshness(lot),
-        "prices": resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices),
-        "media_items": lot.media.all(),
-        "can_view_prices": can_view_prices,
-        "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
+    from apps.marketplace.selectors import marketplace_ready_items_for_owner
+
+    is_partner_shareable = marketplace_ready_items_for_owner(
+        request.business
+    ).filter(pk=lot.pk).exists()
+    return render(
+        request,
+        "inventory/lot_detail.html",
+        {
+            "lot": lot,
+            "stock": stock_view(lot),
+            "prices": resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices),
+            "media_items": lot.media.all(),
+            "can_view_prices": can_view_prices,
+            "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
+            "is_owner": request.membership.role == BusinessMembership.Role.OWNER,
+            "share_url": request.build_absolute_uri(f"/p/{lot.public_token}/"),
+            "partner_share_url": request.build_absolute_uri(
+                reverse("marketplace:shared_item", args=[lot.public_token])
+            ),
+            "is_publicly_shareable": eligible_items(
+                audience="public", seller_business=request.business
+            ).filter(pk=lot.pk).exists(),
+            "is_partner_shareable": is_partner_shareable,
+            "can_issue_invoice": (
+                request.membership.has_capability(INVOICE_CREATE)
+                and has_entitlement(request.business, ISSUE_INVOICES)
+            ),
+            "has_history": item_has_commercial_history(lot),
+        },
+    )
+
+
+def _product_initial(lot, *, include_private: bool) -> dict:
+    initial = {
+        "stone": lot.product.stone,
+        "name_suffix": lot.product.name_suffix,
+        "applications": lot.product.applications.all(),
+        "processing_type": lot.processing_type,
+        "length_cm": lot.length_cm,
+        "width_cm": lot.width_cm,
+        "thickness_cm": lot.thickness_mm / Decimal("10") if lot.thickness_mm is not None else None,
+        "available_sqm": lot.available_sqm,
+        "stock_valid_for_days": lot.stock_valid_for_days,
+        "min_sale_qty": lot.min_sale_qty,
+        "description_public": lot.product.description_public,
+        "description_colleague": lot.product.description_colleague,
+        "availability_status": lot.availability_status,
+        "is_visible": lot.is_visible,
+        "is_urgent_sale": lot.is_urgent_sale,
     }
-    return render(request, "inventory/lot_detail.html", context)
+    if include_private:
+        initial.update(
+            description_private=lot.description_private,
+            private_address=lot.private_address,
+        )
+    return initial
+
+
+def _product_form_context(request, *, form, b2b_form, b2c_form, lot=None):
+    return {
+        "form": form,
+        "b2b_form": b2b_form,
+        "b2c_form": b2c_form,
+        "lot": lot,
+        "mode": "edit" if lot else "create",
+        "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
+        "can_publish": request.membership.has_capability(INVENTORY_PUBLISH),
+        "is_owner": request.membership.role == BusinessMembership.Role.OWNER,
+        "processing_suggestions": _seller_processing_suggestions(request.business),
+    }
+
+
+@business_login_required
+@require_capability(INVENTORY_CREATE)
+@require_http_methods(["GET", "POST"])
+def product_create(request: HttpRequest) -> HttpResponse:
+    can_price = request.membership.has_capability(PRICES_EDIT)
+    is_owner = request.membership.role == BusinessMembership.Role.OWNER
+    form = ProductItemForm(
+        request.POST or None,
+        initial={"is_visible": True, "submission_id": uuid.uuid4()},
+        include_private=is_owner,
+    )
+    b2b_form = TierPriceForm(request.POST or None, prefix="b2b", tier_label="قیمت همکار")
+    b2c_form = TierPriceForm(request.POST or None, prefix="b2c", tier_label="قیمت مشتری")
+    prices_ok = not can_price or (b2b_form.is_valid() and b2c_form.is_valid())
+    if request.method == "POST" and form.is_valid() and prices_ok:
+        try:
+            lot = create_product_item(
+                business=request.business,
+                membership=request.membership,
+                product_fields=_product_fields(form),
+                item_fields=_item_fields(
+                    form,
+                    may_publish=request.membership.has_capability(INVENTORY_PUBLISH),
+                    may_use_private=is_owner,
+                ),
+                applications=list(form.cleaned_data.get("applications") or []),
+                b2b_price=_price_spec(b2b_form) if can_price else None,
+                b2c_price=_price_spec(b2c_form) if can_price else None,
+                submission_id=form.cleaned_data.get("submission_id"),
+            )
+        except InventoryError as exc:
+            form.add_error(None, exc.message)
+        else:
+            messages.success(request, f"محصول با کد {lot.lot_code} ساخته شد.")
+            return redirect("inventory:lot_detail", lot_id=lot.id)
+    return render(
+        request,
+        "inventory/product_form.html",
+        _product_form_context(request, form=form, b2b_form=b2b_form, b2c_form=b2c_form),
+    )
 
 
 @business_login_required
@@ -136,141 +312,137 @@ def lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
 def lot_edit(request: HttpRequest, lot_id) -> HttpResponse:
     lot = get_business_lot(request.business, lot_id)
     if lot is None:
-        messages.error(request, "محموله یافت نشد.")
+        messages.error(request, "محصول یافت نشد.")
         return redirect("inventory:lot_list")
-
-    form = LotEditForm(request.POST or None, instance=lot, business=request.business)
-    price_form = LotPricesForm(
+    can_price = request.membership.has_capability(PRICES_EDIT)
+    is_owner = request.membership.role == BusinessMembership.Role.OWNER
+    form = ProductItemForm(
         request.POST or None,
-        prefix="price",
-        initial={
-            "b2b_amount": getattr(lot.prices.filter(tier__code="b2b").first(), "amount", None),
-            "b2c_amount": getattr(lot.prices.filter(tier__code="b2c").first(), "amount", None),
-        },
+        initial=_product_initial(lot, include_private=is_owner),
+        include_private=is_owner,
     )
-    if request.method == "POST" and form.is_valid():
+    b2b_form = TierPriceForm(
+        request.POST or None, prefix="b2b", tier_label="قیمت همکار", initial=_price_initial(lot, "b2b")
+    )
+    b2c_form = TierPriceForm(
+        request.POST or None, prefix="b2c", tier_label="قیمت مشتری", initial=_price_initial(lot, "b2c")
+    )
+    prices_ok = not can_price or (b2b_form.is_valid() and b2c_form.is_valid())
+    if request.method == "POST" and form.is_valid() and prices_ok:
         try:
-            update_lot_fields(
+            update_product_item(
                 lot=lot,
                 membership=request.membership,
-                warehouse=form.cleaned_data["warehouse"],
-                grade=form.cleaned_data.get("grade", ""),
-                processing_type=form.cleaned_data.get("processing_type", ""),
-                available_sqm=form.cleaned_data["available_sqm"],
-                slab_count=form.cleaned_data.get("slab_count"),
-                length_cm=form.cleaned_data.get("length_cm"),
-                width_cm=form.cleaned_data.get("width_cm"),
-                thickness_mm=form.cleaned_data.get("thickness_mm"),
-                description=form.cleaned_data.get("description", ""),
-                defect_notes=form.cleaned_data.get("defect_notes", ""),
-                is_urgent_sale=form.cleaned_data.get("is_urgent_sale", False),
-                is_featured=form.cleaned_data.get("is_featured", False),
-            )
-            set_visibility_and_status(
-                lot=lot,
-                membership=request.membership,
-                visibility=form.cleaned_data["visibility"],
-            )
-            new_status = form.cleaned_data["status"]
-            if new_status != lot.status:
-                # Status controls what is publicly visible, so it needs the
-                # publish capability just like visibility changes.
-                if request.membership.has_capability(INVENTORY_PUBLISH):
-                    lot.status = new_status
-                    lot.save(update_fields=["status", "updated_at"])
-                else:
-                    messages.warning(request, "تغییر وضعیت نیاز به دسترسی انتشار دارد و اعمال نشد.")
-            if request.membership.has_capability(PRICES_EDIT) and price_form.is_valid():
-                update_lot_prices(
+                product_fields=_product_fields(form),
+                item_fields=_item_fields(
+                    form,
+                    may_publish=request.membership.has_capability(INVENTORY_PUBLISH),
+                    may_use_private=is_owner,
                     lot=lot,
-                    membership=request.membership,
-                    b2b_amount=price_form.cleaned_data["b2b_amount"],
-                    b2c_amount=price_form.cleaned_data["b2c_amount"],
-                    currency=price_form.cleaned_data.get("currency") or "IRR",
-                )
+                ),
+                applications=list(form.cleaned_data.get("applications") or []),
+                b2b_price=_price_spec(b2b_form) if can_price else None,
+                b2c_price=_price_spec(b2c_form) if can_price else None,
+            )
         except InventoryError as exc:
-            messages.error(request, exc.message)
+            form.add_error(None, exc.message)
         else:
-            messages.success(request, "محموله به‌روزرسانی شد.")
+            messages.success(request, "محصول به‌روزرسانی شد.")
             return redirect("inventory:lot_detail", lot_id=lot.id)
     return render(
         request,
-        "inventory/lot_edit.html",
-        {"lot": lot, "form": form, "price_form": price_form},
-    )
-
-
-@business_login_required
-@require_capability(PRICES_EDIT)
-@require_http_methods(["GET", "POST"])
-def lot_partner_prices(request: HttpRequest, lot_id) -> HttpResponse:
-    """Per-partner prices for one lot: add, change, or remove an override.
-
-    The capability and the tenant checks are re-applied inside
-    ``pricing.services``; the decorator here only keeps the screen out of sight.
-    """
-    lot = get_business_lot(request.business, lot_id)
-    if lot is None:
-        messages.error(request, "محموله یافت نشد.")
-        return redirect("inventory:lot_list")
-
-    form = ContactPriceForm(business=request.business)
-    if request.method == "POST":
-        action = request.POST.get("action", "save")
-        try:
-            if action == "remove":
-                contact = get_contact(request.business, request.POST.get("contact", ""))
-                remove_contact_price(lot=lot, contact=contact, membership=request.membership)
-                messages.success(request, "قیمت اختصاصی حذف شد.")
-                return redirect("inventory:lot_partner_prices", lot_id=lot.id)
-
-            form = ContactPriceForm(request.POST, business=request.business)
-            if form.is_valid():
-                set_contact_price(
-                    lot=lot,
-                    contact=form.cleaned_data["contact"],
-                    membership=request.membership,
-                    amount=form.cleaned_data.get("amount"),
-                    currency=form.cleaned_data.get("currency") or "IRR",
-                    unit=form.cleaned_data["unit"],
-                )
-                messages.success(request, "قیمت اختصاصی ذخیره شد.")
-                return redirect("inventory:lot_partner_prices", lot_id=lot.id)
-        except (Contact.DoesNotExist, ValidationError, ValueError):
-            messages.error(request, "مخاطب یافت نشد.")
-            return redirect("inventory:lot_partner_prices", lot_id=lot.id)
-        except PricingError as exc:
-            messages.error(request, exc.message)
-        except Exception:
-            logger.exception("Contact price update failed lot=%s", lot.id)
-            messages.error(request, "ذخیره قیمت اختصاصی با خطا روبه‌رو شد؛ دوباره تلاش کنید.")
-
-    return render(
-        request,
-        "inventory/lot_partner_prices.html",
-        {
-            "lot": lot,
-            "form": form,
-            "overrides": contact_prices_for_lot(request.business, lot),
-        },
+        "inventory/product_form.html",
+        _product_form_context(request, form=form, b2b_form=b2b_form, b2c_form=b2c_form, lot=lot),
     )
 
 
 @business_login_required
 @require_capability(INVENTORY_CONFIRM)
-@require_POST
-def lot_confirm(request: HttpRequest, lot_id) -> HttpResponse:
+@require_http_methods(["GET", "POST"])
+def lot_confirm_stock(request: HttpRequest, lot_id) -> HttpResponse:
     lot = get_business_lot(request.business, lot_id)
     if lot is None:
-        messages.error(request, "محموله یافت نشد.")
+        messages.error(request, "محصول یافت نشد.")
         return redirect("inventory:lot_list")
+    initial = {"available_sqm": lot.available_sqm, "stock_valid_for_days": lot.stock_valid_for_days}
+    form = ItemStockForm(request.POST or None, initial=initial)
+    if request.method == "POST":
+        if request.POST.get("action") == "reconfirm" and lot.available_sqm is not None:
+            available_sqm, valid_days, valid = lot.available_sqm, lot.stock_valid_for_days, True
+        else:
+            valid = form.is_valid()
+            available_sqm = form.cleaned_data.get("available_sqm") if valid else None
+            valid_days = form.cleaned_data.get("stock_valid_for_days") if valid else None
+        if valid:
+            try:
+                confirm_item_stock(
+                    lot=lot,
+                    membership=request.membership,
+                    available_sqm=available_sqm,
+                    stock_valid_for_days=valid_days,
+                )
+            except InventoryError as exc:
+                form.add_error(None, exc.message)
+            else:
+                messages.success(request, "موجودی تأیید شد.")
+                return redirect("inventory:lot_detail", lot_id=lot.id)
+    return render(request, "inventory/lot_confirm_stock.html", {"lot": lot, "form": form})
+
+
+@business_login_required
+@require_capability(INVENTORY_PUBLISH)
+@require_POST
+def lot_set_availability(request: HttpRequest, lot_id) -> HttpResponse:
+    lot = get_business_lot(request.business, lot_id)
+    if lot is None:
+        return redirect("inventory:lot_list")
+    available = request.POST.get("available") == "1"
     try:
-        confirm_lot_inventory(lot=lot, membership=request.membership)
+        set_item_availability(lot=lot, membership=request.membership, available=available)
     except InventoryError as exc:
         messages.error(request, exc.message)
     else:
-        messages.success(request, "موجودی تأیید شد.")
+        messages.success(request, "محصول موجود شد." if available else "محصول ناموجود شد.")
     return redirect("inventory:lot_detail", lot_id=lot.id)
+
+
+@business_login_required
+@require_capability(INVENTORY_PUBLISH)
+@require_POST
+def lot_set_visibility(request: HttpRequest, lot_id) -> HttpResponse:
+    lot = get_business_lot(request.business, lot_id)
+    if lot is None:
+        return redirect("inventory:lot_list")
+    try:
+        set_item_visibility(
+            lot=lot, membership=request.membership, is_visible=request.POST.get("visible") == "1"
+        )
+    except InventoryError as exc:
+        messages.error(request, exc.message)
+    else:
+        messages.success(request, "وضعیت انتشار تغییر کرد.")
+    return redirect("inventory:lot_detail", lot_id=lot.id)
+
+
+@business_login_required
+@require_capability(INVENTORY_EDIT)
+@require_http_methods(["GET", "POST"])
+def lot_delete(request: HttpRequest, lot_id) -> HttpResponse:
+    lot = get_business_lot(request.business, lot_id)
+    if lot is None:
+        return redirect("inventory:lot_list")
+    if request.method == "POST":
+        try:
+            delete_item(lot=lot, membership=request.membership)
+        except InventoryError as exc:
+            messages.error(request, exc.message)
+            return redirect("inventory:lot_detail", lot_id=lot.id)
+        messages.success(request, "محصول حذف شد.")
+        return redirect("inventory:lot_list")
+    return render(
+        request, "inventory/lot_confirm_delete.html",
+        {"lot": lot, "has_history": item_has_commercial_history(lot)},
+    )
 
 
 @business_login_required
@@ -279,324 +451,128 @@ def lot_confirm(request: HttpRequest, lot_id) -> HttpResponse:
 def lot_duplicate(request: HttpRequest, lot_id) -> HttpResponse:
     lot = get_business_lot(request.business, lot_id)
     if lot is None:
-        messages.error(request, "محموله یافت نشد.")
         return redirect("inventory:lot_list")
     try:
-        clone = duplicate_lot(lot=lot, membership=request.membership)
+        clone = duplicate_item(lot=lot, membership=request.membership)
     except InventoryError as exc:
         messages.error(request, exc.message)
         return redirect("inventory:lot_detail", lot_id=lot.id)
-    messages.success(request, f"کپی ایجاد شد: {clone.lot_code}")
+    messages.success(request, f"کپی با کد {clone.lot_code} ساخته شد؛ فروش ویژه کپی نشد.")
     return redirect("inventory:lot_edit", lot_id=clone.id)
 
 
 @business_login_required
-@require_capability(INVENTORY_EDIT)
-@require_POST
-def lot_mark_sold(request: HttpRequest, lot_id) -> HttpResponse:
+@require_capability(INVENTORY_MEDIA)
+@require_http_methods(["GET", "POST"])
+def lot_media(request: HttpRequest, lot_id) -> HttpResponse:
     lot = get_business_lot(request.business, lot_id)
     if lot is None:
-        messages.error(request, "محموله یافت نشد.")
         return redirect("inventory:lot_list")
-    try:
-        mark_lot_sold(lot=lot, membership=request.membership)
-    except InventoryError as exc:
-        messages.error(request, exc.message)
-    else:
-        messages.success(request, "محموله فروخته‌شده علامت خورد.")
-    return redirect("inventory:lot_detail", lot_id=lot.id)
-
-
-@business_login_required
-@require_capability(INVENTORY_EDIT)
-@require_POST
-def lot_hide(request: HttpRequest, lot_id) -> HttpResponse:
-    lot = get_business_lot(request.business, lot_id)
-    if lot is None:
-        messages.error(request, "محموله یافت نشد.")
-        return redirect("inventory:lot_list")
-    try:
-        hide_lot(lot=lot, membership=request.membership)
-    except InventoryError as exc:
-        messages.error(request, exc.message)
-    else:
-        messages.success(request, "محموله مخفی شد.")
-    return redirect("inventory:lot_list")
-
-
-@business_login_required
-@require_capability(INVENTORY_EDIT)
-@require_POST
-def lot_archive(request: HttpRequest, lot_id) -> HttpResponse:
-    lot = get_business_lot(request.business, lot_id)
-    if lot is None:
-        messages.error(request, "محموله یافت نشد.")
-        return redirect("inventory:lot_list")
-    try:
-        archive_lot(lot=lot, membership=request.membership)
-    except InventoryError as exc:
-        messages.error(request, exc.message)
-    else:
-        messages.success(request, "محموله بایگانی شد.")
-    return redirect("inventory:lot_list")
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_start(request: HttpRequest) -> HttpResponse:
-    _clear_wizard(request)
-    return redirect("inventory:quick_add_product")
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_product(request: HttpRequest) -> HttpResponse:
-    form = ProductPickForm(request.POST or None, business=request.business)
-    if request.method == "POST" and form.is_valid():
-        try:
-            product = create_or_get_product(
-                business=request.business,
-                membership=request.membership,
-                product_id=form.cleaned_data["product"].id if form.cleaned_data.get("product") else None,
-                commercial_name=form.cleaned_data.get("commercial_name", ""),
-                stone_type=form.cleaned_data.get("stone_type", ""),
-                primary_color=form.cleaned_data.get("primary_color", ""),
-                quarry_region=form.cleaned_data.get("quarry_region", ""),
-            )
-        except InventoryError as exc:
-            form.add_error(None, exc.message)
-        else:
-            data = _wizard_data(request)
-            data["product_id"] = str(product.id)
-            _save_wizard(request, data)
-            return redirect("inventory:quick_add_details")
-    return render(
-        request,
-        "inventory/wizard/product.html",
-        {"form": form, "step": 1, "total_steps": 7, "products": products_for_business(request.business)[:30]},
-    )
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_details(request: HttpRequest) -> HttpResponse:
-    data = _wizard_data(request)
-    if not data.get("product_id"):
-        return redirect("inventory:quick_add_product")
-    form = LotDetailsForm(request.POST or None, business=request.business)
-    if request.method == "POST" and form.is_valid():
-        data.update(
-            {
-                "warehouse_id": str(form.cleaned_data["warehouse"].id),
-                "lot_code": form.cleaned_data.get("lot_code") or "",
-                "grade": form.cleaned_data.get("grade") or "",
-                "processing_type": form.cleaned_data.get("processing_type") or "",
-                "description": form.cleaned_data.get("description") or "",
-            }
-        )
-        _save_wizard(request, data)
-        return redirect("inventory:quick_add_quantity")
-    return render(request, "inventory/wizard/details.html", {"form": form, "step": 2, "total_steps": 7})
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_quantity(request: HttpRequest) -> HttpResponse:
-    data = _wizard_data(request)
-    if not data.get("warehouse_id"):
-        return redirect("inventory:quick_add_details")
-    form = LotQuantityForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        from apps.businesses.models import Warehouse
-        from .models import Product
-
-        product = Product.objects.filter(business=request.business, pk=data["product_id"]).first()
-        warehouse = Warehouse.objects.filter(business=request.business, pk=data["warehouse_id"]).first()
-        if product is None or warehouse is None:
-            messages.error(request, "اطلاعات ویزارد ناقص است. دوباره شروع کنید.")
-            return redirect("inventory:quick_add_start")
-        try:
-            if data.get("lot_id"):
-                lot = get_business_lot(request.business, data["lot_id"])
-                if lot is None:
-                    raise InventoryError("محموله پیش‌نویس یافت نشد.")
-                update_lot_fields(
-                    lot=lot,
-                    membership=request.membership,
-                    available_sqm=form.cleaned_data["available_sqm"],
-                    original_sqm=form.cleaned_data["available_sqm"],
-                    slab_count=form.cleaned_data.get("slab_count"),
-                    length_cm=form.cleaned_data.get("length_cm"),
-                    width_cm=form.cleaned_data.get("width_cm"),
-                    thickness_mm=form.cleaned_data.get("thickness_mm"),
-                )
-            else:
-                lot = create_draft_lot(
-                    business=request.business,
-                    membership=request.membership,
-                    product=product,
-                    warehouse=warehouse,
-                    lot_code=data.get("lot_code", ""),
-                    grade=data.get("grade", ""),
-                    processing_type=data.get("processing_type", ""),
-                    description=data.get("description", ""),
-                    available_sqm=form.cleaned_data["available_sqm"],
-                    original_sqm=form.cleaned_data["available_sqm"],
-                    slab_count=form.cleaned_data.get("slab_count"),
-                    length_cm=form.cleaned_data.get("length_cm"),
-                    width_cm=form.cleaned_data.get("width_cm"),
-                    thickness_mm=form.cleaned_data.get("thickness_mm"),
-                )
-        except InventoryError as exc:
-            form.add_error(None, exc.message)
-        else:
-            data["lot_id"] = str(lot.id)
-            _save_wizard(request, data)
-            return redirect("inventory:quick_add_media")
-    return render(request, "inventory/wizard/quantity.html", {"form": form, "step": 3, "total_steps": 7})
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_media(request: HttpRequest) -> HttpResponse:
-    data = _wizard_data(request)
-    lot = get_business_lot(request.business, data.get("lot_id")) if data.get("lot_id") else None
-    if lot is None:
-        return redirect("inventory:quick_add_quantity")
-    form = LotMediaForm(request.POST or None, request.FILES or None)
+    form = ItemMediaForm(request.POST or None, request.FILES or None)
     if request.method == "POST":
-        if "skip" in request.POST:
-            return redirect("inventory:quick_add_prices")
-        if form.is_valid() and request.FILES.get("images"):
-            try:
+        action = request.POST.get("action", "upload")
+        try:
+            if action == "delete":
+                delete_lot_media(lot=lot, membership=request.membership, media_id=request.POST.get("media_id"))
+            elif action == "primary":
+                set_primary_media(lot=lot, membership=request.membership, media_id=request.POST.get("media_id"))
+            elif action == "reorder":
+                reorder_lot_media(lot=lot, membership=request.membership, media_ids=request.POST.getlist("order"))
+            elif form.is_valid() and request.FILES.get("images"):
                 add_lot_media(
                     lot=lot,
                     membership=request.membership,
                     upload=request.FILES["images"],
-                    is_primary=form.cleaned_data.get("is_primary", True),
+                    is_primary=form.cleaned_data.get("is_primary", False),
                 )
-            except InventoryError as exc:
-                form.add_error(None, exc.message)
-            else:
-                messages.success(request, "رسانه اضافه شد.")
-                if "add_another" in request.POST:
-                    return redirect("inventory:quick_add_media")
-                return redirect("inventory:quick_add_prices")
-    return render(
-        request,
-        "inventory/wizard/media.html",
-        {"form": form, "lot": lot, "media_items": lot.media.all(), "step": 4, "total_steps": 7},
-    )
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_prices(request: HttpRequest) -> HttpResponse:
-    data = _wizard_data(request)
-    lot = get_business_lot(request.business, data.get("lot_id")) if data.get("lot_id") else None
-    if lot is None:
-        return redirect("inventory:quick_add_quantity")
-    form = LotPricesForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            update_lot_prices(
-                lot=lot,
-                membership=request.membership,
-                b2b_amount=form.cleaned_data["b2b_amount"],
-                b2c_amount=form.cleaned_data["b2c_amount"],
-                currency=form.cleaned_data.get("currency") or "IRR",
-            )
-        except InventoryError as exc:
-            # Owners creating inventory usually have prices.edit; staff may not.
-            if request.membership.has_capability(PRICES_EDIT):
-                form.add_error(None, exc.message)
-            else:
-                messages.warning(request, "قیمت ذخیره نشد؛ دسترسی ویرایش قیمت ندارید.")
-                return redirect("inventory:quick_add_visibility")
-        else:
-            return redirect("inventory:quick_add_visibility")
-    return render(request, "inventory/wizard/prices.html", {"form": form, "lot": lot, "step": 5, "total_steps": 7})
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_visibility(request: HttpRequest) -> HttpResponse:
-    data = _wizard_data(request)
-    lot = get_business_lot(request.business, data.get("lot_id")) if data.get("lot_id") else None
-    if lot is None:
-        return redirect("inventory:quick_add_quantity")
-    from .models import InventoryLot
-
-    form = LotVisibilityForm(
-        request.POST or None,
-        initial={"visibility": InventoryLot.Visibility.PUBLIC},
-    )
-    if request.method == "POST" and form.is_valid():
-        data["visibility"] = form.cleaned_data["visibility"]
-        data["is_urgent_sale"] = form.cleaned_data.get("is_urgent_sale", False)
-        data["is_featured"] = form.cleaned_data.get("is_featured", False)
-        _save_wizard(request, data)
-        return redirect("inventory:quick_add_review")
-    return render(request, "inventory/wizard/visibility.html", {"form": form, "lot": lot, "step": 6, "total_steps": 7})
-
-
-@business_login_required
-@require_capability(INVENTORY_CREATE)
-@require_http_methods(["GET", "POST"])
-def quick_add_review(request: HttpRequest) -> HttpResponse:
-    from .models import InventoryLot
-
-    data = _wizard_data(request)
-    lot = get_business_lot(request.business, data.get("lot_id")) if data.get("lot_id") else None
-    if lot is None:
-        return redirect("inventory:quick_add_start")
-
-    if request.method == "POST":
-        action = request.POST.get("action", "publish")
-        try:
-            update_lot_fields(
-                lot=lot,
-                membership=request.membership,
-                is_urgent_sale=bool(data.get("is_urgent_sale")),
-                is_featured=bool(data.get("is_featured")),
-            )
-            set_visibility_and_status(
-                lot=lot,
-                membership=request.membership,
-                visibility=data.get("visibility") or InventoryLot.Visibility.PRIVATE,
-                publish=(action == "publish"),
-                save_as_draft=(action == "draft"),
-            )
         except InventoryError as exc:
             messages.error(request, exc.message)
         else:
-            _clear_wizard(request)
-            messages.success(request, "محموله ذخیره شد." if action == "draft" else "محموله منتشر شد.")
-            return redirect("inventory:lot_detail", lot_id=lot.id)
+            messages.success(request, "رسانه‌ها به‌روزرسانی شدند.")
+            return redirect("inventory:lot_media", lot_id=lot.id)
+    return render(request, "inventory/lot_media.html", {"lot": lot, "form": form, "media_items": lot.media.all()})
 
-    can_view_prices = request.membership.has_capability(PRICES_VIEW)
-    visibility_value = data.get("visibility") or InventoryLot.Visibility.PRIVATE
-    try:
-        visibility_label = InventoryLot.Visibility(visibility_value).label
-    except ValueError:
-        visibility_label = visibility_value
-    return render(
-        request,
-        "inventory/wizard/review.html",
-        {
-            "lot": lot,
-            "prices": resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices),
-            "freshness": evaluate_freshness(lot),
-            "visibility": visibility_value,
-            "visibility_label": visibility_label,
-            "step": 7,
-            "total_steps": 7,
-        },
+
+@business_login_required
+@require_capability(CATALOG_MANAGE)
+@require_POST
+def catalog_selection_start(request: HttpRequest) -> HttpResponse:
+    query = QueryDict(request.POST.get("filter_query", ""))
+    # Keep an empty query bound: it means the valid filter "all inventory".
+    filter_form = OwnerItemFilterForm(query)
+    scope = "filter" if request.POST.get("selection_scope") == "filter" else "selected"
+    if scope == "filter" and not filter_form.is_valid():
+        messages.error(request, "فیلتر انتخاب محصولات معتبر نیست؛ دوباره تلاش کنید.")
+        return redirect("inventory:lot_list")
+    spec = filter_form.to_spec()
+    state = filter_form.state_value
+    owned_ids = []
+    if scope == "selected":
+        requested_ids = request.POST.getlist("lot_ids")
+        if not requested_ids:
+            messages.error(request, "حداقل یک محصول را انتخاب کنید.")
+            return redirect("inventory:lot_list")
+        try:
+            owned = {
+                str(pk): pk
+                for pk in lots_for_business(request.business)
+                .filter(pk__in=requested_ids)
+                .values_list("pk", flat=True)
+            }
+        except (DjangoValidationError, TypeError, ValueError):
+            messages.error(request, "یک یا چند محصول انتخاب‌شده معتبر نیست.")
+            return redirect("inventory:lot_list")
+        ordered_keys = list(dict.fromkeys(str(item) for item in requested_ids))
+        if any(key not in owned for key in ordered_keys):
+            messages.error(request, "یک یا چند محصول انتخاب‌شده متعلق به کسب‌وکار شما نیست.")
+            return redirect("inventory:lot_list")
+        owned_ids = [owned[key] for key in ordered_keys]
+    record = {
+        "scope": scope,
+        "lot_ids": [str(item) for item in owned_ids],
+        "filter": spec.to_dict(),
+        "state": state,
+    }
+    resolved_ids = list(
+        resolve_selection(business=request.business, record=record)
+        .values_list("pk", flat=True)[: MAX_CATALOG_ITEMS + 1]
     )
+    if not resolved_ids:
+        messages.error(request, "هیچ محصولی در این انتخاب باقی نمانده است.")
+        return redirect("inventory:lot_list")
+    if len(resolved_ids) > MAX_CATALOG_ITEMS:
+        messages.error(
+            request,
+            f"هر کاتالوگ حداکثر {MAX_CATALOG_ITEMS} محصول دارد؛ فیلتر را محدودتر کنید.",
+        )
+        return redirect("inventory:lot_list")
+    catalog_id = request.POST.get("catalog_id")
+    if catalog_id:
+        from apps.catalog.models import CustomCatalog
+        from apps.catalog.services import CatalogError, add_catalog_lots
+
+        catalog = CustomCatalog.objects.filter(pk=catalog_id, business=request.business).first()
+        if catalog is None:
+            messages.error(request, "کاتالوگ یافت نشد.")
+            return redirect("inventory:lot_list")
+        try:
+            add_catalog_lots(
+                catalog=catalog,
+                membership=request.membership,
+                lot_ids=resolved_ids,
+            )
+        except CatalogError as exc:
+            messages.error(request, exc.message)
+            return redirect("inventory:lot_list")
+        else:
+            messages.success(request, "محصولات به کاتالوگ اضافه شدند.")
+            return redirect("catalog_manage:detail", catalog_id=catalog.id)
+    token = create_selection(
+        request,
+        business=request.business,
+        scope=scope,
+        lot_ids=[str(item) for item in owned_ids],
+        spec=spec,
+        state=state,
+    )
+    return redirect(f"{reverse('catalog_manage:create')}?selection={token}")

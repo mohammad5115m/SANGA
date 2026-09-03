@@ -1,0 +1,71 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}{{ page_title }} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{{ page_title }}</h1>
+    <p class="page-lead">جزئیات معامله تلفنی یا حضوری را ثبت کنید؛ تا تأیید همکار هیچ فاکتور یا سند مالی ایجاد نمی‌شود.</p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate data-unsaved-warning>
+    {% csrf_token %}
+    <div class="alert alert-info">
+      پس از ارسال، طرف مقابل باید همه اقلام، متراژ و قیمت‌ها را تأیید کند. موجودی محصول خودکار کم نمی‌شود.
+    </div>
+    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+    {% for field in form.visible_fields %}
+      <div class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </div>
+    {% endfor %}
+
+    <section class="stack-md">
+      <div>
+        <h2 class="section-title">اقلام توافق</h2>
+        <p class="muted">محصول ثبت‌شده فروشنده را انتخاب کنید، یا نام محصول متفرقه را بنویسید. قیمت برای همین معامله آزاد است.</p>
+      </div>
+      {{ lines.management_form }}
+      {% if lines.non_form_errors %}<div class="alert alert-error">{{ lines.non_form_errors|striptags }}</div>{% endif %}
+      {% for line in lines %}
+        <fieldset class="panel stack-sm">
+          <legend class="section-subtitle">ردیف {{ forloop.counter }}</legend>
+          {% for hidden in line.hidden_fields %}{% if hidden.name != "item" %}{{ hidden }}{% endif %}{% endfor %}
+          <div class="field">
+            <span class="field-label">{{ line.item.label }}</span>
+            <div class="product-picker" data-product-picker data-product-url="{% url 'trading:proposal_product_options' %}" data-trade-product-picker data-autofill-name>
+              {{ line.item }}
+              <div class="product-picker-input-row">
+                <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول فروشنده را جست‌وجو کنید" autocomplete="off" data-product-query aria-label="جست‌وجوی محصول فروشنده">
+                <button class="btn btn-ghost btn-sm" type="button" data-product-clear>پاک کردن</button>
+              </div>
+              <div class="product-picker-results" data-product-results role="listbox" hidden></div>
+            </div>
+            {% if line.item.errors %}<span class="field-error">{{ line.item.errors|striptags }}</span>{% endif %}
+          </div>
+          {% for field in line.visible_fields %}
+            <label class="field {% if field.name == 'DELETE' %}checkbox-field{% endif %}">
+              {% if field.name == 'DELETE' %}
+                {{ field }} <span>حذف این ردیف</span>
+              {% else %}
+                <span class="field-label">{{ field.label }}</span>{{ field }}
+              {% endif %}
+              {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+            </label>
+          {% endfor %}
+        </fieldset>
+      {% endfor %}
+    </section>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit" name="action" value="submit">ارسال برای تأیید همکار</button>
+      <button class="btn btn-secondary" type="submit" name="action" value="draft">ذخیره پیش‌نویس</button>
+      <a class="btn btn-ghost" href="{% url 'trading:proposal_list' %}">انصراف</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

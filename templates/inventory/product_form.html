@@ -1,0 +1,153 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}{% if mode == 'create' %}محصول جدید{% else %}ویرایش {{ lot.product.commercial_name }}{% endif %} | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">{% if mode == 'create' %}ثبت محصول{% else %}ویرایش محصول{% endif %}</h1>
+    <p class="page-lead">
+      همه اطلاعات محصول، موجودی و قیمت در یک صفحه
+      {% if lot %} · <span dir="ltr">{{ lot.lot_code }}</span>{% endif %}
+    </p>
+  </div>
+
+  <form method="post" class="stack-lg" novalidate data-unsaved-warning>
+    {% csrf_token %}
+    {{ form.submission_id }}
+    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+
+    <section class="panel form-section stack-md" aria-labelledby="product-identity-title">
+      <h2 class="section-title" id="product-identity-title">هویت محصول</h2>
+      <p class="muted">نام با ساختار «سنگ + نوع سنگ + نام تکمیلی» ساخته می‌شود. فروشنده فقط نام تکمیلی را تغییر می‌دهد.</p>
+      <div class="form-grid">
+        {% with field=form.stone %}{% include "components/form_field.html" %}{% endwith %}
+        {% with field=form.name_suffix %}{% include "components/form_field.html" %}{% endwith %}
+
+        <fieldset class="field application-picker form-span-full">
+          <legend class="field-heading fieldset-heading">
+            <span class="field-label">{{ form.applications.label }}</span>
+            <span class="field-requirement">اختیاری · چندانتخابی</span>
+          </legend>
+          {% if form.applications.help_text %}<p class="field-help">{{ form.applications.help_text }}</p>{% endif %}
+          <div class="application-options">
+            {% for choice in form.applications %}
+              <label class="application-option">
+                {{ choice.tag }}
+                <span>{{ choice.choice_label }}</span>
+              </label>
+            {% empty %}
+              <p class="muted">کاربرد فعالی تعریف نشده است.</p>
+            {% endfor %}
+          </div>
+          {% if form.applications.errors %}<div class="field-error">{{ form.applications.errors|striptags }}</div>{% endif %}
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="panel form-section stack-md" aria-labelledby="product-specs-title">
+      <div>
+        <h2 class="section-title" id="product-specs-title">مشخصات و موجودی</h2>
+        <p class="muted">ابعاد را با سانتی‌متر و مقدار موجودی را با متر مربع وارد کنید.</p>
+      </div>
+      {% with field=form.processing_type %}{% include "components/form_field.html" %}{% endwith %}
+
+      <fieldset class="form-subsection stack-md">
+        <legend class="field-label">ابعاد محصول</legend>
+        <p class="field-help">عرض را وارد کنید؛ خالی‌بودن طول به‌معنای طول آزاد است.</p>
+        <div class="form-grid form-grid-3">
+          {% with field=form.length_cm %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.width_cm %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.thickness_cm %}{% include "components/form_field.html" %}{% endwith %}
+        </div>
+      </fieldset>
+
+      <fieldset class="form-subsection stack-md">
+        <legend class="field-label">موجودی و حداقل سفارش</legend>
+        <div class="form-grid form-grid-3">
+          {% with field=form.available_sqm %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.stock_valid_for_days %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.min_sale_qty %}{% include "components/form_field.html" %}{% endwith %}
+        </div>
+      </fieldset>
+    </section>
+
+    <details class="panel form-disclosure" {% if form.description_public.errors or form.description_colleague.errors or form.description_private.errors or form.private_address.errors %}open{% endif %}>
+      <summary>
+        <span>
+          <strong>توضیحات تکمیلی</strong>
+          <small>اختیاری؛ هر توضیح فقط برای مخاطب مشخص‌شده نمایش داده می‌شود</small>
+        </span>
+      </summary>
+      <div class="form-disclosure-body description-grid">
+        <section class="description-card stack-sm" aria-labelledby="description-customer-title">
+          <div class="audience-heading">
+            <h3 id="description-customer-title">توضیح مشتری</h3>
+            <span class="audience-badge audience-public">تمام خریداران</span>
+          </div>
+          <p class="field-help">در صفحات عمومی و بازار همکاران نمایش داده می‌شود.</p>
+          {% with field=form.description_public %}{% include "components/form_field.html" %}{% endwith %}
+        </section>
+
+        <section class="description-card stack-sm" aria-labelledby="description-colleague-title">
+          <div class="audience-heading">
+            <h3 id="description-colleague-title">توضیح همکار</h3>
+            <span class="audience-badge audience-colleague">فقط B2B</span>
+          </div>
+          <p class="field-help">در کنار توضیح مشتری، فقط برای همکاران تأییدشده نمایش داده می‌شود.</p>
+          {% with field=form.description_colleague %}{% include "components/form_field.html" %}{% endwith %}
+        </section>
+
+        {% if is_owner %}
+          <section class="description-card description-card-private stack-sm form-span-full" aria-labelledby="description-private-title">
+            <div class="audience-heading">
+              <h3 id="description-private-title">اطلاعات شخصی مالک</h3>
+              <span class="audience-badge audience-private">فقط مالک</span>
+            </div>
+            <p class="field-help">اعضای تیم، مشتریان و همکاران به این اطلاعات دسترسی ندارند.</p>
+            <div class="form-grid">
+              {% with field=form.description_private %}{% include "components/form_field.html" %}{% endwith %}
+              {% with field=form.private_address %}{% include "components/form_field.html" %}{% endwith %}
+            </div>
+          </section>
+        {% endif %}
+      </div>
+    </details>
+
+    <section class="panel form-section stack-md" aria-labelledby="product-publish-title">
+      <div>
+        <h2 class="section-title" id="product-publish-title">وضعیت و انتشار</h2>
+        <p class="muted">«ناموجود» با «نیازمند استعلام موجودی» متفاوت است؛ وضعیت واقعی محصول را انتخاب کنید.</p>
+      </div>
+      {% for field in form %}
+        {% if field.name == 'availability_status' or field.name == 'is_urgent_sale' or field.name == 'is_visible' and can_publish %}
+          {% include "components/form_field.html" %}
+        {% endif %}
+      {% endfor %}
+      {% if not can_publish %}<p class="muted">انتشار برای نقش شما غیرفعال است؛ محصول به‌صورت پیش‌نویس ذخیره می‌شود.</p>{% endif %}
+    </section>
+
+    {% if can_edit_prices %}
+      <section class="panel form-section stack-md">
+        <h2 class="section-title">قیمت همکار</h2>
+        <p class="muted">فقط کسب‌وکارهای تأییدشده این قیمت را می‌بینند.</p>
+        {% include "inventory/_price_fields.html" with price_form=b2b_form %}
+      </section>
+      <section class="panel form-section stack-md">
+        <h2 class="section-title">قیمت مشتری</h2>
+        <p class="muted">در ویترین خصوصی فروشنده و لینک اشتراک مشتری دیده می‌شود.</p>
+        {% include "inventory/_price_fields.html" with price_form=b2c_form %}
+      </section>
+    {% endif %}
+
+    <div class="btn-row form-actions">
+      <button class="btn btn-primary" type="submit">{% if mode == 'create' %}ثبت محصول{% else %}ذخیره تغییرات{% endif %}</button>
+      <a class="btn btn-ghost" href="{% if lot %}{% url 'inventory:lot_detail' lot.id %}{% else %}{% url 'inventory:lot_list' %}{% endif %}">انصراف</a>
+    </div>
+  </form>
+
+  <datalist id="seller-processing-suggestions">
+    {% for value in processing_suggestions %}<option value="{{ value }}"></option>{% endfor %}
+  </datalist>
+</section>
+{% endblock %}

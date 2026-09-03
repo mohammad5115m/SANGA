@@ -1,0 +1,36 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}استعلام موجودی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">استعلام موجودی</h1>
+    <p class="page-lead">{{ item.product.commercial_name }} — {{ item.business.name }}</p>
+  </div>
+
+  <div class="panel">
+    {% comment %}Deliberately not «ناموجود»: the seller is still offering this, we just do
+    not know the current quantity.{% endcomment %}
+    <p>
+      موجودی این محصول نیاز به بررسی دارد. با ارسال این درخواست، فروشنده مقدار
+      به‌روز را اعلام می‌کند.
+    </p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-block" type="submit">ارسال استعلام موجودی</button>
+  </form>
+</section>
+{% endblock %}

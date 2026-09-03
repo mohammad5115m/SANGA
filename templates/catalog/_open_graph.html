@@ -1,0 +1,17 @@
+{% comment %}
+Link-preview metadata for messaging apps.
+
+Only public-safe fields. `price.label` is already the B2C-resolved string — it
+reads «استعلام قیمت» when there is no current number — so no B2B figure can
+reach a preview card. `stock.label` is likewise the audience-safe wording.
+
+Expects: product, business, price, stock, media_items
+{% endcomment %}
+<meta property="og:title" content="{{ product.commercial_name }} — {{ business.name }}">
+<meta property="og:description" content="{{ price.label }} · {{ stock.label }}">
+<meta property="og:type" content="product">
+<meta property="og:site_name" content="سنگا">
+{% for media in media_items %}{% if media.kind == "image" %}
+  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{{ media.file.url }}">
+{% endif %}{% endfor %}
+<meta name="twitter:card" content="summary_large_image">

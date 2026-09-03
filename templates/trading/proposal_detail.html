@@ -1,0 +1,44 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}توافق معامله | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">توافق معامله</h1>
+    <p class="page-lead">{% include "trading/_proposal_status_badge.html" %}</p>
+  </div>
+  <section class="panel stack-sm">
+    <div class="kv"><span>فروشنده</span><strong>{{ proposal.seller_business.name }}</strong></div>
+    <div class="kv"><span>خریدار</span><strong>{{ proposal.buyer_business.name }}</strong></div>
+    <div class="kv"><span>ثبت‌کننده</span><strong>{{ proposal.initiated_by_business.name }}</strong></div>
+    {% if proposal.note %}<div class="kv"><span>توضیح</span><strong>{{ proposal.note }}</strong></div>{% endif %}
+  </section>
+  <section class="panel stack-md">
+    <h2 class="section-title">اقلام توافق</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th scope="col">#</th><th scope="col">محصول</th><th scope="col">متراژ</th><th scope="col">قیمت واحد</th><th scope="col">جمع</th></tr></thead>
+        <tbody>
+          {% for line in proposal.items.all %}
+            <tr>
+              <td>{{ forloop.counter }}</td>
+              <td>{{ line.product_name }}{% if line.stone_type or line.grade %}<div class="muted">{{ line.stone_type }}{% if line.grade %} · {{ line.grade }}{% endif %}</div>{% endif %}</td>
+              <td class="num">{{ line.quantity }} m²</td>
+              <td class="num" dir="ltr">{{ line.unit_price|rial }}</td>
+              <td class="num" dir="ltr">{{ line.line_total|rial }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot><tr><th scope="row" colspan="4">مبلغ کل</th><td class="num" dir="ltr">{{ proposal.total_amount|rial }} {{ proposal.currency }}</td></tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <div class="alert alert-info">این صفحه فقط سابقه روند بازنشسته‌شده توافق است. فروش و تأیید جدید از مسیر فاکتور انجام می‌شود.</div>
+  {% if proposal.status == 'confirmed' and proposal.trade_id %}
+    <a class="btn btn-primary" href="{% url 'trading:trade_detail' proposal.trade_id %}">مشاهده معامله و فاکتور</a>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% block title %}کاتالوگ در دسترس نیست | سنگا{% endblock %}
+{% block extra_head %}<meta name="robots" content="noindex,nofollow,noarchive">{% endblock %}
 {% block shell %}
 <main class="auth-shell">
   <section class="auth-panel stack-md">
     <h1 class="page-title">کاتالوگ در دسترس نیست</h1>
     <p class="page-lead">لینک منقضی شده، غیرفعال است یا اشتباه وارد شده است.</p>
+    <p class="muted">برای دریافت لینک تازه با فروشنده‌ای که این کاتالوگ را فرستاده تماس بگیرید.</p>
   </section>
 </main>
 {% endblock %}

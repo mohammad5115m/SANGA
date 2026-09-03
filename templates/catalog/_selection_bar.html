@@ -1,0 +1,14 @@
+{% comment %}
+Persistent "you have selected N products" bar on the public surface.
+
+Deliberately non-blocking: it never interrupts browsing, and there is no lead
+capture until the customer chooses to continue.
+
+Expects: selection_count
+{% endcomment %}
+{% if selection_count %}
+  <div class="selection-bar">
+    <span>{{ selection_count }} محصول انتخاب شده</span>
+    <a class="btn btn-primary btn-sm" href="{% url 'catalog:inquiry_review' business.storefront_token %}">ادامه و ارسال درخواست</a>
+  </div>
+{% endif %}

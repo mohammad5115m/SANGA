@@ -1,211 +1,146 @@
-# User Flows & Navigation — سنگا (SANGA)
+# User Flows — سنگا (SANGA)
 
-## 1. Information Architecture (Primary Nav)
+## 1. Navigation
 
-### A) Business App (authenticated owner/staff)
+Six primary destinations, matching the six things a seller does:
 
-Mobile bottom nav as built (`templates/layouts/app_shell.html`):
+| Label | What it is |
+|-------|-----------|
+| خانه | what needs doing today |
+| موجودی من | the business's own products |
+| بازار | colleagues' products |
+| خرید و فروش | bilateral agreements, confirmations, and finalized trades |
+| کاتالوگ‌ها | shareable catalogs |
+| بیشتر | everything visited weekly rather than hourly |
 
-1. **خانه** — Dashboard  
-2. **موجودی** — Inventory  
-3. **افزودن** — Quick Add (center action)  
-4. **بازار** — Colleague marketplace  
-5. **بیشتر** — Settings hub: contacts, ledger, catalogs, notifications, inquiries, purchase requests, demand board, team  
+«بیشتر» holds the colleague directory, ledger, invoices, inquiries, customers,
+customer follow-ups, reports, team and settings. Keeping the primary bar to six
+items is what makes it readable on a phone.
 
-### 1.1 Dashboard («خانه», `/app/`)
+Gone from the interface entirely: تابلوی تقاضا (the demand board), مخاطبین
+(private contacts) and انبارها (warehouses). Navigation follows capabilities, so
+a link is never offered that ends in «دسترسی ندارید».
 
-The first screen after login. Five sections, in order, all tenant-scoped and all
-built from existing selectors — the dashboard owns no financial logic of its own:
+> The word «محموله» does not appear anywhere a user can see. The vocabulary is
+> «محصول» and «موجودی محصول». A test asserts this across every main page.
 
-1. **خلاصه مالی** — جمع مطالبات / جمع دیون / مانده کل, from
-   `accounting.selectors.business_financial_summary`. Every number carries its
-   بدهکار / بستانکار / تسویه label.
-2. **بزرگ‌ترین بدهکاران و بستانکاران** — the five largest balances on each side,
-   from `contact_balances`, each row linking to that contact's statement and
-   marked «بایگانی‌شده» when the contact is archived
-   ([accounting.md](./accounting.md) §6.4).
-3. **محموله‌های نیازمند رسیدگی** — one list of the business's own lots that need
-   action, with a reason badge per row: «نیاز به تأیید موجودی» and/or
-   «بدون قیمت — قابل فروش نیست». One list rather than two, because a lot can have
-   both problems and the errand is the same one; the counts sit above it.
-4. **تازه‌ترین محموله‌های همکاران** — the newest colleague lots, fetched through
-   `marketplace.selectors.marketplace_lots_for` so the visibility rules, the
-   "never my own lots" rule and the active-business gate are inherited rather than
-   re-implemented. No prices are shown here.
-5. **کارهای در انتظار** — unanswered inquiries (still `new`/`viewed`) and offers
-   received on this business's own purchase requests that are still `submitted`.
+## 2. Account provisioning and first login
 
-Sections 1 and 2 render **only** for a membership with `ledger.view`; the gate is
-in the data layer, not the template ([permissions.md](./permissions.md) §10).
-There are no charts — numbers, labels and lists only. Every section has its own
-empty state, so a brand-new business sees a coherent screen rather than a frame.
-Row caps (starting point, not a full report): 5 balances per side, 8 attention
-lots, 6 colleague lots, 5 pending items. The whole page is a fixed number of
-queries, pinned by a test.
-
-The desktop top bar carries the same destinations plus **تابلوی تقاضا**,
-**مخاطبین**, **دفتر حساب**, and **کاتالوگ‌ها** directly. The last three are hidden
-unless the membership holds `customers.manage`, `ledger.view`, or `catalog.manage`
-respectively — see [permissions.md](./permissions.md) §10. Hiding a link is a
-courtesy, never the access control.
-
-### B) Colleague surface
-
-There is **no separate colleague app**, and nothing to join: a colleague is just a
-business with an account, so it uses the same shell. Its network-facing
-destinations are **بازار** (marketplace, with saved searches),
-**درخواست‌های خرید** and **تابلوی تقاضا**.
-
-### C) B2C Public Catalog
-
-1. Business storefront `/s/{business_slug}/`  
-2. Lot detail `/s/{business_slug}/lots/{lot_id}/`  
-3. Custom catalog share `/c/{share_token}/`  
-4. Inquiry / consultation CTAs  
-
-> URL choice: short `/s/` and `/c/` for shareability; internal app under `/app/`.
-
-## 2. Onboarding Flow (Business)
+There is **no self-service signup**.
 
 ```text
-Create account (OTP)
-  → Create business
-  → Business profile (city/contact)
-  → Add first warehouse
-  → Verification info (skippable)
-  → Logo/branding (skippable)
-  → Add first inventory lot (wizard)
-  → Invite teammate (skippable)
+Platform Admin provisions Business + Owner User
+  (./manage.py provision_business, or Django admin)
+  → Admin provisions additional Users (./manage.py provision_user)
+  → User logs in with OTP
+  → Business profile
   → Dashboard
 ```
 
-Show progress checklist; allow skip for non-essential steps.
+Authentication never creates an account. Requesting an OTP for an unknown phone
+produces a normal-looking response but sends no SMS; verifying it fails with a
+message that deliberately cannot distinguish "no such account" from "account
+deactivated".
 
-## 3. Quick Add Lot (Target 60–90s)
+A User belonging to no Business lands on `/app/no-business/`, which explains the
+situation and links to support. It contains no form.
 
-Mobile-first wizard:
+## 3. Adding or editing a product
 
-1. Select/create Product  
-2. Lot details (code optional/auto, warehouse, grade, processing)  
-3. Quantity & dimensions  
-4. Photos/video (camera + multi-upload)  
-5. Prices (B2B + B2C)  
-6. Visibility & publication  
-7. Review & publish / save draft  
+One page captures the controlled stone type, optional name suffix, applications,
+processing, dimensions, exact-or-blank quantity, both price channels,
+descriptions and visibility. The commercial name and immutable product code are
+generated automatically. Media is managed from the resulting product page.
 
-Supports today: duplicate existing lot, primary image selection.  
-Not built yet: autosave draft mid-wizard, client-side image compression before upload.
+There is no existing-product picker, warehouse, stock-mode choice or wizard.
+The form still asks how long the seller vouches for numeric stock and prices,
+which keeps freshness explicit without nagging.
 
-## 4. Inventory Management Flow
-
-- List with filters/chips, search, sort  
-- Row/card indicators: freshness, availability, visibility, urgent  
-- Actions: quick edit, duplicate, archive, hide/show, mark sold, confirm, media, prices  
-- Bulk actions for status/visibility/confirm are **not built** — each lot is acted on one at a time
-
-## 5. Freshness Flow
+## 4. Building a catalog
 
 ```text
-Fresh → Needs Confirmation → Stale → Hidden (configurable)
+موجودی من → select rows or all current filter results
+           → create a catalog or add to an existing catalog
+           → enter metadata → share the live link
 ```
 
-UI shows: `آخرین تأیید موجودی: امروز، ۱۰:۴۵`  
-One-click confirm from list/detail/dashboard.  
-Celery evaluates + notifies.
+Catalog membership is explicit. Current price, stock, media and eligibility are
+resolved when the link is viewed.
 
-## 6. B2C Catalog Flow
+## 5. The product lifecycle
 
-Visitor opens storefront → filters/search → lot detail (gallery, B2C price, applications) → inquiry/consultation/share/compare.
-
-Must not expose B2B/internal notes/margins.
-
-## 7. Colleague Marketplace Flow
-
-Any logged-in **active** business browses recent/urgent lots from every other
-active business → sees the B2B price (or its own negotiated `ContactPrice`) →
-inquires → optionally saves the search. No partnership, no approval, no request. It
-never sees its own lots there, nor anybody's `private` lots, nor anything belonging
-to a suspended business — and a suspended business sees nothing at all.
-
-## 8. Inquiry Flow
+Four independent things, never one status field. See
+[inventory.md](./inventory.md).
 
 ```text
-New → Viewed → Contacted → Negotiating → Converted / Closed / Lost
+ویرایش · تأیید موجودی · بروزرسانی قیمت
+ناموجود کردن / موجود کردن
+انتشار / توقف انتشار
+اشتراک‌گذاری
+حذف محصول
 ```
 
-Linked to a lot or a custom catalog (no purchase-request FK). The model has an
-`assignee` field, but there is **no assignment UI or workflow** yet — Phase 7 still
-lists inquiry-pipeline UX as open.
+All of them are on the product page rather than buried in a menu. Deletion is
+styled as destructive and requires confirmation.
 
-## 9. Trade Recording Flow
+## 6. Buying and selling
 
 ```text
-Trade agreed offline → «ثبت معامله» → confirm the effect on the balance → one ledger entry
+Seller or buyer records a phone/in-person agreement
+  → select the counterparty and own role
+  → add registered seller products and/or miscellaneous products
+  → enter agreed quantities and prices
+  → send to the other Business
+  → counterparty confirms or rejects
+  → on confirmation: Trade + both ledgers + issued invoice
 ```
 
-Stock is never held by the platform: there are no reservations. Optionally the
-screen is opened from an accepted offer, which pre-fills amount, lot, side and
-counterparty. See [accounting.md](./accounting.md) §5.
+Sending a proposal is **not** selling. See [trading.md](./trading.md).
 
-## 10. Purchase Request Flow
+## 7. Public customer
 
-Buyer publishes a structured PR → it appears on **تابلوی تقاضا** for every other
-business → sellers send **private** offers → the buyer accepts one → either side
-records the trade in its own ledger.
+```text
+/store/<storefront_token>/  →  filter  →  select several products
+          →  /inquiry/  →  quantity per product
+          →  identity (name + mobile)
+          →  OTP verification
+          →  saved
+          →  optional WhatsApp / Telegram share
+```
 
-There is no automatic matching and no public reverse auction: sellers read the
-board themselves, and an offer is visible only to its author and the buyer.
+No login wall, and identity is asked for once, at the end. See
+[customers.md](./customers.md).
 
-## 11. Custom Catalog Sharing Flow
+The storefront begins with a plain-language application choice and a simple
+search. Technical filters stay behind progressive disclosure. Seller follow-up
+then continues at `/app/leads/`: customer profile → note or next follow-up →
+overdue/today queue → in-app reminder.
 
-Owner curates lots → generates share link → customer opens B2C-safe view → track views → inquire.
+## 8. Dashboard
 
-## 12. Page Map (Phase-oriented)
+Operational, not analytical. There are no charts.
 
-### Phase 1 pages
+Top of the page is what needs doing: products needing a stock check, prices
+needing review, trade agreements waiting for this Business's confirmation, and
+unanswered inquiries. Below that: the financial summary and the
+largest debtors and creditors (only with `ledger.view`), recent sales and
+invoices, and the newest colleague products.
 
-- Login / OTP  
-- Onboarding steps  
-- App shell (RTL)  
-- Dashboard (see §1.1)  
-- Business settings / warehouses / team list (basic)  
+Empty sections are hidden rather than rendered as empty frames; the counters at
+the top still say zero.
 
-### Phase 2 pages
+Every list is bounded and every total is a database aggregate. A test pins the
+query count so an N+1 anywhere on the page fails immediately.
 
-- Inventory list/detail  
-- Quick add wizard  
-- Product picker/create  
-- Media manager  
-- Price editor  
+## 9. Public URLs
 
-### Phase 3+
+| Path | What |
+|------|------|
+| `/store/<storefront_token>/` | one seller's unlisted storefront |
+| `/store/<storefront_token>/items/<id>/` | storefront product detail |
+| `/p/<public_token>/` | one product's public share link |
+| `/p/<public_token>/` | stable per-product share link |
+| `/c/<share_token>/` | shared catalog |
+| `/inquiry/…` | the multi-product inquiry flow |
 
-- Storefront + lot public detail  
-- Colleague marketplace  
-- PR board / demand board  
-- Contacts (CRM-lite) + ledger + trade recording  
-- Business dashboard (§1.1)  
-- Platform verification (status field only; workflow UI not built) 
-
-## 13. UI Component System (Design System Targets)
-
-Reusable primitives before feature sprawl:
-
-- Typography scale, spacing, radii, shadows, semantic colors  
-- Button, badge, input, select, textarea, checkbox  
-- Card (interaction containers only), table + mobile list  
-- Modal/dialog, confirm dialog, toast, tabs, breadcrumbs  
-- Filter chips, search field, status dots  
-- Skeleton, empty state  
-- Image gallery, stepper (wizard)  
-
-Persian-first, WCAG-friendly contrast, visible focus, labels on all inputs.
-
-## 14. UX Review Checklist (Every Screen)
-
-- Would a stone seller understand this immediately?  
-- Comfortable on a phone?  
-- Could B2B info leak?  
-- Is inventory trustworthiness visible?  
-- Is the primary action obvious?  
-- Any unnecessary friction?  
+All unauthenticated, all B2C-safe.

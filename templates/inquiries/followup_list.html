@@ -1,0 +1,35 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}پیگیری‌ها | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg crm-page followup-page">
+  {% include "inquiries/_crm_tabs.html" %}
+
+  <div class="toolbar crm-page-heading">
+    <div><span class="section-kicker">صف کار روزانه</span><h1 class="page-title">پیگیری مشتریان</h1><p class="page-lead">اول عقب‌افتاده‌ها و کارهای امروز؛ سپس برنامه روزهای بعد.</p></div>
+    <a class="btn btn-secondary" href="{% url 'inquiries:leads' %}">همه مشتریان</a>
+  </div>
+
+
+  <nav class="followup-summary" aria-label="فیلتر وضعیت پیگیری">
+    {% for value, label in followup_filters %}
+      <a class="followup-summary-item{% if state == value %} is-active{% endif %}" href="{% if value %}?state={{ value }}{% else %}{% url 'inquiries:followups' %}{% endif %}">
+        <span>{{ label }}</span>
+        {% if value == 'overdue' %}<strong>{{ counts.overdue }}</strong>{% elif value == 'today' %}<strong>{{ counts.today }}</strong>{% elif value == 'upcoming' %}<strong>{{ counts.upcoming }}</strong>{% elif value == 'completed' %}<strong>{{ counts.completed }}</strong>{% endif %}
+      </a>
+    {% endfor %}
+  </nav>
+
+  {% if state %}
+    <div class="followup-grid">{% for followup in followups %}{% include "inquiries/_followup_card.html" %}{% empty %}<div class="empty-state">پیگیری‌ای در این بخش وجود ندارد.</div>{% endfor %}</div>
+  {% else %}
+    {% for group in groups %}
+      <section class="stack-md followup-section followup-section-{{ group.key }}" aria-labelledby="followup-{{ group.key }}">
+        <div class="section-heading-row"><div><h2 class="section-title" id="followup-{{ group.key }}">{{ group.label }}</h2><p class="muted">{{ group.description }}</p></div><span class="badge">{{ group.items|length }}</span></div>
+        <div class="followup-grid">{% for followup in group.items %}{% include "inquiries/_followup_card.html" %}{% empty %}<div class="empty-state empty-state-compact">موردی در این بخش نیست.</div>{% endfor %}</div>
+      </section>
+    {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}

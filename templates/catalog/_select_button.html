@@ -1,0 +1,15 @@
+{% comment %}
+Add/remove one product from the public selection.
+
+Expects: card (or lot), is_selected
+{% endcomment %}
+<form method="post" action="{% url 'catalog:selection_toggle' business.storefront_token card.lot.id %}" class="select-form">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  {% if selection_catalog_token %}<input type="hidden" name="catalog" value="{{ selection_catalog_token }}">{% endif %}
+  {% if is_selected %}
+    <button class="btn btn-secondary btn-sm" type="submit">انتخاب شده ✓</button>
+  {% else %}
+    <button class="btn btn-primary btn-sm" type="submit">افزودن به درخواست</button>
+  {% endif %}
+</form>

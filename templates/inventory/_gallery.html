@@ -1,0 +1,48 @@
+{% comment %}
+Product media gallery: the primary image large, everything else as thumbnails,
+videos inline.
+
+Expects: media_items. JavaScript activates the primary image when present and
+falls back to the first item without making the gallery unusable without JS.
+{% endcomment %}
+<div class="product-gallery" data-gallery>
+  <div class="gallery gallery-lg">
+    {% for media in media_items %}
+    <div class="gallery-slide" data-gallery-slide data-media-id="{{ media.id }}"
+         {% if media.is_primary %}data-primary="true"{% endif %}
+         {% if not forloop.first %}hidden{% endif %}>
+      {% if media.kind == "video" %}
+        <video controls preload="metadata" playsinline>
+          <source src="{{ media.file.url }}">
+        </video>
+      {% else %}
+        <img src="{{ media.file.url }}" alt="{{ media.caption|default:gallery_alt }}" loading="lazy">
+      {% endif %}
+      {% if media.caption %}<div class="gallery-caption">{{ media.caption }}</div>{% endif %}
+    </div>
+    {% empty %}
+    <div class="empty-state gallery-empty" role="img" aria-label="تصویری برای {{ gallery_alt|default:'این محصول' }} ثبت نشده است">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m5 17 4-4 3 3 2-2 5 4"/>
+      </svg>
+      <strong>تصویر محصول هنوز ثبت نشده است</strong>
+      <span>برای مشاهده تصویر واقعی از فروشنده استعلام کنید.</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if media_items|length > 1 %}
+  <div class="gallery-thumbs">
+    {% for media in media_items %}
+      <button type="button" class="gallery-thumb" data-gallery-thumb data-media-id="{{ media.id }}"
+              aria-label="نمایش رسانه {{ forloop.counter }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}">
+        {% if media.kind == "video" %}
+          <span class="gallery-thumb-video">ویدیو</span>
+        {% else %}
+          <img src="{{ media.file.url }}" alt="نمای کوچک {{ media.caption|default:forloop.counter }}" loading="lazy">
+        {% endif %}
+      </button>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

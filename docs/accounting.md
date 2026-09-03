@@ -1,299 +1,272 @@
-# Accounting Ledger — سنگا (SANGA)
+# Ledger and Invoices — سنگا (SANGA)
 
-A **practical, internal balance-tracking** feature — not a full accounting, tax,
-banking, or payment system. Each private contact has an immutable ledger and a
-clearly-labeled balance.
+## 1. What this is, and what it is not
 
-## 1. Balance convention (single, documented)
+The ledger is a **book of record**. It writes down what a colleague owes or is
+owed. It does not move money, connect to a bank, or settle anything: payments
+happen outside SANGA and are recorded after the fact, exactly as the trader
+already does on paper.
 
-Balance is always expressed from the **owning business's books**, in standard
-Persian bookkeeping vocabulary:
+Bank reconciliation, payment gateways, VAT engines, and tax-authority integration
+remain out of scope. Invoice settlement can be allocated to cash, credit and cheque;
+cheques have append-only status events. These allocations describe the commercial
+document and never claim that SANGA moved money through a bank.
 
-| Balance | State | Label | Meaning |
-|---------|-------|-------|---------|
-| `> 0` | `debtor` | «بدهکار» | the contact owes the business — a receivable (مطالبات) |
-| `< 0` | `creditor` | «بستانکار» | the business owes the contact — a payable (دیون) |
-| `= 0` | `settled` | «تسویه» | — |
+All amounts are **IRR**. Nothing converts to Toman anywhere.
 
-`describe_balance()` returns `{state, label, amount, signed}` where `amount` is
-always the **absolute** magnitude: screens print the label instead of a minus
-sign, and a bare signed number is never shown. `signed` is there for callers that
-compare or aggregate rather than display.
+## 2. The counterparty is a Business
 
-## 2. Model — `accounting.LedgerEntry`
+V1 keyed the ledger on `contacts.Contact` — a private, hand-typed row per
+business. Two people at the same company could become two different debtors, and
+nobody could tell without reading both.
 
-- `amount` — positive magnitude (`Decimal`, `MinValue 0.01`, check constraint `> 0`).
-- `balance_delta` — signed effect on the balance; **single source of truth** for math.
-- `balance_after` — running balance immediately after the entry.
-- `entry_type` — sale «فروش» / purchase «خرید» / payment_received «دریافت» /
-  payment_made «پرداخت» / adjust_debit «اصلاح بدهکار» / adjust_credit
-  «اصلاح بستانکار» / reversal «برگشت سند». Values are unchanged; only the display
-  labels were professionalised (migration `0004_ledger_entry_type_labels`).
-- `occurred_on` (business date), `description`, `reference`, `created_by`, `created_at`.
-- Optional links: `related_lot`, `related_offer` (an accepted
-  `purchase_requests.PurchaseOffer`), and `reverses` (self-FK).
-- `reversed_at` — bookkeeping flag stamped on the *original* entry when a reversal
-  is posted. See the carve-out below.
+V2 keys it on the colleague's **Business** (`LedgerEntry.counterparty_business`).
+Every colleague is already a Business in the directory, so there is nothing to
+type and nothing to keep in sync.
 
-### Direction map
+### Rows that could not be migrated
 
-| Type | Δ | Effect | Statement column |
-|------|---|--------|------------------|
-| sale, payment_made, adjust_debit | `+amount` | contact becomes more بدهکار | بدهکار |
-| purchase, payment_received, adjust_credit | `−amount` | contact becomes more بستانکار | بستانکار |
-| reversal | `−original.delta` | negates a prior entry | opposite of the original |
+`accounting.0007` mapped each entry through `Contact.linked_business`. Where
+there was no link, the row keeps its `contact` FK and its
+`legacy_counterparty_name`, and is:
 
-`amount` is always positive and every type moves the balance in exactly one
-direction, so `balance_delta` is never zero: `is_debit` and `is_credit` are
-mutually exclusive and an amount can never appear in both columns.
+- still counted in balances and statements,
+- listed at `/app/accounting/legacy/` so nobody thinks the money vanished,
+- **not** postable to — there is no account to add an entry against,
+- **not** reversible, for the same reason.
 
-## 3. Financial correctness
+Inventing a Business for those rows would have put somebody else's money on a
+colleague's account. Leaving them queryable under their original name does not.
 
-- **Decimal only**, never float; amounts quantized to `0.01`.
-- **Concurrency:** posting locks the contact row (`select_for_update`) so entries for
-  a contact are strictly serialized; `balance_after = previous + delta` is therefore
-  always correct. Posting order = creation order.
-- **No independently-editable balance:** the current balance is derived from the
-  latest entry's `balance_after`; there is no separate mutable balance field to drift.
-  Reconciliation invariant (tested): `sum(balance_delta) == current_balance`.
-- **Immutability:** `save()` blocks updates to a posted entry; `delete()` is disabled.
-  Corrections are made with **reversal** entries. Double-reversal and reversing a
-  reversal are both rejected under the row lock.
-- **The one carve-out — `reversed_at`:** `reverse_entry` stamps the original entry
-  with the time it was reversed. This is a bookkeeping flag, not financial data:
-  no `amount`, `balance_delta`, or `balance_after` is ever changed, and the entry
-  still cannot be edited or deleted. Because `save()` deliberately refuses updates
-  (and must keep doing so), the stamp is written with a queryset `.update()` inside
-  the same transaction and the same contact row lock as the reversal itself, so an
-  entry is never observed as reversed without its reversal. It exists so the trade
-  idempotency constraint can tell a live trade from a corrected one — see §5.
-- **Tenant isolation:** every selector/service is scoped by `business`; cross-business
-  access raises a Persian error or 404.
-- **Logging:** every post/reversal is logged server-side.
+The backfill re-pointed FKs and copied a name. It did **not** recompute a single
+balance: `balance_after` is a stored running total, and rederiving it would be
+rewriting financial history to match an assumption.
 
-## 4. Capabilities
+## 3. Balance convention
 
-- `ledger.view` — view balances and statements (staff by default).
-- `ledger.manage` — post entries and reversals (owner/manager by default).
+From the owning business's books:
 
-## 5. Trades → ledger
+| Balance | Label | Meaning |
+|---------|-------|---------|
+| `> 0` | بدهکار | the colleague owes us (a receivable) |
+| `< 0` | بستانکار | we owe the colleague (a payable) |
+| `= 0` | تسویه | settled |
 
-An inquiry or an offer is **never** a financial event. Trades in this trade are
-agreed offline — by phone, at the quarry, in the workshop — so they are **recorded
-manually**, as their own deliberate step.
+`amount` is always a positive magnitude. `balance_delta` carries the sign and is
+the single source of truth for balance math. `balance_after` is the running
+balance immediately after the entry, computed under a row lock.
 
-### Flow
+**Never render a bare signed number.** `describe_balance()` returns a magnitude
+plus a label, because "-500,000" tells the reader nothing about who owes whom.
 
-«ثبت معامله» lives at `/app/accounting/record-trade/` and needs `ledger.manage`.
+## 4. Immutability and reversal
 
-1. Pick the side («فروش» or «خرید»), the contact, the amount, the date, and
-   optionally a description, a reference and one of your **own** lots.
-2. The screen states the effect on the balance in plain Persian
-   («با ثبت این سند، حساب این مخاطب … ریال بدهکار می‌شود»).
-   «محاسبه اثر بر مانده» recomputes it server-side after an edit.
-3. Only submitting with the confirmation ticked posts the entry — one entry via
-   `accounting.services.post_trade_entry`, which reuses the normal `post_entry`
-   posting path (same row lock, same balance math, same validation).
+Entries are never edited or deleted. `save()` raises on update and `delete()`
+raises unconditionally.
 
-The optional related lot must belong to the acting business: the form only offers
-its own un-archived lots and the service checks ownership again.
+Corrections are made by posting a **reversal** that negates the original. The
+original is stamped with `reversed_at`, which is a bookkeeping flag rather than
+financial data — no amount, delta or balance changes. That stamp is the one
+deliberate carve-out from immutability and is written with a queryset
+`.update()`, because `save()` blocks updates and must keep doing so.
 
-### Starting from an accepted offer
+A reversal cannot itself be reversed, and an entry cannot be reversed twice.
 
-`/app/accounting/record-trade/?offer=<uuid>` pre-fills the screen from an accepted
-`PurchaseOffer`: the amount (unit price × offered quantity), the lot, the
-counterparty, and the side — «فروش» for the seller who made the offer, «خرید» for
-the buyer who accepted it. **Both** sides may record their own entry in their own
-ledger; the constraint below is scoped by business precisely so they can.
+> Because historical models in migrations strip custom methods, a data migration
+> *can* rewrite these rows — and is the only thing that can. An equivalent
+> management command would fail on the first save.
 
-A business that is party to neither side gets a 404, not a hint that the offer
-exists. An offer that was not accepted cannot be recorded at all.
+## 5. One authoritative posting event
 
-### Contact resolution
+A colleague sale reaches the books **exactly once**, when the counterparty confirms the agreement.
 
-Ledger entries attach to a **contact**, never to a counterparty business:
+```text
+confirm_trade_proposal()
+  → create Trade
+  → post_trade_entries()   ← the books move here, and only here
+  → create the invoice
+  (one transaction)
+```
 
-- If exactly one active contact of the acting business has `linked_business` ==
-  the offer's counterparty, it is preselected.
-- Otherwise the user picks a contact or creates one from the same screen
-  (name/phone; linking it to the counterparty is offered because linking no longer
-  requires any approval). Contacts are never auto-created, and nothing about the
-  counterparty beyond its business name is exposed.
+Issuing, re-issuing, printing or cancelling the invoice posts **nothing**. There
+is no second way in: `post_manual_entry()` refuses trade entry types outright, so
+a sale cannot be typed by hand either, and `create_manual_invoice()` refuses a
+colleague counterparty outright, so a document cannot stand in for a sale.
 
-### Idempotency guarantee
+Exactly-once is enforced three ways, so no single mistake breaks it:
 
-An accepted offer yields **at most one live trade entry per business ledger**,
-enforced at three levels:
+1. `select_for_update()` on both parties' Business rows serializes concurrent
+   attempts.
+2. A pre-check under those locks finds an existing live entry and raises
+   `LedgerDuplicateError`.
+3. `uniq_trade_entry_per_trade` — a partial unique index on
+   `(business, related_trade)` scoped to live trade rows — rejects anything that
+   slips past the first two.
 
-- **Database:** `uniq_trade_entry_per_offer` — a conditional unique constraint on
-  `(business, related_offer)` limited to trade types (`sale`, `purchase`) with a
-  non-null offer **and `reversed_at IS NULL`**. Reversals, payments and
-  adjustments are outside the condition, so corrections stay possible.
-- **Service:** `post_trade_entry` re-checks for an existing *un-reversed* trade
-  entry after taking the contact row lock, and translates a constraint violation
-  (a race on a different contact of the same business) into `LedgerDuplicateError`.
-- **View:** a repeat GET/POST finds the existing entry and reports
-  «سند مالی این معامله قبلاً ثبت شده است.», then redirects to the statement.
+`reversed_at__isnull=True` in the constraint means reversing frees the slot, so a
+trade recorded with a wrong amount can be corrected and re-recorded with its link
+intact.
 
-A purely manual trade carries no `related_offer` and is therefore **deliberately
-not deduplicated**: nothing outside the ledger identifies an offline trade, so
-refusing a second identical one would be guessing. Two genuine sales of the same
-amount to the same contact on the same day are both recordable.
+### Both parties keep books
 
-### Re-recording a corrected trade
+A colleague sale is one commercial event that moves two ledgers:
 
-Reversing a trade entry **frees the slot**. Whoever posted the wrong amount
-reverses it and records the trade again, with `related_offer` and `related_lot`
-still attached, so the deal stays traceable to its offer instead of degrading into
-a detached manual entry. Both the constraint and `trade_entry_for_offer` ignore
-reversed rows, so the two never disagree.
+| Party | Entry | Effect on their own books |
+|-------|-------|---------------------------|
+| Seller | `sale` | the colleague becomes **بدهکار** |
+| Buyer | `purchase` | the colleague becomes **بستانکار** |
 
-The ledger keeps all three rows — wrong entry, reversal, corrected entry — and the
-reconciliation invariant still holds: `sum(balance_delta) == current_balance`.
-A second *un-reversed* trade entry for the same offer is still refused, by the
-service pre-check and by the database.
+Both are written inside the seller's transaction. The buyer's row is not
+bookkeeping the seller is authoring in someone else's name — it is the other half
+of a transaction the buyer is a party to, and the buyer can reverse it from their
+own statement if it is wrong. Posting only the seller's side left «جمع خرید»
+permanently zero for the buyer while the seller's statement said money was owed:
+the same event described two incompatible ways.
 
-### Amount
+Idempotency is evaluated **per side**, so a party who reversed their own entry
+can have it reposted without disturbing the other's book. Each party owns the
+corrections to their own ledger; nothing reaches across the tenant boundary to
+reverse somebody else's row.
 
-Suggested amount = the offer's `unit_price` × `offered_qty_sqm`, quantized to
-`0.01` — the number the two sides already agreed on, so no price lookup is
-involved. A zero-priced (استعلام-style) offer produces no suggestion. The
-suggestion is always editable, because deals are renegotiated offline, and a
-manual trade has no suggestion at all.
+Both Business rows are locked in ascending stringified-UUID order. Two trades
+running in opposite directions between the same pair would otherwise deadlock,
+each holding the row the other wants.
 
-## 6. Reporting
+A walk-in customer sale posts nothing: there is no colleague account to move, and
+inventing one would create a debtor nobody can settle with.
 
-### 6.1 Statement columns (`contact_statement` + `statement_totals`)
+### Who is allowed to post it
 
-Both the on-screen statement and the printable one show
-**تاریخ · شرح · مرجع · بدهکار · بستانکار · مانده**, oldest first. An entry's
-`amount` goes in the بدهکار column when `balance_delta > 0` and in the بستانکار
-column when it is negative — never both, never a signed number.
+Deliberately `trade.confirm`, **not** `ledger.manage`. The entry is a consequence
+of the sale the user just completed, not bookkeeping they are authoring.
+Requiring `ledger.manage` would mean no salesperson could complete a sale.
 
-`selectors.statement_totals(entries)` takes the already-filtered queryset and
-returns:
+Manual entries still require `ledger.manage`. The split lives in
+`services._post()`, which does the writing, with the two public entry points
+above it owning their own authorization.
 
-- `debit` / `credit` — جمع بدهکار and جمع بستانکار, summed in the database over
-  exactly the rows on screen, so the footer always matches the active date/type
-  filters.
-- `closing` / `closing_balance` — «مانده پایان دوره», defined as the running
-  balance of the **last row shown** (and its `describe_balance()` labeling). That
-  is deliberately the same number as the last مانده cell, so the footer can never
-  contradict the table. It is `None` when the filters match nothing, because a
-  closing balance for an empty period would be invented.
-- `row_count`.
+## 6. Manual entries: four, and only four
 
-Caveat worth knowing: `balance_after` is a *posting-order* running balance
-(entries are ordered by `created_at`). A back-dated entry therefore shows a مانده
-that is correct for the ledger as a whole but does not read as a per-date balance.
-Aging (below) uses `occurred_on` and is unaffected.
+| Type | Label | Effect |
+|------|-------|--------|
+| `payment_received` | دریافت | colleague owes less |
+| `payment_made` | پرداخت | colleague owes more |
+| `adjust_debit` | اصلاح بدهکار | colleague owes more |
+| `adjust_credit` | اصلاح بستانکار | colleague owes less |
 
-### 6.2 Aging — گزارش سنی بدهی (`accounting/reports.py`)
+An adjustment must carry a reason. An unexplained correction is
+indistinguishable from a mistake when somebody reads the books six months later.
 
-Outstanding **receivables** split by the age of the debt, in four buckets keyed on
-`occurred_on`: جاری (۰ تا ۳۰ روز)، ۳۱ تا ۶۰ روز، ۶۱ تا ۹۰ روز، بیش از ۹۰ روز.
-Available per contact (`contact_aging`, shown on the statement screen) and
-business-wide (`business_aging`, `/app/accounting/aging/`).
+There is no manual "product exchange" entry: goods movements come from finalized
+trades.
 
-**FIFO allocation rule.** Credit-side entries (دریافت، خرید، اصلاح بستانکار) are
-pooled and applied against the **oldest outstanding debit first**, not spread
-across all of them. A partial payment therefore clears the oldest invoice and the
-«بیش از ۹۰ روز» bucket only holds debt that genuinely stayed unpaid. What survives
-of each debit is bucketed by the age of *that debit's* own `occurred_on`.
-Allocation order is `occurred_on` then `created_at`, so a back-dated invoice
-posted late is still treated as the older debt.
+## 7. Aging (گزارش سنی بدهی)
 
-**Reversals** are respected by dropping both sides: an entry stamped `reversed_at`
-and the `reversal` entry itself are excluded, so a reversal can never behave like a
-payment against some *other* debit. Reversing a payment puts the old debt back in
-its bucket.
+FIFO. Credits are pooled and applied against the **oldest outstanding debit
+first**, so a partial payment clears the oldest invoice rather than being spread
+thinly across all of them — that is what makes the «بیش از ۹۰ روز» bucket mean
+anything.
 
-Consequences that hold by construction (and are tested): a «بستانکار» or «تسویه»
-account produces no aging amounts at all, the per-contact aging total equals
-`max(0, balance)`, and the leftover `unapplied_credit` equals `max(0, −balance)`.
+A reversed entry and its reversal both drop out of the calculation. Leaving the
+reversal in would make it behave like a payment against some *other* debit.
 
-FIFO cannot be expressed as a plain SQL aggregate, so `business_aging` fetches the
-business's live entries in **one** query and groups them per contact in memory,
-then reuses the same per-contact routine. It ages **every** contact of the
-business, archived ones included, which is what keeps it reconciled with the
-summary below — see §6.4.
+Totals reconcile with the financial summary by construction: `total.total`
+equals «جمع مطالبات» and the summed `unapplied_credit` equals «جمع دیون».
 
-### 6.3 Business-wide summary (`selectors.business_financial_summary`)
+Aging is always computed over the whole account. Statement date and type filters
+are a viewing device and must not change how old a debt is.
 
-One call, one query (a sub-query over the `contact_balances` annotation — no Python
-loop over entries), returning for the business:
+## 7.1 Statement footer: three balances, three questions
 
-| Key | Persian | Meaning |
-|-----|---------|---------|
-| `receivable_total` | جمع مطالبات | sum of the positive balances |
-| `payable_total` | جمع دیون | sum of the negative balances, as a **positive magnitude** |
-| `net_balance` / `net` | مانده کل | signed net, plus its labeled `describe_balance()` form |
-| `debtor_count`, `creditor_count`, `settled_count`, `contact_count` | — | contact counts per state |
+| Figure | Question |
+|--------|----------|
+| مانده ابتدای دوره | where the account stood before the first visible row |
+| جمع گردش نمایش‌داده‌شده | what the listed entries moved |
+| مانده پایان دوره | the last visible row's running balance |
 
-A business with no contacts or no entries yields zeros, never `None`. Reconciles
-with the aging report: `receivable_total` equals the aging total and
-`payable_total` equals the summed `unapplied_credit`.
+`balance_after` is a **global** running total: it includes every entry ever
+posted, including the ones a filter has hidden. Filter a statement to «دریافت»
+only and the closing figure reflects sales that are nowhere on screen — so
+closing minus the visible columns did not reconcile, and the footer said nothing
+about why. Stating the opening balance is what makes that legible.
 
-### 6.4 Archived contacts — بایگانی ≠ تسویه
+With a date filter, opening + debit − credit = closing. With a type filter it
+deliberately does not, and now the reader can see it.
 
-Archiving a contact is housekeeping, not a settlement, and it is **not** blocked on
-a settled balance: an owner may tidy up a contact they no longer trade with at any
-time. Financial reporting therefore refuses to lose sight of the money.
+## 8. Invoices
 
-`contact_balances` — and so `business_financial_summary`, which aggregates it —
-returns the active contacts **plus every archived contact whose balance is not
-zero**. An archived contact whose account is «تسویه» carries no money and is left
-out. The rows that survive are marked «بایگانی‌شده» on the ledger index, the aging
-report and the dashboard, so a stale row is never mistaken for a live one.
+Invoices are **historical documents**. `SalesInvoice` and `SalesInvoiceItem`
+carry their own copy of the product name, stone type, grade, quantity, unit price
+and line total.
 
-`business_aging` ages every contact of the business for the same reason. The two
-still reconcile exactly: an archived «تسویه» account allocates to nothing, so it
-contributes zero to both `receivable_total`/`total.total` and
-`payable_total`/`unapplied_credit`, whether or not it is included.
+Nothing on a rendered invoice reads through to the live product. Rename it,
+reprice it, mark it unavailable or delete it — yesterday's invoice is unchanged.
+Deleting a product that appears on an invoice archives it rather than purging it,
+so the FK survives too.
 
-The invariant to preserve: **no non-zero balance can be hidden from a financial
-report by archiving.**
+This is the deliberate opposite of a catalog, which is always live:
 
-## 7. UX
+> **Catalog = current. Invoice = historical.**
 
-### URL map
+### One sale, one entry per party, whatever it contained
 
-| Path | Purpose |
-|------|---------|
-| `/app/accounting/` | Business-wide summary + contact balance list |
-| `/app/accounting/aging/` | Aging report |
-| `/app/accounting/record-trade/` | Manual trade recording («ثبت معامله») |
-| `/app/accounting/contacts/<id>/` | Contact statement |
-| `/app/accounting/contacts/<id>/add/` | Post a manual entry |
-| `/app/accounting/contacts/<id>/print/` | Printable statement (browser print; no server PDF) |
-| `/app/accounting/entries/<id>/reverse/` | Confirm and post a reversal |
+A sale covering three stones is one commercial event, so it produces one seller
+`SALE` and one buyer `PURCHASE` for the sum of its lines — not one entry per
+stone. The statement describes it by its shape («فروش ۳ قلم کالا») rather than by
+whichever stone happened to be first, because naming a three-stone sale after one
+of them would describe the entry wrongly. The invoice carries the detail.
 
-- Entry point: `/app/accounting/` opens with the business-wide summary card
-  (جمع مطالبات / جمع دیون / مانده کل / counts), then one row per reported contact
-  (§6.4) with its balance (summed from `balance_delta` in one query) and its
-  بدهکار/بستانکار/تسویه badge. Rows can be filtered by state and sorted by
-  balance from the query string (`?state=debtor&sort=debtor`), which is how an
-  owner answers «چه کسی به من بدهکار است؟» in one screen. Shown in the app shell
-  to members with `ledger.view`.
-- The dashboard (`/app/`) repeats خلاصه مالی and the largest debtors/creditors for
-  members holding `ledger.view` — the same selectors, no second implementation.
-  See [user-flows.md](./user-flows.md) §1.1.
-- One statement screen per contact: labeled balance card, date/type filters, a
-  بدهکار/بستانکار/مانده table with column totals and «مانده پایان دوره», the
-  contact's aging breakdown, and a print-to-PDF statement (browser print; no server
-  PDF dependency).
-- One clear action per screen; manual adjustments require a reason; reversal and
-  trade recording each use a confirmation screen.
+A one-line sale still reads as what was sold, which is how both parties remember
+it.
 
-## 8. Deliberately deferred
+### One Trade, one invoice
 
-- Pairing the two sides of one offer into a single reconciled trade. Each side
-  records its own entry independently; nothing checks that the amounts agree.
-- Multi-currency (single `IRR` for now).
-- Anything beyond the terminology-and-reporting level: no chart of accounts, no
-  journal / general-ledger hierarchy, no double-entry account codes, no cheque
-  (چک) or instalment tracking, no charts or graphs. The balance stays a single
-  per-contact running total.
-- Blocking the archiving of a contact whose balance is not تسویه. Deliberately
-  **not** built: archiving stays a free housekeeping action and the reports carry
-  the debt instead (§6.4).
+`uniq_invoice_per_trade` is a partial unique index on `trade` for non-null rows.
+The service was idempotent by lookup, which cannot hold under concurrency: two
+requests could both find no invoice for a trade and both create one, documenting
+the same sale twice. The service now locks the seller *before* looking, re-checks
+under the lock, and turns the constraint violation back into the winning
+document, so a double-click still hands both callers the same invoice.
+
+A colleague invoice therefore has exactly one origin: a finalized Trade. Typing
+one by hand is refused — see §5.
+
+### Who may read one
+
+The seller sees every document of their own, including drafts. The buyer sees
+**issued and cancelled** ones.
+
+A draft is the seller still deciding — the number, the lines, whether to issue it
+at all. Showing it to the buyer meant they could read a bill that had not been
+sent and watch it change. A cancelled document stays visible because a buyer who
+was sent one needs to see that it was voided rather than find it missing.
+
+### Numbering
+
+Sequential per seller, from `Business.invoice_sequence`, incremented under the
+`select_for_update()` the allocation already held. The counter only moves
+forward, so cancelling an invoice never frees its number for reuse — a gap in the
+sequence means something.
+
+It replaced a scan of every invoice the Business had ever issued, performed in
+Python to find the maximum, while holding the lock every other salesperson was
+queued behind: both the transaction time and the contention grew with the length
+of the seller's history. `businesses.0005` seeds each counter from that same
+highest-number-so-far, because starting at zero would reissue numbers that
+already exist.
+
+`count() + 1` looks obviously correct and produces duplicates the first time two
+salespeople issue at the same moment.
+
+### Cancelling
+
+Voiding a document changes no balance. If the sale itself was wrong, the ledger
+entry is reversed separately. Keeping the two apart is what stops "I fixed the
+invoice" from quietly meaning "I moved money".
+
+### Delivery
+
+A print-friendly view (`/app/invoices/<id>/print/`) shares its body template with
+the on-screen view, so the two cannot disagree about what was billed. Browser
+printing is the whole delivery mechanism: a PDF pipeline would be a subsystem to
+maintain for the same output.

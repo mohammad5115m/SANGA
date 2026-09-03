@@ -1,0 +1,126 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+
+{% block title %}{{ colleague.name }} | همکاران{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div class="brand-lockup">
+      {% if colleague.logo %}
+        <img class="business-logo" src="{{ colleague.logo.url }}" alt="{{ colleague.name }}">
+      {% else %}
+        <span class="brand-mark" aria-hidden="true"></span>
+      {% endif %}
+      <div>
+        <h1 class="page-title">{{ colleague.name }}</h1>
+        <p class="page-lead">
+          {% if colleague.city %}{{ colleague.city }}{% endif %}
+          {% if colleague.province %} · {{ colleague.province }}{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {% if can_propose %}
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{% url 'marketplace:home' %}?q={{ colleague.name|urlencode }}">انتخاب محصول و ارسال استعلام</a>
+      <a class="btn btn-secondary" href="{% url 'invoicing:create' %}">فاکتور جدید برای همکار</a>
+    </div>
+  {% elif not colleague_is_current %}
+    <div class="alert alert-info">این همکار اکنون در شبکه فعال نیست؛ سوابق مالی همچنان قابل مشاهده است.</div>
+  {% endif %}
+
+  <section class="panel stack-sm">
+    <h2 class="section-title">اطلاعات تماس</h2>
+    {% if colleague.phone %}
+      <div class="kv"><span>تلفن</span><strong dir="ltr">{{ colleague.phone }}</strong></div>
+    {% endif %}
+    {% if representative %}
+      <div class="kv">
+        <span>نماینده</span>
+        <strong>{{ representative.user.full_name|default:representative.user.phone }}</strong>
+      </div>
+    {% endif %}
+    {% if colleague.address %}
+      <div class="kv"><span>آدرس</span><strong>{{ colleague.address }}</strong></div>
+    {% endif %}
+    {% if colleague.website %}
+      <div class="kv"><span>وب‌سایت</span><strong dir="ltr">{{ colleague.website }}</strong></div>
+    {% endif %}
+  </section>
+
+  <section class="stack-md">
+    <div class="toolbar">
+      <h2 class="section-title">محصولات این همکار</h2>
+      <a class="btn btn-ghost btn-sm" href="{% url 'marketplace:home' %}?q={{ colleague.name|urlencode }}">
+        همه محصولات
+      </a>
+    </div>
+    <div class="list-stack">
+      {% for item in items %}
+        <a class="lot-card" href="{% url 'marketplace:lot_detail' item.id %}">
+          <div class="lot-body">
+            <div class="list-title">{{ item.product.commercial_name }}</div>
+            <div class="muted">
+              {{ item.product.stone.name }}{% if item.processing_type %} · {{ item.processing_type }}{% endif %}
+            </div>
+          </div>
+        </a>
+      {% empty %}
+        <div class="empty-state">این همکار فعلاً محصول منتشرشده‌ای ندارد.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if can_view_ledger %}
+    <section class="panel stack-md">
+      <div class="toolbar">
+        <h2 class="section-title">حساب دفتری با این همکار</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'accounting:statement' colleague.id %}">صورت‌حساب کامل</a>
+      </div>
+      <div class="kv"><span>مانده فعلی</span><strong>{{ balance.label }} · <span dir="ltr">{{ balance.amount|rial }} ریال</span></strong></div>
+      <div class="list-stack">
+        {% for entry in ledger_entries %}
+          <div class="lot-card"><div class="lot-body">
+            <div class="list-title">{{ entry.get_entry_type_display }}</div>
+            <div class="muted">{{ entry.occurred_on|jdate }} · <span dir="ltr">{{ entry.amount|rial }} ریال</span></div>
+          </div></div>
+        {% empty %}<div class="empty-state">هنوز سندی در این حساب ثبت نشده است.</div>{% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if can_view_trades %}<section class="panel stack-md">
+    <h2 class="section-title">توافق‌ها و معاملات</h2>
+    <div class="list-stack">
+      {% for proposal in proposals %}
+        <a class="lot-card" href="{% url 'trading:proposal_detail' proposal.id %}"><div class="lot-body">
+          <div class="list-title">توافق {{ proposal.get_status_display }}</div>
+          <div class="muted">{{ proposal.items.all|length }} قلم · <span dir="ltr">{{ proposal.total_amount|rial }} ریال</span></div>
+        </div></a>
+      {% empty %}<div class="empty-state">هنوز توافقی با این همکار ثبت نشده است.</div>{% endfor %}
+      {% for trade in trades %}
+        <a class="lot-card" href="{% url 'trading:trade_detail' trade.id %}"><div class="lot-body">
+          <div class="list-title">معامله نهایی · {{ trade.summary_label }}</div>
+          <div class="muted">{{ trade.finalized_at|jdate }} · <span dir="ltr">{{ trade.total_amount|rial }} ریال</span></div>
+        </div></a>
+      {% endfor %}
+    </div>
+  </section>{% endif %}
+
+  {% if can_view_invoices %}
+    <section class="panel stack-md">
+      <div class="toolbar"><h2 class="section-title">فاکتورهای این همکار</h2><a class="btn btn-ghost btn-sm" href="{% url 'invoicing:list' %}">همه فاکتورها</a></div>
+      <div class="list-stack">
+        {% for invoice in invoices %}
+          <a class="lot-card" href="{% url 'invoicing:detail' invoice.id %}"><div class="lot-body">
+            <div class="list-title">فاکتور {{ invoice.number }}</div>
+            <div class="muted">{{ invoice.seller_business.name }} ← {{ invoice.buyer_name }} · <span dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</span></div>
+          </div></a>
+        {% empty %}<div class="empty-state">هنوز فاکتوری با این همکار صادر نشده است.</div>{% endfor %}
+      </div>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

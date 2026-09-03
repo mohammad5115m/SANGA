@@ -23,30 +23,27 @@
     <button class="btn btn-primary" type="submit">ذخیره</button>
   </form>
   <div class="btn-row">
-    {% if 'customers.manage' in capabilities %}
-      <a class="btn btn-secondary" href="{% url 'contacts:list' %}">مخاطبین</a>
-    {% endif %}
+    <a class="btn btn-secondary" href="{% url 'businesses:colleagues' %}">لیست همکاران</a>
     {% if 'ledger.view' in capabilities %}
       <a class="btn btn-secondary" href="{% url 'accounting:index' %}">دفتر حساب</a>
+      <a class="btn btn-secondary" href="{% url 'reporting:index' %}">گزارش‌ها</a>
     {% endif %}
-    <a class="btn btn-ghost" href="{% url 'businesses:warehouses' %}">انبارها</a>
     <a class="btn btn-ghost" href="{% url 'businesses:team' %}">تیم</a>
     {% if 'catalog.manage' in capabilities %}
       <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">کاتالوگ‌ها</a>
     {% endif %}
-    {% if 'inquiries.view' in capabilities %}
-      <a class="btn btn-ghost" href="{% url 'catalog_manage:inquiries' %}">استعلام‌ها</a>
+    {% if 'leads.view' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'inquiries:inbox' %}">استعلام‌ها</a>
+      <a class="btn btn-ghost" href="{% url 'inquiries:leads' %}">مشتریان</a>
+    {% endif %}
+    {% if 'invoice.view' in capabilities %}
+      <a class="btn btn-ghost" href="{% url 'invoicing:list' %}">فاکتورها</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'marketplace:home' %}">بازار همکاران</a>
-    {% if 'inquiries.view' in capabilities %}
-      <a class="btn btn-ghost" href="{% url 'purchase_requests:my_list' %}">درخواست‌های خرید</a>
-      <a class="btn btn-ghost" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
-    {% endif %}
     <a class="btn btn-ghost" href="{% url 'notifications:list' %}">اعلان‌ها</a>
     {% if current_business %}
-      <a class="btn btn-ghost" href="{% url 'catalog:storefront' current_business.slug %}" target="_blank" rel="noopener">ویترین عمومی</a>
+      <a class="btn btn-ghost" href="{% url 'catalog_manage:list' %}">مدیریت ویترین</a>
     {% endif %}
   </div>
 </section>
 {% endblock %}
-

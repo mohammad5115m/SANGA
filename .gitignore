@@ -10,6 +10,7 @@ staticfiles/
 node_modules/
 .pytest_cache/
 .ruff_cache/
+concurrency-results.xml
 .coverage
 htmlcov/
 .DS_Store

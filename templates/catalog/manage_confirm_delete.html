@@ -1,0 +1,23 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}حذف کاتالوگ | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <h1 class="page-title">حذف کاتالوگ «{{ catalog.title }}»</h1>
+
+  <div class="panel stack-md">
+    <div class="alert alert-warn">لینک اشتراک این کاتالوگ دیگر کار نخواهد کرد.</div>
+    {% comment %}Worth saying explicitly: sellers assume deleting a catalog deletes its
+    contents.{% endcomment %}
+    <p>محصولات شما حذف نمی‌شوند؛ فقط این کاتالوگ و لینک آن پاک می‌شود.</p>
+    <div class="btn-row">
+      <form method="post">
+        {% csrf_token %}
+        <button class="btn btn-danger" type="submit">بله، حذف کن</button>
+      </form>
+      <a class="btn btn-ghost" href="{% url 'catalog_manage:detail' catalog.id %}">انصراف</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

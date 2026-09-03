@@ -1,0 +1,9 @@
+<details data-filter-title="{{ title }}" open>
+  <summary>{{ title }}</summary>
+  <ul>{% for choice in choices %}<li{% if choice.selected %} class="selected"{% endif %}><a href="{{ choice.query_string|iriencode }}">{{ choice.display }}</a></li>{% endfor %}</ul>
+  <form method="get" class="admin-date-range">
+    {% for name, value in spec.query_params %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+    {% for field in spec.date_form %}<div><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+    <button type="submit">اعمال بازه شمسی</button>
+  </form>
+</details>

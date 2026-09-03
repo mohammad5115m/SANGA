@@ -1,91 +1,102 @@
 {% extends "layouts/storefront_shell.html" %}
 
 {% block title %}{{ product.commercial_name }} | {{ business.name }}{% endblock %}
-
-{% block extra_head %}
-<meta property="og:title" content="{{ product.commercial_name }} — {{ business.name }}">
-<meta property="og:description" content="{{ price.label }} · موجودی {{ lot.available_sqm }} m²">
-<meta property="og:type" content="product">
-{% if media_items %}<meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{{ media_items.0.file.url }}">{% endif %}
-<meta name="twitter:card" content="summary_large_image">
-{% endblock %}
+{% block storefront_extra_head %}{% include "catalog/_open_graph.html" %}{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <div class="gallery gallery-lg">
-    {% for media in media_items %}
-      <img src="{{ media.file.url }}" alt="{{ product.commercial_name }}" loading="lazy">
-    {% empty %}
-      <div class="empty-state">تصویر ثبت نشده</div>
-    {% endfor %}
+<section class="stack-lg product-detail-page">
+  <a class="back-link" href="{% url 'catalog:storefront' business.storefront_token %}"><span aria-hidden="true">→</span> بازگشت به ویترین</a>
+
+  <div class="product-detail-hero">
+    <div class="product-detail-gallery">
+      {% include "inventory/_gallery.html" with gallery_alt=product.commercial_name %}
+    </div>
+
+    <aside class="product-detail-summary" aria-label="خلاصه محصول">
+      <div class="product-detail-supplier">
+        <span>فروشنده</span>
+        <a href="{% url 'catalog:storefront' business.storefront_token %}">{{ business.name }}</a>
+        {% if business.city %}<small>{{ business.city }}</small>{% endif %}
+      </div>
+
+      <div>
+        <h1 class="page-title">{{ product.commercial_name }}</h1>
+        <p class="page-lead">{{ product.description_public|default:product.stone.name }}</p>
+      </div>
+
+      <div class="detail-price-card">
+        <span>قیمت مشتری / متر مربع</span>
+        {% if price.is_special %}<span class="catalog-price-old">{{ price.regular_label }}</span>{% endif %}
+        <strong class="catalog-price catalog-price-lg">{{ price.label }}</strong>
+        {% if price.is_special %}
+          <div class="sale-detail-meta"><span class="badge badge-special">فروش ویژه · {{ price.discount_percent }}٪ تخفیف</span><span>{{ price.remaining_label }}</span></div>
+        {% endif %}
+        <small>{% if price.has_price %}قیمت نهایی سفارش پس از تأیید فروشنده مشخص می‌شود.{% else %}برای دریافت قیمت روز درخواست بفرستید.{% endif %}</small>
+      </div>
+
+      <div class="detail-stock-card">
+        <div>
+          <span>وضعیت موجودی</span>
+          <strong{% if stock.is_inquiry %} class="stock-line-inquiry"{% endif %}>{{ stock.label }}</strong>
+        </div>
+        <small>{% if stock.confirmed_at %}آخرین تأیید: {{ stock.human_confirmed }}{% else %}موجودی هنوز توسط فروشنده تأیید نشده است.{% endif %}</small>
+        {% if stock.is_inquiry %}
+          <form method="post" action="{% url 'catalog:stock_inquiry' business.storefront_token lot.id %}">
+            {% csrf_token %}
+            <button class="btn btn-secondary btn-sm btn-block" type="submit">استعلام موجودی از فروشنده</button>
+          </form>
+        {% endif %}
+      </div>
+
+      <div class="detail-primary-actions stack-sm">
+        <form method="post" action="{% url 'catalog:inquiry_start' business.storefront_token lot.id %}">
+          {% csrf_token %}
+          <button class="btn btn-primary btn-block" type="submit">افزودن و ادامه درخواست</button>
+        </form>
+        {% if business.phone %}<a class="btn btn-secondary btn-block" href="tel:{{ business.phone }}">مشاوره درباره این سنگ</a>{% endif %}
+      </div>
+    </aside>
   </div>
 
-  <div>
-    <h1 class="page-title">{{ product.commercial_name }}</h1>
-    <p class="page-lead">{{ product.description_public|default:product.stone_type }}</p>
-    <div class="catalog-price catalog-price-lg">{{ price.label }}</div>
-    <div class="muted">واحد: متر مربع · موجودی حدودی {{ lot.available_sqm }} m²</div>
+  <div class="product-detail-grid">
+    {% include "catalog/_public_specs.html" %}
+
+    <section class="panel stack-sm seller-card" aria-labelledby="seller-heading">
+      <div class="seller-card-heading">
+        <span class="seller-avatar" aria-hidden="true">{{ business.name|first }}</span>
+        <div>
+          <h2 class="section-title" id="seller-heading">{{ business.name }}</h2>
+          <p class="muted">{% if business.city %}{{ business.city }} · {% endif %}فروشنده فعال در سنگا</p>
+        </div>
+      </div>
+      <p class="muted">درخواست شما با متراژ مورد نیاز و شماره تأییدشده برای همین فروشنده ارسال می‌شود.</p>
+      {% if business.phone %}<a class="btn btn-secondary btn-block" href="tel:{{ business.phone }}">تماس با فروشنده</a>{% endif %}
+      <a class="btn btn-ghost btn-block" href="{% url 'catalog:storefront' business.storefront_token %}">مشاهده همه محصولات فروشنده</a>
+    </section>
   </div>
 
-  <section class="panel stack-sm">
-    <h2 class="section-title">مشخصات</h2>
-    <div class="kv"><span>نوع سنگ</span><strong>{{ product.stone_type|default:"—" }}</strong></div>
-    <div class="kv"><span>رنگ</span><strong>{{ product.primary_color|default:"—" }}</strong></div>
-    <div class="kv"><span>فرآوری</span><strong>{{ lot.processing_type|default:"—" }}</strong></div>
-    <div class="kv"><span>سورت</span><strong>{{ lot.grade|default:"—" }}</strong></div>
-    <div class="kv"><span>ابعاد</span><strong>{% if lot.length_cm %}{{ lot.length_cm }}×{{ lot.width_cm }}{% else %}—{% endif %}{% if lot.thickness_mm %} / {{ lot.thickness_mm }} mm{% endif %}</strong></div>
-    <div class="kv"><span>کاربرد</span><strong>{% if product.interior_suitable %}داخلی{% endif %}{% if product.exterior_suitable %}{% if product.interior_suitable %} / {% endif %}خارجی{% endif %}{% if not product.interior_suitable and not product.exterior_suitable %}—{% endif %}</strong></div>
-    {% if lot.ready_for_loading_at %}
-      <div class="kv"><span>آماده بارگیری</span><strong>{{ lot.ready_for_loading_at }}</strong></div>
-    {% endif %}
+  <section class="panel share-detail-panel" aria-labelledby="share-heading">
+    <div>
+      <h2 class="section-title" id="share-heading">این محصول را به اشتراک بگذارید</h2>
+      <p class="muted">لینک عمومی محصول فقط اطلاعات و قیمت ویژه مشتری را نمایش می‌دهد.</p>
+    </div>
+    <div class="share-detail-controls">{% include "catalog/_share_actions.html" %}</div>
   </section>
 
-  <div class="btn-row">
-    <button class="btn btn-primary" type="button" onclick="document.getElementById('inquiry').scrollIntoView({behavior:'smooth'})">درخواست مشاوره</button>
-    <form method="post" action="{% url 'catalog:compare_toggle' business.slug lot.id %}">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{{ request.path }}">
-      <button class="btn btn-secondary" type="submit">{% if lot.id|stringformat:'s' in compare_ids %}حذف از مقایسه{% else %}افزودن به مقایسه{% endif %}</button>
-    </form>
-    <button class="btn btn-ghost" type="button" data-share-url="{{ share_url }}" onclick="navigator.clipboard.writeText(this.dataset.shareUrl); this.textContent='لینک کپی شد';">اشتراک‌گذاری</button>
-  </div>
-
-  <section id="inquiry" class="panel stack-md">
-    <h2 class="section-title">استعلام / مشاوره</h2>
-    <form method="post" class="stack-md" novalidate>
-      {% csrf_token %}
-      {% if inquiry_form.non_field_errors %}
-        <div class="alert alert-error">{{ inquiry_form.non_field_errors|striptags }}</div>
-      {% endif %}
-      {% for field in inquiry_form %}
-        <label class="field">
-          <span class="field-label">{{ field.label }}</span>
-          {{ field }}
-          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-        </label>
-      {% endfor %}
-      <button class="btn btn-primary" type="submit">ارسال درخواست</button>
-    </form>
-  </section>
+  {% if is_selected %}
+    <section class="selection-bar selection-bar-inline">
+      <span>این محصول در درخواست خرید شماست.</span>
+      <a class="btn btn-primary btn-sm" href="{% url 'catalog:inquiry_review' business.storefront_token %}">ادامه درخواست خرید</a>
+    </section>
+  {% endif %}
 
   {% if related_cards %}
-  <section class="stack-md">
-    <h2 class="section-title">سنگ‌های مشابه</h2>
-    <div class="catalog-grid">
+  <section class="stack-md" aria-labelledby="related-heading">
+    <h2 class="section-title" id="related-heading">سنگ‌های مشابه</h2>
+    <div class="catalog-grid related-product-grid">
       {% for card in related_cards %}
-        <a class="catalog-card" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">
-          <div class="catalog-card-media">
-            {% if card.primary_media %}
-              <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
-            {% else %}
-              <div class="lot-thumb-fallback"></div>
-            {% endif %}
-          </div>
-          <div class="catalog-card-body">
-            <div class="list-title">{{ card.product.commercial_name }}</div>
-            <div class="catalog-price">{{ card.price.label }}</div>
-          </div>
-        </a>
+        {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+        {% include "inventory/_product_card.html" %}
       {% endfor %}
     </div>
   </section>

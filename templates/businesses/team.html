@@ -6,8 +6,23 @@
 <section class="stack-lg">
   <div>
     <h1 class="page-title">تیم</h1>
-    <p class="page-lead">اعضا و نقش‌های دسترسی</p>
+    <p class="page-lead">اعضا و سطح دسترسی آن‌ها</p>
   </div>
+
+  <div class="panel stack-sm">
+    <div class="kv">
+      <span>کاربران فعال</span>
+      <strong>{{ members|length }} از {{ seat_limit }}</strong>
+    </div>
+    {% if seats_remaining == 0 %}
+      <p class="muted">سقف کاربران تکمیل است. برای افزودن کاربر بیشتر با پشتیبانی سنگا تماس بگیرید.</p>
+    {% else %}
+      <p class="muted">
+        {{ seats_remaining }} جای خالی دارید. افزودن کاربر جدید توسط پشتیبانی سنگا انجام می‌شود.
+      </p>
+    {% endif %}
+  </div>
+
   <div class="list-stack">
     {% for member in members %}
       <article class="list-item">

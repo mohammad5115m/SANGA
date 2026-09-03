@@ -1,0 +1,33 @@
+{% comment %}
+Copy-link, native share and the two messaging apps sellers actually use.
+Set share_compact for cards where quick copy/native share are enough.
+
+Expects: share_url, product (optional), share_compact (optional)
+{% endcomment %}
+<div class="btn-row share-actions{% if share_compact %} share-actions-compact{% endif %}" data-share-actions
+     data-share-url="{{ share_url }}"
+     data-share-title="{{ product.commercial_name|default:'سنگا' }}">
+  <button class="btn btn-ghost{% if share_compact %} btn-sm{% endif %}" type="button" data-copy-link
+          {% if share_compact %}aria-label="کپی لینک محصول" title="کپی لینک محصول"{% endif %}>
+    <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+      <rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
+    </svg>
+    <span data-share-label>کپی لینک</span>
+  </button>
+
+  <button class="btn btn-ghost{% if share_compact %} btn-sm{% endif %}" type="button" data-native-share hidden
+          {% if share_compact %}aria-label="اشتراک‌گذاری محصول" title="اشتراک‌گذاری محصول"{% endif %}>
+    <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+      <circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/>
+      <path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/>
+    </svg>
+    <span data-share-label>اشتراک</span>
+  </button>
+
+  {% if not share_compact %}
+    <a class="btn btn-ghost" rel="noopener noreferrer" target="_blank"
+       href="https://wa.me/?text={{ share_url|urlencode }}">واتس‌اپ</a>
+    <a class="btn btn-ghost" rel="noopener noreferrer" target="_blank"
+       href="https://t.me/share/url?url={{ share_url|urlencode }}">تلگرام</a>
+  {% endif %}
+</div>

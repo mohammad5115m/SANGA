@@ -1,0 +1,47 @@
+{% extends "layouts/storefront_shell.html" %}
+
+{% block title %}{{ product.commercial_name }} | {{ business.name }}{% endblock %}
+{% block storefront_extra_head %}{% include "catalog/_open_graph.html" %}{% endblock %}
+
+{% block content %}
+{% comment %}Always resolved through the public audience, including for logged-in colleagues.{% endcomment %}
+<section class="stack-lg product-detail-page">
+  <a class="back-link" href="{% url 'catalog:storefront' business.storefront_token %}"><span aria-hidden="true">→</span> مشاهده ویترین فروشنده</a>
+
+  <div class="product-detail-hero">
+    <div class="product-detail-gallery">{% include "inventory/_gallery.html" with gallery_alt=product.commercial_name %}</div>
+    <aside class="product-detail-summary" aria-label="خلاصه محصول">
+      <div class="product-detail-supplier">
+        <span>فروشنده</span>
+        <a href="{% url 'catalog:storefront' business.storefront_token %}">{{ business.name }}</a>
+        {% if business.city %}<small>{{ business.city }}</small>{% endif %}
+      </div>
+      <div>
+        <h1 class="page-title">{{ product.commercial_name }}</h1>
+        {% if product.description_public %}<p class="page-lead">{{ product.description_public }}</p>{% endif %}
+      </div>
+      <div class="detail-price-card">
+        <span>قیمت مشتری / متر مربع</span>
+        {% if price.is_special %}<span class="catalog-price-old">{{ price.regular_label }}</span>{% endif %}
+        <strong class="catalog-price catalog-price-lg">{{ price.label }}</strong>
+        {% if price.is_special %}<div class="sale-detail-meta"><span class="badge badge-special">فروش ویژه · {{ price.discount_percent }}٪ تخفیف</span><span>{{ price.remaining_label }}</span></div>{% endif %}
+      </div>
+      <div class="detail-stock-card">
+        <div><span>وضعیت موجودی</span><strong{% if stock.is_inquiry %} class="stock-line-inquiry"{% endif %}>{{ stock.label }}</strong></div>
+        <small>{% if stock.confirmed_at %}آخرین تأیید: {{ stock.human_confirmed }}{% else %}برای اطمینان از موجودی با فروشنده هماهنگ کنید.{% endif %}</small>
+      </div>
+      <a class="btn btn-primary btn-block" href="{% url 'catalog:lot_detail' business.storefront_token lot.id %}">ثبت درخواست خرید</a>
+    </aside>
+  </div>
+
+  {% include "catalog/_public_specs.html" %}
+
+  <section class="panel share-detail-panel" aria-labelledby="share-heading">
+    <div>
+      <h2 class="section-title" id="share-heading">اشتراک‌گذاری محصول</h2>
+      <p class="muted">این لینک عمومی را برای همکاران پروژه یا تصمیم‌گیرندگان بفرستید.</p>
+    </div>
+    <div class="share-detail-controls">{% include "catalog/_share_actions.html" %}</div>
+  </section>
+</section>
+{% endblock %}

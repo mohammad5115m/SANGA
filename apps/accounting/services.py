@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.businesses.entitlements import MANAGE_LEDGER, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import LEDGER_MANAGE
-from apps.contacts.models import Contact
-from apps.purchase_requests.models import PurchaseOffer
+from apps.businesses.permissions import INVOICE_CONFIRM, LEDGER_MANAGE, SALE_FINALIZE
 
 from .models import TRADE_ENTRY_TYPES, LedgerEntry
-from .selectors import trade_entry_for_offer
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ ZERO = Decimal("0.00")
 TRADE_ALREADY_RECORDED = "سند مالی این معامله قبلاً ثبت شده است."
 
 # Effect of each entry type on the balance (owning-business perspective):
-# +1 increases what the contact owes us; -1 decreases it.
+# +1 increases what the counterparty owes us; -1 decreases it.
 DIRECTION: dict[str, int] = {
     LedgerEntry.Type.SALE: +1,
     LedgerEntry.Type.PAYMENT_MADE: +1,
@@ -33,6 +32,17 @@ DIRECTION: dict[str, int] = {
 }
 
 ADJUSTMENT_TYPES = {LedgerEntry.Type.ADJUST_DEBIT, LedgerEntry.Type.ADJUST_CREDIT}
+
+#: The only manual entries a user may post. Deliberately four: money in, money
+#: out, and a correction in each direction. Cheques, instalments and bank
+#: reconciliation are explicitly out of scope — a cheque is described in the
+#: reference field if the user wants to remember it.
+MANUAL_ENTRY_TYPES: tuple[str, ...] = (
+    LedgerEntry.Type.PAYMENT_RECEIVED,
+    LedgerEntry.Type.PAYMENT_MADE,
+    LedgerEntry.Type.ADJUST_DEBIT,
+    LedgerEntry.Type.ADJUST_CREDIT,
+)
 
 
 class LedgerError(Exception):
@@ -48,9 +58,7 @@ class LedgerDuplicateError(LedgerError):
     so the UI can say «قبلاً ثبت شده» instead of showing a failure.
     """
 
-    def __init__(
-        self, message: str = TRADE_ALREADY_RECORDED, *, existing: LedgerEntry | None = None
-    ) -> None:
+    def __init__(self, message: str = TRADE_ALREADY_RECORDED, *, existing: LedgerEntry | None = None) -> None:
         self.existing = existing
         super().__init__(message)
 
@@ -58,6 +66,10 @@ class LedgerDuplicateError(LedgerError):
 def _require_manage(membership: BusinessMembership | None) -> None:
     if membership is None or not membership.has_capability(LEDGER_MANAGE):
         raise LedgerError("اجازه ثبت سند مالی را ندارید.")
+    try:
+        require_entitlement(membership.business, MANAGE_LEDGER)
+    except EntitlementError as exc:
+        raise LedgerError(exc.message) from exc
 
 
 def _quantize(value) -> Decimal:
@@ -67,20 +79,52 @@ def _quantize(value) -> Decimal:
         raise LedgerError("مبلغ واردشده معتبر نیست.") from exc
 
 
-def _last_balance(business: Business, contact: Contact) -> Decimal:
+def _lock_counterparty(counterparty: Business) -> Business:
+    """Serialize concurrent posts against one colleague's account.
+
+    Locking the counterparty's Business row is coarse — it also serializes a
+    different business posting to the same colleague — but it is the only row
+    that uniquely identifies the account, and holding it for the length of one
+    ledger post costs nothing in practice.
+    """
+    return Business.objects.select_for_update().get(pk=counterparty.pk)
+
+
+def _lock_both(first: Business, second: Business) -> dict[str, Business]:
+    """Lock two Business rows in a deterministic order, keyed by primary key.
+
+    A trade locks both parties, and two trades running in opposite directions
+    between the same pair would deadlock if each locked "its own counterparty"
+    first. Ordering by the stringified UUID makes every transaction in the system
+    take the two rows in the same sequence, so one simply waits.
+    """
+    rows: dict[str, Business] = {}
+    for pk in sorted({first.pk, second.pk}, key=str):
+        rows[str(pk)] = Business.objects.select_for_update().get(pk=pk)
+    return rows
+
+
+def _last_balance(business: Business, counterparty: Business) -> Decimal:
     last = (
-        LedgerEntry.objects.filter(business=business, contact=contact)
+        LedgerEntry.objects.filter(business=business, counterparty_business=counterparty)
         .order_by("-created_at")
         .first()
     )
     return last.balance_after if last else ZERO
 
 
+def _validate_counterparty(business: Business, counterparty: Business) -> None:
+    if counterparty is None:
+        raise LedgerError("همکار را انتخاب کنید.")
+    if counterparty.id == business.id:
+        raise LedgerError("نمی‌توانید برای کسب‌وکار خودتان سند ثبت کنید.")
+
+
 @transaction.atomic
 def post_entry(
     *,
     business: Business,
-    contact: Contact,
+    counterparty: Business,
     membership: BusinessMembership,
     entry_type: str,
     amount,
@@ -88,13 +132,84 @@ def post_entry(
     reference: str = "",
     occurred_on: date | None = None,
     related_lot=None,
-    related_offer: PurchaseOffer | None = None,
+    related_trade=None,
 ) -> LedgerEntry:
+    """Post one immutable entry that the user is authoring by hand."""
     _require_manage(membership)
+    return _post(
+        business=business,
+        counterparty=counterparty,
+        membership=membership,
+        entry_type=entry_type,
+        amount=amount,
+        description=description,
+        reference=reference,
+        occurred_on=occurred_on,
+        related_lot=related_lot,
+        related_trade=related_trade,
+    )
+
+
+@transaction.atomic
+def _post(
+    *,
+    business: Business,
+    counterparty: Business,
+    membership: BusinessMembership,
+    entry_type: str,
+    amount,
+    description: str = "",
+    reference: str = "",
+    occurred_on: date | None = None,
+    related_lot=None,
+    related_trade=None,
+) -> LedgerEntry:
+    """Write one entry into ``business``'s own books, acting as ``membership``.
+
+    Split from :func:`post_entry` because the two ways money reaches the books
+    are authorized differently. A manual entry is bookkeeping and needs
+    ``ledger.manage``. A sale's entry is a *consequence* of finalizing that sale,
+    which a salesperson holding ``trade.confirm`` is allowed to do — requiring
+    ``ledger.manage`` there would mean no salesperson could complete a sale.
+    """
     if membership.business_id != business.id:
         raise LedgerError("دسترسی نامعتبر است.")
-    if contact.business_id != business.id:
-        raise LedgerError("این مخاطب متعلق به کسب‌وکار شما نیست.")
+    return _write_entry(
+        business=business,
+        counterparty=_lock_counterparty(counterparty),
+        entry_type=entry_type,
+        amount=amount,
+        description=description,
+        reference=reference,
+        occurred_on=occurred_on,
+        related_lot=related_lot,
+        related_trade=related_trade,
+        actor=membership.user,
+    )
+
+
+def _write_entry(
+    *,
+    business: Business,
+    counterparty: Business,
+    entry_type: str,
+    amount,
+    description: str = "",
+    reference: str = "",
+    occurred_on: date | None = None,
+    related_lot=None,
+    related_trade=None,
+    related_invoice=None,
+    idempotency_key: str = "",
+    actor=None,
+) -> LedgerEntry:
+    """The raw write. Validates the entry itself, never the caller's rights.
+
+    ``counterparty`` must already be locked. Authorization lives one layer up,
+    because a buyer's ``PURCHASE`` is written by the *seller's* transaction and
+    there is no buyer-side membership to check.
+    """
+    _validate_counterparty(business, counterparty)
 
     if entry_type not in DIRECTION:
         raise LedgerError("نوع سند نامعتبر است.")
@@ -108,22 +223,31 @@ def post_entry(
         raise LedgerError("برای اصلاح دستی، ذکر دلیل الزامی است.")
 
     if related_lot is not None and related_lot.business_id != business.id:
-        raise LedgerError("محموله انتخاب‌شده متعلق به کسب‌وکار شما نیست.")
-    if related_offer is not None and business.id not in {
-        related_offer.seller_business_id,
-        related_offer.purchase_request.business_id,
+        raise LedgerError("محصول انتخاب‌شده متعلق به کسب‌وکار شما نیست.")
+    if related_trade is not None and business.id not in {
+        related_trade.seller_business_id,
+        related_trade.buyer_business_id,
     }:
-        raise LedgerError("پیشنهاد انتخاب‌شده به کسب‌وکار شما مرتبط نیست.")
+        raise LedgerError("این معامله به کسب‌وکار شما مرتبط نیست.")
+    if related_invoice is not None and business.id not in {
+        related_invoice.seller_business_id,
+        related_invoice.buyer_business_id,
+    }:
+        raise LedgerError("این فاکتور به کسب‌وکار شما مرتبط نیست.")
 
-    # Serialize concurrent posts for this contact by locking the contact row.
-    locked_contact = Contact.objects.select_for_update().get(pk=contact.pk, business=business)
-    previous = _last_balance(business, locked_contact)
+    if idempotency_key:
+        existing = LedgerEntry.objects.filter(idempotency_key=idempotency_key).first()
+        if existing is not None:
+            return existing
+
+    previous = _last_balance(business, counterparty)
     delta = amount * DIRECTION[entry_type]
     balance_after = (previous + delta).quantize(Decimal("0.01"))
 
     entry = LedgerEntry.objects.create(
         business=business,
-        contact=locked_contact,
+        counterparty_business=counterparty,
+        legacy_counterparty_name=counterparty.name,
         entry_type=entry_type,
         amount=amount,
         balance_delta=delta,
@@ -131,20 +255,111 @@ def post_entry(
         description=description,
         reference=(reference or "").strip(),
         occurred_on=occurred_on or timezone.localdate(),
+        currency=(
+            related_invoice.currency
+            if related_invoice is not None
+            else related_trade.currency
+            if related_trade is not None
+            else "IRR"
+        ),
         related_lot=related_lot,
-        related_offer=related_offer,
-        created_by=membership.user,
+        related_trade=related_trade,
+        related_invoice=related_invoice,
+        idempotency_key=idempotency_key,
+        created_by=actor,
     )
     logger.info(
-        "Ledger entry posted id=%s business=%s contact=%s type=%s amount=%s balance_after=%s",
+        "Ledger entry posted id=%s business=%s counterparty=%s type=%s amount=%s balance_after=%s",
         entry.id,
         business.id,
-        contact.id,
+        counterparty.id,
         entry_type,
         amount,
         balance_after,
     )
     return entry
+
+
+def _last_local_balance(business: Business, local_counterparty) -> Decimal:
+    last = (
+        LedgerEntry.objects.filter(business=business, local_counterparty=local_counterparty)
+        .order_by("-created_at")
+        .first()
+    )
+    return last.balance_after if last else ZERO
+
+
+def _write_local_entry(
+    *,
+    business: Business,
+    local_counterparty,
+    entry_type: str,
+    amount,
+    description: str,
+    related_trade=None,
+    related_invoice=None,
+    idempotency_key: str,
+    actor=None,
+) -> LedgerEntry:
+    if local_counterparty.owner_business_id != business.id:
+        raise LedgerError("همکار محلی متعلق به این کسب‌وکار نیست.")
+    if entry_type not in DIRECTION:
+        raise LedgerError("نوع سند نامعتبر است.")
+    amount = _quantize(amount)
+    if amount <= 0:
+        raise LedgerError("مبلغ باید بزرگ‌تر از صفر باشد.")
+    existing = LedgerEntry.objects.filter(idempotency_key=idempotency_key).first()
+    if existing is not None:
+        return existing
+    previous = _last_local_balance(business, local_counterparty)
+    delta = amount * DIRECTION[entry_type]
+    return LedgerEntry.objects.create(
+        business=business,
+        local_counterparty=local_counterparty,
+        legacy_counterparty_name=local_counterparty.name,
+        entry_type=entry_type,
+        amount=amount,
+        balance_delta=delta,
+        balance_after=(previous + delta).quantize(Decimal("0.01")),
+        currency=related_invoice.currency if related_invoice else "IRR",
+        description=description,
+        reference=related_invoice.number if related_invoice else "",
+        occurred_on=timezone.localdate(),
+        related_trade=related_trade,
+        related_invoice=related_invoice,
+        idempotency_key=idempotency_key,
+        created_by=actor,
+    )
+
+
+def post_manual_entry(
+    *,
+    business: Business,
+    counterparty: Business,
+    membership: BusinessMembership,
+    entry_type: str,
+    amount,
+    description: str = "",
+    reference: str = "",
+    occurred_on: date | None = None,
+) -> LedgerEntry:
+    """The user-facing entry point: دریافت، پرداخت، اصلاح بدهکار، اصلاح بستانکار.
+
+    Refuses trade types outright, so a sale can only ever reach the books
+    through :func:`post_trade_entries` — one authoritative event, not two ways in.
+    """
+    if entry_type not in MANUAL_ENTRY_TYPES:
+        raise LedgerError("این نوع سند به‌صورت دستی قابل ثبت نیست.")
+    return post_entry(
+        business=business,
+        counterparty=counterparty,
+        membership=membership,
+        entry_type=entry_type,
+        amount=amount,
+        description=description,
+        reference=reference,
+        occurred_on=occurred_on,
+    )
 
 
 def _format_quantity(quantity) -> str:
@@ -155,167 +370,345 @@ def _format_quantity(quantity) -> str:
         return str(quantity)
 
 
-def _default_trade_description(entry_type: str, related_offer: PurchaseOffer | None) -> str:
-    if related_offer is None:
-        return ""
-    side = "فروش" if entry_type == LedgerEntry.Type.SALE else "خرید"
-    lot_part = f"محموله {related_offer.lot.lot_code} · " if related_offer.lot_id else ""
-    return (
-        f"{side} بر اساس پیشنهاد پذیرفته‌شده «{related_offer.purchase_request.title}» · "
-        f"{lot_part}{_format_quantity(related_offer.offered_qty_sqm)} مترمربع"
-    )
+def _describe_trade(trade, verb: str) -> str:
+    """One line of statement text for a whole sale.
+
+    A one-line sale reads as what was sold, which is how both parties remember
+    it. A multi-line sale reads as its shape — naming it after the first stone
+    would describe the entry wrongly, and listing all of them would not fit the
+    column. The invoice carries the detail.
+    """
+    lines = list(trade.items.all())
+    if len(lines) == 1:
+        line = lines[0]
+        return f"{verb} {line.product_name} · {_format_quantity(line.quantity)} مترمربع"
+    if lines:
+        return f"{verb} {len(lines)} قلم کالا"
+    # Pre-TradeItem rows, and any trade whose lines could not be loaded.
+    return f"{verb} {trade.product_name} · {_format_quantity(trade.quantity_sqm)} مترمربع"
+
+
+def _trade_description(trade) -> str:
+    return _describe_trade(trade, "فروش")
+
+
+def _purchase_description(trade) -> str:
+    return _describe_trade(trade, "خرید")
+
+
+@dataclass(frozen=True)
+class TradePosting:
+    """What a finalized Trade did to each party's books."""
+
+    sale: LedgerEntry | None = None
+    purchase: LedgerEntry | None = None
 
 
 @transaction.atomic
-def post_trade_entry(
-    *,
-    business: Business,
-    contact: Contact,
-    membership: BusinessMembership,
-    entry_type: str,
-    amount,
-    description: str = "",
-    reference: str = "",
-    occurred_on: date | None = None,
-    related_lot=None,
-    related_offer: PurchaseOffer | None = None,
-) -> LedgerEntry:
-    """Record a trade the business made with one of its contacts.
+def post_trade_entries(*, trade, membership: BusinessMembership, related_invoice=None) -> TradePosting:
+    """Post both sides of a finalized Trade, in one transaction.
 
-    Trades are recorded manually, which is how this trade actually happens
-    offline. ``entry_type`` picks the side: ``SALE`` (فروش) increases what the
-    contact owes, ``PURCHASE`` (خرید) decreases it. ``related_offer`` is optional
-    and only set when the trade was started from an accepted purchase offer;
-    either side of that offer may record its own entry.
+    A colleague sale is one commercial event that both parties keep books on:
+    the seller records a ``SALE`` (the colleague now owes them) and the buyer
+    records the mirroring ``PURCHASE`` (they now owe the colleague). Posting only
+    the seller's side left «جمع خرید» permanently zero in the buyer's reports
+    while the seller's statement said money was owed — the same event described
+    two incompatible ways.
 
-    Idempotency applies to offer-started trades and has three layers: the
-    pre-check runs under the contact row lock taken here, the
-    ``uniq_trade_entry_per_offer`` DB constraint catches races on a *different*
-    contact of the same business, and both surface as ``LedgerDuplicateError`` so
-    callers can report «قبلاً ثبت شده».
+    The buyer's entry is written without a buyer-side membership on purpose. It
+    is not bookkeeping the seller is authoring in someone else's name; it is the
+    other half of a transaction the buyer is a party to, and the buyer can
+    reverse it from their own statement if it is wrong.
 
-    Both layers ignore trades that have been reversed: ``trade_entry_for_offer``
-    filters on ``reversed_at__isnull=True`` and the constraint carries the same
-    condition, so a wrong amount can be reversed and then re-recorded with the
-    ``related_offer`` link intact.
+    Returns empty entries for a sale to a walk-in customer: there is no colleague
+    account to move, and inventing one would create a debtor nobody can settle
+    with.
 
-    A purely manual trade (no offer) is deliberately *not* deduplicated: nothing
-    outside the ledger identifies it, so refusing a second one would be guessing.
+    Exactly-once has three layers per side: both Business rows are locked in a
+    deterministic order, the pre-check runs under those locks, and
+    ``uniq_trade_entry_per_trade`` — scoped by ``business`` — catches anything
+    that slips past. Idempotency is evaluated per side, so a party who reversed
+    their own entry can have it reposted without disturbing the other's book. If
+    neither side has anything left to write, the call is a duplicate.
     """
-    _require_manage(membership)
-    if membership.business_id != business.id:
+    if trade.buyer_business_id is None:
+        logger.info("Trade %s is a direct customer sale; no colleague ledger entry", trade.id)
+        return TradePosting()
+
+    seller = trade.seller_business
+    # Authorized by TRADE_CONFIRM (the compatibility alias is SALE_FINALIZE),
+    # not LEDGER_MANAGE: this entry is a consequence of a bilateral confirmation,
+    # not bookkeeping the actor is authoring by hand.
+    if membership is None or not (
+        membership.has_capability(SALE_FINALIZE) or membership.has_capability(INVOICE_CONFIRM)
+    ):
+        raise LedgerError("اجازه نهایی کردن فروش را ندارید.")
+    if membership.business_id not in {seller.id, trade.buyer_business_id}:
         raise LedgerError("دسترسی نامعتبر است.")
-    if entry_type not in TRADE_ENTRY_TYPES:
-        raise LedgerError("نوع معامله نامعتبر است.")
-    if contact.business_id != business.id:
-        raise LedgerError("این مخاطب متعلق به کسب‌وکار شما نیست.")
-    if related_lot is not None and related_lot.business_id != business.id:
-        raise LedgerError("محموله انتخاب‌شده متعلق به کسب‌وکار شما نیست.")
-    if related_offer is not None:
-        if business.id not in {
-            related_offer.seller_business_id,
-            related_offer.purchase_request.business_id,
-        }:
-            raise LedgerError("پیشنهاد انتخاب‌شده به کسب‌وکار شما مرتبط نیست.")
-        if related_offer.status != PurchaseOffer.Status.ACCEPTED:
-            raise LedgerError("فقط برای پیشنهاد پذیرفته‌شده می‌توان سند معامله ثبت کرد.")
 
-    # Take the contact row lock before the duplicate check so the check and the
-    # post below are one serialized section for this contact.
-    locked_contact = Contact.objects.select_for_update().get(pk=contact.pk, business=business)
-    if related_offer is not None:
-        existing = trade_entry_for_offer(business, related_offer)
-        if existing is not None:
-            logger.info(
-                "Trade ledger entry already recorded business=%s offer=%s entry=%s",
-                business.id,
-                related_offer.id,
-                existing.id,
-            )
-            raise LedgerDuplicateError(existing=existing)
+    locked = _lock_both(seller, trade.buyer_business)
+    locked_seller = locked[str(seller.pk)]
+    locked_buyer = locked[str(trade.buyer_business_id)]
 
-    description = (description or "").strip() or _default_trade_description(
-        entry_type, related_offer
-    )
+    already_sold = _live_trade_entry(locked_seller, trade)
+    already_bought = _live_trade_entry(locked_buyer, trade)
+    if already_sold is not None and already_bought is not None:
+        raise LedgerDuplicateError(existing=already_sold)
 
+    sale = purchase = None
     try:
-        # Savepoint: two different contacts of this business are not serialized by
-        # the row lock above, so the unique constraint can still fire. Rolling back
-        # to the savepoint keeps the surrounding transaction usable.
+        # Savepoint so a constraint violation leaves the surrounding transaction
+        # usable instead of poisoning the whole finalization.
         with transaction.atomic():
-            entry = post_entry(
-                business=business,
-                contact=locked_contact,
-                membership=membership,
-                entry_type=entry_type,
-                amount=amount,
-                description=description,
-                reference=reference,
-                occurred_on=occurred_on,
-                related_lot=related_lot,
-                related_offer=related_offer,
-            )
+            if already_sold is None:
+                sale = _write_entry(
+                    business=locked_seller,
+                    counterparty=locked_buyer,
+                    entry_type=LedgerEntry.Type.SALE,
+                    amount=trade.total_amount,
+                    description=_trade_description(trade),
+                    occurred_on=timezone.localdate(),
+                    # One entry can reference one lot, and a multi-line sale has
+                    # no single one — ``trade.item`` is blank for those by
+                    # design. The link is navigation, not accounting; the trade
+                    # and its lines carry what was sold.
+                    related_lot=trade.item,
+                    related_trade=trade,
+                    related_invoice=related_invoice,
+                    actor=membership.user,
+                )
+            if already_bought is None:
+                purchase = _write_entry(
+                    business=locked_buyer,
+                    counterparty=locked_seller,
+                    entry_type=LedgerEntry.Type.PURCHASE,
+                    amount=trade.total_amount,
+                    description=_purchase_description(trade),
+                    occurred_on=timezone.localdate(),
+                    # related_lot belongs to the seller, so it is deliberately
+                    # absent here: _write_entry rejects a foreign product.
+                    related_trade=trade,
+                    related_invoice=related_invoice,
+                    actor=membership.user,
+                )
     except IntegrityError as exc:
-        logger.warning(
-            "Duplicate trade ledger entry blocked by constraint business=%s offer=%s",
-            business.id,
-            related_offer.id if related_offer is not None else None,
-        )
+        logger.warning("Duplicate trade ledger entry blocked by constraint trade=%s", trade.id)
         raise LedgerDuplicateError() from exc
 
-    logger.info(
-        "Trade ledger entry recorded id=%s business=%s offer=%s contact=%s type=%s amount=%s",
-        entry.id,
-        business.id,
-        related_offer.id if related_offer is not None else None,
-        locked_contact.id,
-        entry_type,
-        entry.amount,
+    return TradePosting(sale=sale, purchase=purchase)
+
+
+@transaction.atomic
+def post_invoice_entries(*, invoice, membership: BusinessMembership) -> list[LedgerEntry]:
+    """Post the commercial obligation and confirmed settlement exactly once."""
+    from apps.invoicing.models import SalesInvoice
+
+    if invoice.status not in {SalesInvoice.Status.CONFIRMED, SalesInvoice.Status.ISSUED}:
+        raise LedgerError("فقط فاکتور نهایی اثر مالی دارد.")
+    if invoice.trade_id is None:
+        raise LedgerError("فاکتور نهایی باید به فروش ثبت‌شده متصل باشد.")
+    if membership is None or not (
+        membership.has_capability(SALE_FINALIZE) or membership.has_capability(INVOICE_CONFIRM)
+    ):
+        raise LedgerError("اجازه نهایی کردن فروش را ندارید.")
+
+    posted: list[LedgerEntry] = []
+    if invoice.counterparty_type == SalesInvoice.Counterparty.CUSTOMER:
+        return posted
+
+    if invoice.counterparty_type == SalesInvoice.Counterparty.LOCAL:
+        local = invoice.local_counterparty.__class__.objects.select_for_update().get(
+            pk=invoice.local_counterparty_id,
+            owner_business=invoice.seller_business,
+        )
+        posted.append(
+            _write_local_entry(
+                business=invoice.seller_business,
+                local_counterparty=local,
+                entry_type=LedgerEntry.Type.SALE,
+                amount=invoice.total_amount,
+                description=f"فروش فاکتور {invoice.number}",
+                related_trade=invoice.trade,
+                related_invoice=invoice,
+                idempotency_key=f"invoice:{invoice.id}:local:sale",
+                actor=membership.user,
+            )
+        )
+        for kind, amount in (("cash", invoice.cash_amount), ("cheque", invoice.cheque_amount)):
+            if amount:
+                posted.append(
+                    _write_local_entry(
+                        business=invoice.seller_business,
+                        local_counterparty=local,
+                        entry_type=LedgerEntry.Type.PAYMENT_RECEIVED,
+                        amount=amount,
+                        description=f"{kind} فاکتور {invoice.number}",
+                        related_trade=invoice.trade,
+                        related_invoice=invoice,
+                        idempotency_key=f"invoice:{invoice.id}:local:{kind}",
+                        actor=membership.user,
+                    )
+                )
+        return posted
+
+    try:
+        trade_posting = post_trade_entries(trade=invoice.trade, membership=membership, related_invoice=invoice)
+        posted.extend(entry for entry in (trade_posting.sale, trade_posting.purchase) if entry)
+    except LedgerDuplicateError:
+        pass
+    LedgerEntry.objects.filter(
+        related_trade=invoice.trade,
+        business_id__in=[invoice.seller_business_id, invoice.buyer_business_id],
+        related_invoice__isnull=True,
+    ).update(related_invoice=invoice)
+
+    locked = _lock_both(invoice.seller_business, invoice.buyer_business)
+    seller = locked[str(invoice.seller_business_id)]
+    buyer = locked[str(invoice.buyer_business_id)]
+    for kind, amount in (("cash", invoice.cash_amount), ("cheque", invoice.cheque_amount)):
+        if not amount:
+            continue
+        posted.append(
+            _write_entry(
+                business=seller,
+                counterparty=buyer,
+                entry_type=LedgerEntry.Type.PAYMENT_RECEIVED,
+                amount=amount,
+                description=f"دریافت {kind} فاکتور {invoice.number}",
+                reference=invoice.number,
+                related_trade=invoice.trade,
+                related_invoice=invoice,
+                idempotency_key=f"invoice:{invoice.id}:seller:{kind}",
+                actor=membership.user,
+            )
+        )
+        posted.append(
+            _write_entry(
+                business=buyer,
+                counterparty=seller,
+                entry_type=LedgerEntry.Type.PAYMENT_MADE,
+                amount=amount,
+                description=f"پرداخت {kind} فاکتور {invoice.number}",
+                reference=invoice.number,
+                related_trade=invoice.trade,
+                related_invoice=invoice,
+                idempotency_key=f"invoice:{invoice.id}:buyer:{kind}",
+                actor=membership.user,
+            )
+        )
+    return posted
+
+
+@transaction.atomic
+def reverse_invoice_settlement_entries(*, invoice, kind: str, actor) -> list[LedgerEntry]:
+    """Restore balances for a bounced/returned confirmed settlement once."""
+    prefixes = (
+        [f"invoice:{invoice.id}:local:{kind}"]
+        if invoice.local_counterparty_id
+        else [
+            f"invoice:{invoice.id}:seller:{kind}",
+            f"invoice:{invoice.id}:buyer:{kind}",
+        ]
     )
-    return entry
+    reversals: list[LedgerEntry] = []
+    for original in LedgerEntry.objects.select_related("counterparty_business", "local_counterparty").filter(
+        idempotency_key__in=prefixes
+    ):
+        reversal_key = f"{original.idempotency_key}:reversal"
+        existing = LedgerEntry.objects.filter(idempotency_key=reversal_key).first()
+        if existing is not None:
+            reversals.append(existing)
+            continue
+        if original.local_counterparty_id:
+            local = original.local_counterparty.__class__.objects.select_for_update().get(
+                pk=original.local_counterparty_id
+            )
+            previous = _last_local_balance(original.business, local)
+            identity = {
+                "local_counterparty": local,
+                "legacy_counterparty_name": local.name,
+            }
+        else:
+            counterparty = _lock_counterparty(original.counterparty_business)
+            previous = _last_balance(original.business, counterparty)
+            identity = {
+                "counterparty_business": counterparty,
+                "legacy_counterparty_name": counterparty.name,
+            }
+        delta = -original.balance_delta
+        reversed_at = timezone.now()
+        LedgerEntry.objects.filter(pk=original.pk, reversed_at__isnull=True).update(reversed_at=reversed_at)
+        reversals.append(
+            LedgerEntry.objects.create(
+                business=original.business,
+                **identity,
+                entry_type=LedgerEntry.Type.REVERSAL,
+                amount=original.amount,
+                balance_delta=delta,
+                balance_after=(previous + delta).quantize(Decimal("0.01")),
+                currency=original.currency,
+                description=f"برگشت تسویه فاکتور {invoice.number}",
+                reference=invoice.number,
+                occurred_on=timezone.localdate(),
+                related_trade=invoice.trade,
+                related_invoice=invoice,
+                reverses=original,
+                idempotency_key=reversal_key,
+                created_by=actor,
+            )
+        )
+    return reversals
+
+
+def _live_trade_entry(business: Business, trade) -> LedgerEntry | None:
+    return LedgerEntry.objects.filter(
+        business=business,
+        related_trade=trade,
+        entry_type__in=TRADE_ENTRY_TYPES,
+        reversed_at__isnull=True,
+    ).first()
 
 
 @transaction.atomic
 def reverse_entry(*, entry: LedgerEntry, membership: BusinessMembership) -> LedgerEntry:
-    """Post a reversal entry that negates ``entry``. Corrections never edit the
-    original. Prevents reversing a reversal and prevents double reversal.
+    """Post a reversal entry that negates ``entry``.
 
-    The original is also stamped with ``reversed_at``. That stamp is a bookkeeping
-    flag rather than financial data — no amount, delta, or balance changes — and is
-    the one deliberate carve-out from the model's immutability: it is written with a
-    queryset ``.update()`` because ``LedgerEntry.save()`` blocks updates and must
-    keep doing so. It releases the ``uniq_trade_entry_per_offer`` slot so a
-    reversed trade can be re-recorded.
+    Corrections never edit the original. The original is stamped with
+    ``reversed_at``, which is a bookkeeping flag rather than financial data — no
+    amount, delta or balance changes. That stamp is the one deliberate carve-out
+    from immutability, written with a queryset ``.update()`` because
+    ``LedgerEntry.save()`` blocks updates and must keep doing so. It releases the
+    idempotency slot so a corrected trade can be re-recorded.
     """
     _require_manage(membership)
     if membership.business_id != entry.business_id:
         raise LedgerError("دسترسی نامعتبر است.")
     if entry.entry_type == LedgerEntry.Type.REVERSAL:
         raise LedgerError("یک سند برگشتی را نمی‌توان دوباره برگشت زد.")
+    if entry.counterparty_business_id is None:
+        # Pre-V2 rows with no mapped Business are read-only history; there is no
+        # account to post the correction against.
+        raise LedgerError("این سند قدیمی قابل برگشت نیست.")
 
-    # Lock the contact row, then re-check under the lock for an existing reversal.
-    locked_contact = Contact.objects.select_for_update().get(
-        pk=entry.contact_id, business=entry.business_id
-    )
+    locked = _lock_counterparty(entry.counterparty_business)
     if LedgerEntry.objects.filter(reverses=entry).exists():
         raise LedgerError("این سند قبلاً برگشت خورده است.")
 
-    previous = _last_balance(entry.business, locked_contact)
+    previous = _last_balance(entry.business, locked)
     delta = -entry.balance_delta
     balance_after = (previous + delta).quantize(Decimal("0.01"))
 
     reversed_at = timezone.now()
-    # Same transaction and same contact row lock as the reversal below, so an
-    # entry is never observed as reversed without its reversal, or vice versa.
-    LedgerEntry.objects.filter(pk=entry.pk, reversed_at__isnull=True).update(
-        reversed_at=reversed_at
-    )
+    # Same transaction and same row lock as the reversal below, so an entry is
+    # never observed as reversed without its reversal, or vice versa.
+    LedgerEntry.objects.filter(pk=entry.pk, reversed_at__isnull=True).update(reversed_at=reversed_at)
     entry.reversed_at = reversed_at
 
     original_label = entry.get_entry_type_display()
     reversal = LedgerEntry.objects.create(
         business_id=entry.business_id,
-        contact=locked_contact,
+        counterparty_business=locked,
+        legacy_counterparty_name=locked.name,
         entry_type=LedgerEntry.Type.REVERSAL,
         amount=entry.amount,
         balance_delta=delta,
@@ -328,10 +721,10 @@ def reverse_entry(*, entry: LedgerEntry, membership: BusinessMembership) -> Ledg
         created_by=membership.user,
     )
     logger.info(
-        "Ledger entry reversed original=%s reversal=%s business=%s contact=%s",
+        "Ledger entry reversed original=%s reversal=%s business=%s counterparty=%s",
         entry.id,
         reversal.id,
         entry.business_id,
-        entry.contact_id,
+        locked.id,
     )
     return reversal

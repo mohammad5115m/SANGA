@@ -1,0 +1,64 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}درخواست خرید | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">درخواست خرید از {{ pr.buyer_business.name }}</h1>
+      <p class="page-lead">{{ pr.created_at|jdatetime }}</p>
+    </div>
+    <div class="badge-row">{% include "trading/_status_badge.html" %}</div>
+  </div>
+
+  {% include "trading/_request_summary.html" %}
+
+  {% if pr.status == 'sent' %}
+    <form method="post" class="panel stack-md" novalidate>
+      {% csrf_token %}
+      <h2 class="section-title">پاسخ شما</h2>
+      <p class="muted">
+        می‌توانید متراژ و قیمت را تغییر دهید. پذیرش درخواست به معنی ثبت فروش نیست —
+        بعد از توافق، فروش را جداگانه نهایی می‌کنید.
+      </p>
+      {% if form.non_field_errors %}
+        <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+      {% endif %}
+      {% for field in form %}
+        <label class="field">
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+          {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+        </label>
+      {% endfor %}
+      <div class="btn-row">
+        <button class="btn btn-primary" name="decision" value="accept" type="submit">پذیرش و توافق</button>
+        <button class="btn btn-ghost" name="decision" value="reject" type="submit">رد درخواست</button>
+      </div>
+    </form>
+
+  {% elif pr.status == 'accepted' %}
+    <div class="panel stack-md">
+      <h2 class="section-title">فروش هنوز نهایی نشده است</h2>
+      <p>
+        شما با این درخواست موافقت کرده‌اید. تا زمانی که فروش را نهایی نکنید، هیچ سندی در
+        دفتر حساب ثبت نمی‌شود.
+      </p>
+      {% if can_finalize %}
+        <a class="btn btn-primary" href="{% url 'trading:finalize' pr.id %}">نهایی کردن فروش</a>
+      {% else %}
+        <p class="muted">برای نهایی کردن فروش، دسترسی «نهایی کردن فروش» لازم است.</p>
+      {% endif %}
+    </div>
+
+  {% elif pr.status == 'completed' %}
+    <div class="panel stack-md">
+      <h2 class="section-title">فروش نهایی شد</h2>
+      {% if pr.trade %}
+        <a class="btn btn-secondary" href="{% url 'trading:trade_detail' pr.trade.id %}">مشاهده معامله</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

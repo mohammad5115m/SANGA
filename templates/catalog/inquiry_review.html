@@ -1,0 +1,57 @@
+{% extends "layouts/storefront_shell.html" %}
+{% load money %}
+
+{% block title %}درخواست شما | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <span class="section-kicker">مرحله ۱ از ۳</span>
+    <h1 class="page-title">مرور درخواست خرید</h1>
+    <p class="page-lead">محصولات را بررسی کنید و متراژ تقریبی هر مورد را بنویسید؛ عدد دقیق می‌تواند بعداً با فروشنده نهایی شود.</p>
+  </div>
+
+  {% if rows %}
+    <form method="post" class="stack-lg" data-unsaved-warning>
+      {% csrf_token %}
+
+      {% for group in groups %}
+        <section class="panel stack-md">
+          {% if groups|length > 1 %}
+            {% comment %}One inquiry per seller: a seller must never see what the customer
+            asked another seller.{% endcomment %}
+            <h2 class="section-title">{{ group.business.name }}</h2>
+          {% endif %}
+
+          {% for row in group.rows %}
+            <div class="selection-row">
+              <div>
+                <div class="list-title">{{ row.item.product.commercial_name }}</div>
+                <div class="muted">
+                  {{ row.item.product.stone.name }}
+                </div>
+              </div>
+              <label class="field">
+                <span class="field-label">متراژ (m²)</span>
+                <input class="field-input" type="number" step="0.001" inputmode="decimal"
+                       name="qty-{{ row.item.id }}" value="{{ row.quantity|default_if_none:'' }}">
+              </label>
+              <button class="btn btn-ghost btn-sm" type="submit"
+                      formaction="{% url 'catalog:selection_remove' business.storefront_token row.item.id %}"
+                      name="next" value="{% url 'catalog:inquiry_review' business.storefront_token %}">حذف</button>
+            </div>
+          {% endfor %}
+        </section>
+      {% endfor %}
+
+      <button class="btn btn-primary btn-block" type="submit">ادامه و افزودن توضیحات پروژه</button>
+      <a class="btn btn-ghost btn-block" href="{% url 'catalog:storefront' business.storefront_token %}">افزودن محصول بیشتر</a>
+    </form>
+  {% else %}
+    <div class="empty-state stack-md">
+      <p>هنوز محصولی انتخاب نکرده‌اید.</p>
+      <a class="btn btn-primary" href="{% url 'catalog:storefront' business.storefront_token %}">بازگشت به ویترین</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

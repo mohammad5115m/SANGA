@@ -1,0 +1,37 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}درخواست خرید | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">درخواست خرید از {{ pr.seller_business.name }}</h1>
+      <p class="page-lead">{{ pr.created_at|jdatetime }}</p>
+    </div>
+    <div class="badge-row">{% include "trading/_status_badge.html" %}</div>
+  </div>
+
+  {% include "trading/_request_summary.html" %}
+
+  {% if pr.status == 'accepted' %}
+    <div class="panel">
+      <p>فروشنده با درخواست شما موافقت کرده است. نهایی کردن فروش بر عهده فروشنده است.</p>
+    </div>
+  {% elif pr.status == 'completed' %}
+    <div class="panel stack-md">
+      <p>این خرید نهایی شده است.</p>
+      {% if pr.trade %}
+        <a class="btn btn-secondary" href="{% url 'trading:trade_detail' pr.trade.id %}">مشاهده معامله</a>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if pr.is_open %}
+    <form method="post" class="btn-row">
+      {% csrf_token %}
+      <button class="btn btn-ghost" type="submit">لغو درخواست</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

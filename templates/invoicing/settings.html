@@ -1,0 +1,88 @@
+{% extends "layouts/app_shell.html" %}
+{% load static %}
+{% block title %}تنظیمات فاکتور | سنگا{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/invoice.css' %}?v=5">{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar"><div><h1 class="page-title">تنظیمات فاکتور</h1><p class="page-lead">هویت فروشنده، اطلاعات بانکی، مهر، امضا و ظاهر پیش‌فرض</p></div>{% if can_manage_counterparty_links %}<a class="btn btn-secondary" href="{% url 'invoicing:counterparty_links' %}">همکاران محلی و اتصال سابقه</a>{% endif %}</div>
+  {% if can_manage_business_signature %}
+  <form method="post" enctype="multipart/form-data" class="stack-lg" novalidate data-invoice-settings>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    <section class="panel stack-md">
+      <h2 class="section-title">اطلاعات فروشنده</h2>
+      <div class="form-grid">
+        <label class="field"><span class="field-label">{{ form.legal_name.label }}</span>{{ form.legal_name }}{% if form.legal_name.errors %}<span class="field-error">{{ form.legal_name.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.tax_id.label }}</span>{{ form.tax_id }}{% if form.tax_id.errors %}<span class="field-error">{{ form.tax_id.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.bank_information.label }}</span>{{ form.bank_information }}{% if form.bank_information.errors %}<span class="field-error">{{ form.bank_information.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.payment_terms.label }}</span>{{ form.payment_terms }}{% if form.payment_terms.errors %}<span class="field-error">{{ form.payment_terms.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.default_currency.label }}</span>{{ form.default_currency }}{% if form.default_currency.errors %}<span class="field-error">{{ form.default_currency.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.default_display_unit.label }}</span>{{ form.default_display_unit }}{% if form.default_display_unit.errors %}<span class="field-error">{{ form.default_display_unit.errors|striptags }}</span>{% endif %}</label>
+      </div>
+    </section>
+    <section class="panel stack-md">
+      <h2 class="section-title">لوگو، مهر و امضا</h2>
+      <p class="muted">PNG، WebP یا JPEG تا ۵ مگابایت. فایل پس از بررسی محتوای واقعی، پاک‌سازی و به PNG امن تبدیل می‌شود.</p>
+      <div class="invoice-settings-assets">
+        <label class="field" data-asset-field><span class="field-label">لوگو</span><img class="invoice-asset-preview" data-asset-preview {% if settings_row.logo %}src="{% url 'invoicing:asset' 'logo' %}"{% else %}hidden{% endif %} alt="پیش‌نمایش لوگو">{{ form.logo }}<span>{{ form.remove_logo }} {{ form.remove_logo.label }}</span>{% if form.logo.errors %}<span class="field-error">{{ form.logo.errors|striptags }}</span>{% endif %}</label>
+        <label class="field" data-asset-field><span class="field-label">مهر</span><img class="invoice-asset-preview" data-asset-preview {% if settings_row.stamp %}src="{% url 'invoicing:asset' 'stamp' %}"{% else %}hidden{% endif %} alt="پیش‌نمایش مهر">{{ form.stamp }}<span>{{ form.remove_stamp }} {{ form.remove_stamp.label }}</span>{% if form.stamp.errors %}<span class="field-error">{{ form.stamp.errors|striptags }}</span>{% endif %}</label>
+        <label class="field" data-asset-field><span class="field-label">امضا</span><img class="invoice-asset-preview" data-asset-preview {% if settings_row.signature %}src="{% url 'invoicing:asset' 'signature' %}"{% else %}hidden{% endif %} alt="پیش‌نمایش امضا">{{ form.signature }}<span>{{ form.remove_signature }} {{ form.remove_signature.label }}</span>{% if form.signature.errors %}<span class="field-error">{{ form.signature.errors|striptags }}</span>{% endif %}</label>
+      </div>
+    </section>
+    <section class="panel stack-md">
+      <h2 class="section-title">ظاهر پیش‌فرض</h2>
+      <fieldset class="invoice-color-setting" data-invoice-color-picker>
+        <legend class="field-label">رنگ‌بندی فاکتور</legend>
+        <p class="muted">یک رنگ آماده انتخاب کنید یا رنگ دلخواه خود را بسازید. همین انتخاب در سربرگ، جدول و مبالغ مهم استفاده می‌شود.</p>
+        {{ form.palette.as_hidden }}{{ form.primary_color.as_hidden }}
+        <div class="invoice-color-options" role="group" aria-label="رنگ‌بندی فاکتور">
+          <button class="invoice-color-option" type="button" data-color-palette="forest" data-color-value="#1f513c" aria-pressed="{% if form.palette.value == 'forest' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#1f513c"></span><span>سبز جنگلی</span>
+          </button>
+          <button class="invoice-color-option" type="button" data-color-palette="ocean" data-color-value="#164e78" aria-pressed="{% if form.palette.value == 'ocean' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#164e78"></span><span>آبی اقیانوسی</span>
+          </button>
+          <button class="invoice-color-option" type="button" data-color-palette="charcoal" data-color-value="#30343b" aria-pressed="{% if form.palette.value == 'charcoal' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#30343b"></span><span>ذغالی</span>
+          </button>
+          <button class="invoice-color-option" type="button" data-color-palette="saffron" data-color-value="#7a4700" aria-pressed="{% if form.palette.value == 'saffron' %}true{% else %}false{% endif %}">
+            <span class="invoice-color-swatch" style="--swatch-color:#7a4700"></span><span>زعفرانی</span>
+          </button>
+          <label class="invoice-color-option invoice-color-custom">
+            <input type="color" value="{{ form.primary_color.value|default:'#1f513c' }}" data-custom-color aria-label="انتخاب رنگ دلخواه">
+            <span>رنگ دلخواه</span>
+          </label>
+        </div>
+        {% if form.palette.errors %}<span class="field-error">{{ form.palette.errors|striptags }}</span>{% endif %}
+        {% if form.primary_color.errors %}<span class="field-error">{{ form.primary_color.errors|striptags }}</span>{% endif %}
+      </fieldset>
+      <div class="form-grid form-grid-compact">
+        <label class="field"><span class="field-label">{{ form.header_style.label }}</span>{{ form.header_style }}{% if form.header_style.errors %}<span class="field-error">{{ form.header_style.errors|striptags }}</span>{% endif %}</label>
+        <label class="field"><span class="field-label">{{ form.logo_size.label }}</span>{{ form.logo_size }}{% if form.logo_size.errors %}<span class="field-error">{{ form.logo_size.errors|striptags }}</span>{% endif %}</label>
+        <label class="checkbox-field">{{ form.show_bank_information }} <span class="field-label">{{ form.show_bank_information.label }}</span>{% if form.show_bank_information.errors %}<span class="field-error">{{ form.show_bank_information.errors|striptags }}</span>{% endif %}</label>
+        <label class="checkbox-field">{{ form.show_stamp }} <span class="field-label">{{ form.show_stamp.label }}</span>{% if form.show_stamp.errors %}<span class="field-error">{{ form.show_stamp.errors|striptags }}</span>{% endif %}</label>
+        <label class="checkbox-field">{{ form.show_signature }} <span class="field-label">{{ form.show_signature.label }}</span>{% if form.show_signature.errors %}<span class="field-error">{{ form.show_signature.errors|striptags }}</span>{% endif %}</label>
+      </div>
+    </section>
+    <button class="btn btn-primary" type="submit">ذخیره تنظیمات</button>
+  </form>
+  {% else %}
+  <div class="alert alert-info">مدیریت هویت و امضای رسمی کسب‌وکار فقط برای مالک یا مدیر فعال است. امضای شخصی خودتان را در بخش زیر مدیریت کنید.</div>
+  {% endif %}
+  <section class="panel stack-md" id="personal-signature">
+    <div><h2 class="section-title">امضای شخصی</h2><p class="muted">این فایل خصوصی است و هنگام ارسال یا تأیید فاکتور همکار، یک نسخه ثابت از آن در همان بازبینی نگهداری می‌شود.</p></div>
+    <form method="post" enctype="multipart/form-data" action="{% url 'invoicing:personal_signature' %}" class="stack-sm">
+      {% csrf_token %}
+      {% if personal_signature and personal_signature.image %}<div class="alert alert-success">امضای شخصی ثبت شده است.</div>{% endif %}
+      <label class="field"><span class="field-label">{{ personal_signature_form.image.label }}</span>{{ personal_signature_form.image }}</label>
+      <label>{{ personal_signature_form.remove_signature }} {{ personal_signature_form.remove_signature.label }}</label>
+      <button class="btn btn-secondary" type="submit">ذخیره امضای شخصی</button>
+    </form>
+  </section>
+  {% if can_manage_templates %}<section class="panel stack-md">
+    <h2 class="section-title">قالب‌های پرکاربرد</h2>
+    {% for saved in templates %}<div class="list-item"><a href="{% url 'invoicing:create' %}?template={{ saved.id }}"><strong>{{ saved.name }}</strong></a><form method="post" action="{% url 'invoicing:template_delete' saved.id %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit" data-confirm="این قالب حذف شود؟">حذف</button></form></div>{% empty %}<div class="empty-state">هنوز قالبی ذخیره نشده است.</div>{% endfor %}
+  </section>{% endif %}
+</section>
+{% endblock %}
+{% block extra_js %}<script src="{% static 'js/invoice_settings.js' %}?v=4"></script>{% endblock %}

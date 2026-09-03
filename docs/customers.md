@@ -1,0 +1,164 @@
+# Public Customers — سنگا (SANGA)
+
+## 1. Browsing costs nothing
+
+A retail customer can search, filter, open products, follow share links and
+select things to ask about **without logging in, registering, or giving a name
+or phone number**.
+
+Identity is asked for exactly once, at submission. Nothing interrupts browsing to
+capture a lead, because a lead-capture wall is how a discovery surface stops
+being used.
+
+```text
+/store/<token>/  →  select products  →  /inquiry/  →  identify  →  verify  →  saved
+```
+
+### There is exactly one way in
+
+Every public entry point funnels into that pipeline: a storefront card, the
+«درخواست استعلام» button on a product page, «استعلام موجودی» on a stale quantity,
+and a shared catalog all add the product to the selection and continue from
+`/inquiry/`.
+
+The product page and the shared catalog used to carry their own name/phone forms
+that called `create_inquiry` directly. The most obvious button on the most visited
+public page therefore recorded an inquiry with an unverified phone, no requested
+quantity and — on the catalog — no product rows at all, while the designed flow
+next to it asked for all three. Two workflows for one intention, disagreeing about
+what an inquiry even contains.
+
+Those forms are gone. `lot_detail` and `shared_catalog` are GET-only.
+
+## 2. One inquiry, several products
+
+V1 modelled one inquiry per product, so a customer shopping for a floor, a facade
+and a staircase had to submit three times and the seller got three unrelated
+leads.
+
+V2 has `Inquiry` (the request) and `InquiryItem` (one product plus the metres
+needed). The selection lives in the session while browsing — persisting it would
+mean identifying the visitor, which is the thing we are avoiding.
+
+The selection is **re-resolved through `eligible_items()` on every read**, so a
+product withdrawn while the customer was browsing simply drops out. A seller
+never receives a request for something they have taken down.
+
+### Selections spanning several sellers
+
+Public search covers every seller, so a selection can too. At submission the
+selection is split by seller and **one inquiry is created per seller**, each
+containing only that seller's products. One seller must never see what a customer
+asked another.
+
+### One submission, one set of inquiries
+
+`submit_public_inquiry()` writes them all in **one transaction**, keyed by a
+`submission_id` minted before the OTP is sent and carried in the session.
+`uniq_inquiry_per_submission_and_seller` makes the token unique per seller.
+
+Both properties matter, and neither is available to the per-seller service:
+
+- **All or nothing.** The loop used to run outside any transaction, so a failure
+  on the third seller left the first two committed while the page reported that
+  the submission had failed. The customer had no way to tell which sellers had
+  heard them.
+- **Retry-safe.** A refresh, a double-tapped submit button on a slow connection,
+  or a retry after a failure carries the same token and is handed the inquiries
+  that already exist rather than creating a second set.
+
+Seller notifications are scheduled with `transaction.on_commit`, so a notification
+is never sent for an inquiry that rolled back, and a failing notification backend
+cannot lose a saved inquiry.
+
+## 3. Customers are not platform Users
+
+`CustomerLead` is a light identity keyed by `(business, phone)`. It is not an
+account: no password, no session, no membership, no way to log in.
+
+The seller experience adds a practical, persistent CRM layer: customer
+categories and tags, current needs, requested-product summaries, notes, an
+activity timeline, scheduled follow-ups and a dedicated work queue. This is
+intentionally not an enterprise sales pipeline.
+
+`apps.inquiries.crm.CRMRepository` is the presentation/service boundary. It
+combines real `CustomerLead`, `Inquiry`, `InquiryItem`, `CustomerNote` and
+`CustomerFollowUp` rows into the view-model used by the templates. All CRM
+mutations are written to the database inside the current Business boundary;
+there are no fictional customers or browser-session CRM records. Reminder read
+state is also persistent per staff user. The models use portable Django fields
+and constraints, so the same migration runs on SQLite and PostgreSQL.
+
+Scoped per business, so one seller's customer list is not another's, and two
+sellers can hold different names for the same number without conflict.
+
+## 4. Customer OTP
+
+Verification at submission uses `OTPChallenge` with its own
+`Purpose.CUSTOMER`, and a separate pair of service functions
+(`request_customer_otp` / `verify_customer_otp`) that share only the hashing and
+rate-limiting primitives with staff login.
+
+The separation is the point:
+
+- a customer OTP **never creates a User**,
+- it **never calls `login()`**,
+- a code issued for one purpose **cannot be replayed** against the other.
+
+Success records `phone_verified_at` on the `CustomerLead`. That flag means "this
+phone was reachable at that moment" — nothing more.
+
+The SMS provider abstraction is shared, so plugging in a production gateway
+lights up both flows at once. Development uses the console provider, which logs
+the code instead of sending it.
+
+## 5. Saved first, shared second
+
+The order is a rule, not an implementation detail:
+
+```text
+save the inquiry on the server
+  → confirm success to the customer
+  → then offer WhatsApp / Telegram / copy-link
+```
+
+Share buttons are a convenience. A seller must never depend on a message the
+customer may not have sent, and the inquiry inbox is the source of truth.
+
+## 6. Seller inbox and CRM follow-up
+
+`/app/leads/inquiries/` lists every inquiry with the customer, phone, product
+count, date and status. `/app/leads/` lists customers, searchable by name or
+phone, with category, CRM state, requested products, last activity and next
+follow-up. `/app/leads/followups/` is the overdue/today/upcoming/completed work
+queue. Due follow-ups also appear in the existing in-app notification center;
+no external follow-up notification channel is used.
+
+Statuses are four, matching what a seller actually does:
+
+| Status | Meaning |
+|--------|---------|
+| جدید | nobody has looked at it |
+| تماس گرفته‌شده | somebody is on it |
+| تبدیل به فروش | it became a sale |
+| بسته | finished, either way |
+
+V1 had seven. The middle three (`viewed`, `negotiating`, `lost`) were never
+distinguishable in practice, and `inquiries.0004` maps them onto the four above.
+
+Each line keeps a `product_name` snapshot, so a request still reads correctly
+after the product is renamed or withdrawn — which is common, since an inquiry is
+often *why* the product changes.
+
+## 7. Stock inquiries
+
+When an item's stock confirmation lapses, its display degrades to «استعلام
+موجودی» and a buyer can ask whether the quantity still holds. That is recorded
+as a normal inquiry so it lands in the same inbox, and the seller answers by
+either confirming stock or marking the product ناموجود.
+
+It runs through the same pipeline as every other public inquiry — the button
+selects the product and seeds the question, then identity and OTP follow — so the
+phone behind it is verified like every other. Keeping a low-friction exception
+here would have meant one class of inquiry whose phone number nobody had checked,
+and no way for a seller to tell which kind they were looking at.

@@ -2,7 +2,7 @@
 
 {% block title %}{{ catalog.title }} | {{ business.name }}{% endblock %}
 
-{% block extra_head %}
+{% block storefront_extra_head %}
 <meta property="og:title" content="{{ catalog.title }} — {{ business.name }}">
 <meta property="og:description" content="{{ catalog.custom_message|default:'کاتالوگ اختصاصی سنگ' }}">
 {% endblock %}
@@ -13,46 +13,42 @@
     <h1 class="page-title">{{ catalog.title }}</h1>
     {% if catalog.customer_name %}<p class="page-lead">برای {{ catalog.customer_name }}</p>{% endif %}
     {% if catalog.custom_message %}<p>{{ catalog.custom_message }}</p>{% endif %}
+    <p class="live-data-note"><span aria-hidden="true">●</span> قیمت، موجودی و تصاویر این کاتالوگ به‌صورت زنده به‌روزرسانی می‌شوند.</p>
   </div>
+
+  {% include "catalog/_selection_bar.html" %}
 
   <div class="catalog-grid">
     {% for card in cards %}
-      <a class="catalog-card" href="{% url 'catalog:lot_detail' business.slug card.lot.id %}">
-        <div class="catalog-card-media">
-          {% if card.primary_media %}
-            <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
-          {% else %}
-            <div class="lot-thumb-fallback"></div>
-          {% endif %}
-        </div>
-        <div class="catalog-card-body">
-          <div class="list-title">{{ card.product.commercial_name }}</div>
-          <div class="catalog-price">{{ card.price.label }}</div>
-          {% if card.note %}<div class="muted">{{ card.note }}</div>{% endif %}
-        </div>
-      </a>
+      {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" with show_select=True selection_catalog_token=catalog.share_token %}
     {% empty %}
-      <div class="empty-state">موردی برای نمایش نیست.</div>
+      <div class="empty-state product-empty-state">
+        <span class="empty-state-icon" aria-hidden="true">◇</span>
+        <h2>محصولی برای نمایش در این کاتالوگ نیست</h2>
+        <p>ممکن است محصولات این کاتالوگ دیگر در ویترین عمومی فروشنده فعال نباشند.</p>
+        <a class="btn btn-secondary" href="{% url 'catalog:storefront' business.storefront_token %}">مشاهده ویترین فروشنده</a>
+      </div>
     {% endfor %}
   </div>
 
-  <section class="panel stack-md">
-    <h2 class="section-title">درخواست مشاوره برای این کاتالوگ</h2>
-    <form method="post" class="stack-md" novalidate>
-      {% csrf_token %}
-      {% if inquiry_form.non_field_errors %}
-        <div class="alert alert-error">{{ inquiry_form.non_field_errors|striptags }}</div>
-      {% endif %}
-      {% for field in inquiry_form %}
-        <label class="field">
-          <span class="field-label">{{ field.label }}</span>
-          {{ field }}
-        </label>
-      {% endfor %}
-      <button class="btn btn-primary" type="submit">ارسال</button>
-    </form>
+  {% comment %}A catalog inquiry with no products and no quantities told the seller almost
+  nothing. Selecting first is what makes the request answerable.{% endcomment %}
+  <section class="panel stack-sm">
+    <h2 class="section-title">درخواست خرید از این کاتالوگ</h2>
+    {% if selection_count %}
+      <p class="muted">{{ selection_count }} محصول انتخاب کرده‌اید.</p>
+      <a class="btn btn-primary" href="{% url 'catalog:inquiry_review' business.storefront_token %}">ادامه درخواست خرید</a>
+    {% else %}
+      <p class="muted">
+        محصولی را که می‌خواهید درباره‌اش بپرسید انتخاب کنید، سپس متراژ مورد نیاز و
+        شماره موبایلتان را وارد کنید.
+      </p>
+    {% endif %}
   </section>
 
-  <button class="btn btn-ghost" type="button" data-share-url="{{ share_url }}" onclick="navigator.clipboard.writeText(this.dataset.shareUrl); this.textContent='لینک کپی شد';">کپی لینک اشتراک</button>
+  {% include "_pager.html" %}
+
+  {% include "catalog/_share_actions.html" %}
 </section>
 {% endblock %}

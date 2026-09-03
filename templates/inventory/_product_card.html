@@ -1,0 +1,87 @@
+{% comment %}
+One audience-safe product card used by the marketplace, seller storefront and
+catalogs. The caller decides whether marketplace-only metadata/actions appear.
+
+Expects: card = {lot, product, price, stock, primary_media, supplier?}, card_url
+Optional: show_marketplace_meta, show_marketplace_actions, show_select
+{% endcomment %}
+<article class="catalog-card-wrap product-card{% if show_marketplace_meta %} product-card-market{% endif %}">
+  <a class="catalog-card product-card-link" href="{{ card_url }}">
+    <div class="catalog-card-media product-card-media">
+      {% if card.primary_media %}
+        <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
+      {% else %}
+        <div class="lot-thumb-fallback product-image-fallback" role="img" aria-label="تصویری برای {{ card.product.commercial_name }} ثبت نشده است">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m5 17 4-4 3 3 2-2 5 4"/>
+          </svg>
+          <span>تصویر محصول ثبت نشده</span>
+        </div>
+      {% endif %}
+      {% if card.price.is_special or card.lot.is_urgent_sale %}
+        <div class="card-flags">
+          {% if card.price.is_special %}<span class="card-flag card-flag-special">فروش ویژه</span>{% endif %}
+          {% if card.lot.is_urgent_sale %}<span class="card-flag">فوری</span>{% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="catalog-card-body product-card-body">
+      <div class="product-card-kicker">
+        {% if card.supplier %}
+          <span class="product-card-supplier">{{ card.supplier.name }}</span>
+        {% endif %}
+        {% if show_marketplace_meta %}
+          <span class="product-code" dir="ltr">{{ card.lot.lot_code }}</span>
+        {% endif %}
+      </div>
+
+      <h3 class="list-title product-card-title">{{ card.product.commercial_name }}</h3>
+
+      <div class="product-specs product-card-specs">
+        {% for application in card.applications %}<span class="product-use">مناسب {{ application.name }}</span>{% empty %}{% if card.product.stone %}<span>{{ card.product.stone.name }}</span>{% endif %}{% endfor %}
+        {% if card.size_label %}<span>{{ card.size_label }}</span>{% elif card.lot.thickness_cm %}<span>{{ card.lot.thickness_cm }} سانتی‌متر</span>{% endif %}
+        {% if card.lot.processing_type %}<span>{{ card.lot.processing_type }}</span>{% endif %}
+      </div>
+
+      <div class="product-card-commercial">
+        <div class="product-card-price">
+          <span>{% if show_marketplace_meta %}قیمت همکار{% else %}قیمت{% endif %} / متر مربع</span>
+          {% if card.price.is_special %}
+            <span class="catalog-price-old">{{ card.price.regular_label }}</span>
+          {% endif %}
+          <strong class="catalog-price">{{ card.price.label }}</strong>
+          {% if card.price.is_special %}
+            <span class="sale-meta"><b>{{ card.price.discount_percent }}٪ تخفیف</b><span>{{ card.price.remaining_label }}</span></span>
+          {% endif %}
+        </div>
+        <div class="stock-pill{% if card.stock.is_inquiry %} is-inquiry{% else %} is-fresh{% endif %}">
+          <span class="stock-pill-dot" aria-hidden="true"></span>
+          <span>{{ card.stock.label }}</span>
+        </div>
+      </div>
+
+      {% if card.stock.confirmed_at %}
+        <div class="product-card-freshness">آخرین تأیید موجودی: {{ card.stock.human_confirmed }}</div>
+      {% endif %}
+    </div>
+  </a>
+
+  {% if show_marketplace_actions %}
+    <div class="product-card-actions">
+      <a class="btn btn-secondary btn-sm product-card-detail-action" href="{{ card_url }}">
+        <span>مشاهده محصول</span><span aria-hidden="true">←</span>
+      </a>
+      {% with share_url=card.share_url product=card.product share_compact="1" %}
+        {% include "catalog/_share_actions.html" %}
+      {% endwith %}
+    </div>
+  {% endif %}
+
+  {% if show_select %}
+    <div class="product-card-customer-actions">
+      {% if show_select %}{% include "catalog/_select_button.html" with is_selected=card.is_selected %}{% endif %}
+    </div>
+  {% endif %}
+  {% if card.note %}<div class="muted card-note">{{ card.note }}</div>{% endif %}
+</article>

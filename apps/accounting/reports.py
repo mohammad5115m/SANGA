@@ -8,7 +8,6 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from apps.businesses.models import Business
-from apps.contacts.models import Contact
 
 from .models import LedgerEntry
 
@@ -61,7 +60,7 @@ class Aging:
 
 @dataclass
 class _Group:
-    contact: Contact
+    counterparty: Business
     entries: list[LedgerEntry] = field(default_factory=list)
 
 
@@ -80,7 +79,7 @@ def _bucket_key(age_days: int) -> str:
     return "over_90"
 
 
-def live_entries(business: Business, contact: Contact | None = None) -> QuerySet[LedgerEntry]:
+def live_entries(business: Business, counterparty: Business | None = None) -> QuerySet[LedgerEntry]:
     """Entries that still carry financial weight, oldest business date first.
 
     A reversed entry and its reversal cancel out, so both are dropped instead of
@@ -95,13 +94,13 @@ def live_entries(business: Business, contact: Contact | None = None) -> QuerySet
     qs = LedgerEntry.objects.filter(business=business, reversed_at__isnull=True).exclude(
         entry_type=LedgerEntry.Type.REVERSAL
     )
-    if contact is not None:
-        qs = qs.filter(contact=contact)
+    if counterparty is not None:
+        qs = qs.filter(counterparty_business=counterparty)
     return qs.order_by("occurred_on", "created_at")
 
 
 def aging_from_entries(entries, as_of: date) -> Aging:
-    """FIFO aging over an oldest-first sequence of live entries for one contact.
+    """FIFO aging over an oldest-first sequence of live entries for one account.
 
     Credits (payments received, purchases, credit adjustments) are pooled and then
     applied against the **oldest outstanding debit first**, so a partial payment
@@ -132,41 +131,43 @@ def aging_from_entries(entries, as_of: date) -> Aging:
     return Aging(as_of=as_of, unapplied_credit=credit_pool, **buckets)
 
 
-def contact_aging(business: Business, contact: Contact, *, as_of: date | None = None) -> Aging:
-    """گزارش سنی بدهی for one contact of ``business``.
+def counterparty_aging(business: Business, counterparty: Business, *, as_of: date | None = None) -> Aging:
+    """گزارش سنی بدهی for one colleague account.
 
     Always over the whole account as of ``as_of`` (today by default) — statement
     date/type filters are a viewing device and must not change how old a debt is.
     """
     as_of = as_of or timezone.localdate()
-    return aging_from_entries(live_entries(business, contact), as_of)
+    return aging_from_entries(live_entries(business, counterparty), as_of)
 
 
 def business_aging(business: Business, *, as_of: date | None = None) -> dict:
-    """Business-wide گزارش سنی بدهی: one row per contact with an outstanding debt.
+    """Business-wide گزارش سنی بدهی: one row per colleague with an outstanding debt.
 
     FIFO allocation cannot be expressed as a plain aggregate, so the live entries
-    of the whole business are fetched in **one** query and grouped per contact in
-    memory; the per-contact math is then the same ``aging_from_entries`` used by
-    ``contact_aging``.
+    of the whole business are fetched in **one** query and grouped per colleague
+    in memory; the per-account math is then the same ``aging_from_entries`` used
+    by ``counterparty_aging``.
 
-    Every contact of the business is aged, archived ones included: archiving a
-    debtor must not erase the debt from the report. This is what keeps the totals
-    reconciled with ``selectors.business_financial_summary``, whose rows are the
-    active contacts plus the archived ones with a non-zero balance — an archived
-    contact who is «تسویه» allocates to nothing and so contributes zero to both
-    sides. ``total.total`` equals «جمع مطالبات» and the summed
-    ``unapplied_credit`` equals «جمع دیون».
+    Totals reconcile with ``selectors.business_financial_summary``:
+    ``total.total`` equals «جمع مطالبات» and the summed ``unapplied_credit``
+    equals «جمع دیون».
 
-    Returns ``{"as_of", "total": Aging, "rows": [{"contact", "aging"}]}`` with rows
-    sorted by outstanding amount, largest first.
+    Returns ``{"as_of", "total": Aging, "rows": [{"counterparty", "aging"}]}``
+    with rows sorted by outstanding amount, largest first.
     """
     as_of = as_of or timezone.localdate()
     groups: dict = {}
-    for entry in live_entries(business).select_related("contact"):
-        group = groups.get(entry.contact_id)
+    for entry in live_entries(business).select_related("counterparty_business"):
+        if entry.counterparty_business_id is None:
+            # Pre-V2 rows with no mapped Business have no account to age; they
+            # are listed separately by selectors.legacy_entries.
+            continue
+        group = groups.get(entry.counterparty_business_id)
         if group is None:
-            group = groups[entry.contact_id] = _Group(contact=entry.contact)
+            group = groups[entry.counterparty_business_id] = _Group(
+                counterparty=entry.counterparty_business
+            )
         group.entries.append(entry)
 
     rows: list[dict] = []
@@ -178,7 +179,7 @@ def business_aging(business: Business, *, as_of: date | None = None) -> dict:
         for key, _label in BUCKETS:
             totals[key] += getattr(aging, key)
         if aging.has_outstanding:
-            rows.append({"contact": group.contact, "aging": aging})
+            rows.append({"counterparty": group.counterparty, "aging": aging})
 
     rows.sort(key=lambda row: row["aging"].total, reverse=True)
     return {

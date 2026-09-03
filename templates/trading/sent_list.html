@@ -1,0 +1,23 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}درخواست‌های خرید ارسالی | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div>
+      <h1 class="page-title">خرید و فروش</h1>
+      <p class="page-lead">درخواست‌هایی که برای همکاران فرستاده‌اید</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'marketplace:home' %}">جست‌وجو در بازار</a>
+  </div>
+
+  <div class="tab-row">
+    <a class="tab" href="{% url 'trading:received_list' %}">درخواست‌های خرید دریافتی</a>
+    <a class="tab is-active" href="{% url 'trading:sent_list' %}">درخواست‌های خرید ارسالی</a>
+    <a class="tab" href="{% url 'trading:trade_list' %}">فروش‌های نهایی</a>
+  </div>
+
+  {% include "trading/_request_list.html" with detail_url_name='trading:sent_detail' counterparty_attr='seller' %}
+</section>
+{% endblock %}

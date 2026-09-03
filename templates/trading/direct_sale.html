@@ -1,0 +1,84 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}ثبت فروش مستقیم | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">ثبت فروش مستقیم</h1>
+    <p class="page-lead">فروشی که تلفنی یا حضوری انجام شده و از «درخواست خرید» نیامده است.</p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate data-unsaved-warning>
+    {% csrf_token %}
+
+    <div class="alert alert-warn">
+      با ثبت این فروش، مبلغ آن دقیقاً یک‌بار در دفتر حساب هر دو طرف ثبت می‌شود. فاکتور برای مدیر صادر و برای کارشناس به‌صورت پیش‌نویس آماده می‌شود.
+      موجودی محصول به‌صورت خودکار کم نمی‌شود.
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
+
+    {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+
+    {% for field in form.visible_fields %}
+      <label class="field {% if field.name == 'confirm' %}checkbox-field{% endif %}">
+        {% if field.name == 'confirm' %}
+          {{ field }} <span>{{ field.label }}</span>
+        {% else %}
+          <span class="field-label">{{ field.label }}</span>
+          {{ field }}
+        {% endif %}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+
+    <section class="stack-md">
+      <h2 class="section-title">اقلام فروش</h2>
+      <p class="muted">می‌توانید چند محصول را در یک فروش ثبت کنید. همه اقلام در یک معامله، یک جفت سند دفتر حساب و یک فاکتور قرار می‌گیرند.</p>
+
+      {{ lines.management_form }}
+      {% if lines.non_form_errors %}
+        <div class="alert alert-error">{{ lines.non_form_errors|striptags }}</div>
+      {% endif %}
+
+      {% for line in lines %}
+        <fieldset class="panel stack-sm">
+          <legend class="section-subtitle">ردیف {{ forloop.counter }}</legend>
+          {% for field in line %}
+            {% if field.name == "item" %}
+              <div class="field">
+                <span class="field-label">{{ field.label }}</span>
+                <div class="product-picker" data-product-picker data-product-url="{% url 'inventory:product_options' %}" data-autofill-name>
+                  {{ field }}
+                  <div class="product-picker-input-row">
+                    <input class="field-input" type="search" value="{{ line.item_label }}" placeholder="نام یا کد محصول را جست‌وجو کنید" autocomplete="off" data-product-query aria-label="جست‌وجوی محصول">
+                    <button class="btn btn-ghost btn-sm" type="button" data-product-clear>پاک کردن</button>
+                  </div>
+                  <div class="product-picker-results" data-product-results role="listbox" hidden></div>
+                </div>
+                {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+              </div>
+            {% else %}
+              <label class="field">
+                <span class="field-label">{{ field.label }}</span>
+                {{ field }}
+                {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+              </label>
+            {% endif %}
+          {% endfor %}
+        </fieldset>
+      {% endfor %}
+    </section>
+
+    <p class="muted">مشتری عادی حساب کاربری سنگا ندارد و برای او حسابی ساخته نمی‌شود.</p>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">ثبت فروش</button>
+      <a class="btn btn-ghost" href="{% url 'trading:trade_list' %}">انصراف</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

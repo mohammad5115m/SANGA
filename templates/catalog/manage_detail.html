@@ -6,31 +6,71 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">{{ catalog.title }}</h1>
-      <p class="page-lead">{% if catalog.customer_name %}برای {{ catalog.customer_name }} · {% endif %}{{ catalog.view_count }} بازدید</p>
+      <p class="page-lead">
+        {% if catalog.customer_name %}برای {{ catalog.customer_name }} · {% endif %}
+        {{ selected_count }} محصول انتخاب‌شده · {{ public_count }} محصول در لینک · {{ catalog.view_count }} بازدید ثبت‌شده
+      </p>
     </div>
-    <a class="btn btn-secondary" href="{% url 'catalog_manage:edit' catalog.id %}">ویرایش</a>
+    <div class="btn-row">
+      <a class="btn btn-secondary" href="{% url 'catalog_manage:edit' catalog.id %}">ویرایش اطلاعات</a>
+      <a class="btn btn-primary" href="{% url 'inventory:lot_list' %}?catalog={{ catalog.id }}">افزودن محصول</a>
+      <form method="post" action="{% url 'catalog_manage:duplicate' catalog.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">ساخت نسخه مشابه</button></form>
+      <form method="post" action="{% url 'catalog_manage:toggle_active' catalog.id %}">
+        {% csrf_token %}
+        <button class="btn btn-ghost" type="submit"{% if catalog.is_active %} data-confirm="با غیرفعال‌کردن، لینک کاتالوگ برای مشتری باز نخواهد شد. ادامه می‌دهید؟"{% endif %}>
+          {% if catalog.is_active %}غیرفعال کردن{% else %}فعال کردن{% endif %}
+        </button>
+      </form>
+    </div>
   </div>
 
+  {% if catalog.effective_status == 'expired' %}<div class="alert alert-warn">این کاتالوگ منقضی شده و لینک آن برای مشتری باز نمی‌شود. تاریخ انقضا را برای انتشار دوباره تغییر دهید.</div>{% elif not catalog.is_publicly_accessible %}<div class="alert alert-warn">این کاتالوگ غیرفعال است و لینک آن برای مشتری باز نمی‌شود.</div>{% elif not public_count %}<div class="alert alert-warn">کاتالوگ منتشرشده است، اما هیچ محصول قابل‌نمایشی ندارد. وضعیت انتشار، موجودی و قیمت مشتری را بررسی کنید.</div>{% endif %}
+
   <section class="panel stack-sm">
+    <div class="kv"><span>وضعیت</span><strong>{{ catalog.effective_status_label }}</strong></div>
+    {% if catalog.expires_at %}<div class="kv"><span>تاریخ انقضا</span><strong>{{ catalog.expires_at|jdatetime }}</strong></div>{% endif %}
     <div class="kv"><span>لینک اشتراک</span><strong dir="ltr">{{ share_url }}</strong></div>
     <div class="kv"><span>ویترین عمومی</span><strong dir="ltr">{{ storefront_url }}</strong></div>
     <div class="btn-row">
       <a class="btn btn-primary" href="{{ share_url }}" target="_blank" rel="noopener">باز کردن لینک</a>
-      <button class="btn btn-ghost" type="button" data-share-url="{{ share_url }}" onclick="navigator.clipboard.writeText(this.dataset.shareUrl); this.textContent='کپی شد';">کپی لینک</button>
+      {% with product=catalog %}{% include "catalog/_share_actions.html" %}{% endwith %}
+    </div>
+    <details class="danger-disclosure"><summary>باطل‌کردن لینک فعلی</summary><p class="muted">لینک قبلی برای همیشه از دسترس خارج می‌شود. محتوای کاتالوگ حذف نخواهد شد.</p><form method="post" action="{% url 'catalog_manage:token_regenerate' catalog.id %}">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit" data-confirm="لینک فعلی برای همیشه باطل شود؟">باطل‌کردن و ساخت لینک تازه</button></form></details>
+  </section>
+
+  <section class="stack-md">
+    <div class="toolbar">
+      <h2 class="section-title">محصولات این کاتالوگ ({{ items|length }})</h2>
+    </div>
+    <p class="muted">موجودی‌های ناموجود یا پنهان، خودکار در لینک عمومی نمایش داده نمی‌شوند.</p>
+
+    <div class="list-stack">
+      {% for membership in memberships %}{% with item=membership.lot %}
+        <div class="list-item">
+          <div>
+            <div class="list-title">{{ item.product.commercial_name }}</div>
+            <div class="muted" dir="ltr">{{ item.lot_code }}</div>
+            <div class="badge-row">
+              {% if item.status == 'draft' %}<span class="badge">پیش‌نویس</span>{% endif %}
+              {% if not item.is_visible %}<span class="badge">منتشر نشده</span>{% endif %}
+              {% if item.is_unavailable %}<span class="badge badge-danger">ناموجود</span>{% endif %}
+            </div>
+          </div>
+          <div class="btn-row">
+            <form method="post" action="{% url 'catalog_manage:item_move' catalog.id membership.id %}">{% csrf_token %}<input type="hidden" name="direction" value="up"><button class="btn btn-ghost btn-sm" type="submit" aria-label="انتقال {{ item.product.commercial_name }} به بالا"{% if forloop.first %} disabled{% endif %}>بالا</button></form>
+            <form method="post" action="{% url 'catalog_manage:item_move' catalog.id membership.id %}">{% csrf_token %}<input type="hidden" name="direction" value="down"><button class="btn btn-ghost btn-sm" type="submit" aria-label="انتقال {{ item.product.commercial_name }} به پایین"{% if forloop.last %} disabled{% endif %}>پایین</button></form>
+            <form method="post" action="{% url 'catalog_manage:remove_item' catalog.id %}">{% csrf_token %}<input type="hidden" name="lot_id" value="{{ item.id }}"><button class="btn btn-ghost btn-sm" type="submit" data-confirm="{{ item.product.commercial_name }} از کاتالوگ حذف شود؟">حذف</button></form>
+          </div>
+        </div>
+        {% endwith %}
+      {% empty %}
+        <div class="empty-state">محصولی در این کاتالوگ باقی نمانده است.</div>
+      {% endfor %}
     </div>
   </section>
 
-  <div class="list-stack">
-    {% for item in catalog.items.all %}
-      <article class="list-item">
-        <div>
-          <div class="list-title">{{ item.lot.product.commercial_name }}</div>
-          <div class="muted" dir="ltr">{{ item.lot.lot_code }}</div>
-        </div>
-      </article>
-    {% empty %}
-      <div class="empty-state">محموله‌ای انتخاب نشده است.</div>
-    {% endfor %}
+  <div class="btn-row">
+    <a class="btn btn-danger" href="{% url 'catalog_manage:delete' catalog.id %}">حذف کاتالوگ</a>
   </div>
 </section>
 {% endblock %}

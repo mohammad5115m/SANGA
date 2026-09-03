@@ -1,0 +1,94 @@
+{% comment %}
+The one search UI, shared by «موجودی من», the colleague marketplace and seller
+storefront. It renders whatever fields the passed form declares, so the owner-only
+«وضعیت» filter appears automatically on the seller's page and nowhere else.
+
+Expects: filter_form
+{% endcomment %}
+{% load money %}
+<form method="get" class="panel filter-bar filter-panel" role="search" aria-label="جست‌وجو و فیلتر محصولات" novalidate>
+  {% if filter_form.non_field_errors %}
+    <div class="field-errors" role="alert">{{ filter_form.non_field_errors }}</div>
+  {% endif %}
+
+  <div class="filter-search-row">
+    <label class="field field-grow search-field">
+      <span class="field-label">{{ filter_form.q.label }}</span>
+      <span class="search-input-wrap">
+        <svg class="search-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
+        </svg>
+        {{ filter_form.q }}
+      </span>
+    </label>
+    <button class="btn btn-primary filter-search-button" type="submit">جست‌وجو</button>
+  </div>
+  {% if filter_form.q.errors %}<div class="field-errors" role="alert">{{ filter_form.q.errors }}</div>{% endif %}
+
+  <div class="filter-control-row">
+    <div class="filter-meta" aria-live="polite">
+      <strong>{{ page.total }} نتیجه</strong>
+      {% if filter_form.active_filter_count %}
+        <span>{{ filter_form.active_filter_count }} فیلتر فعال</span>
+      {% else %}
+        <span>نمایش همه محصولات</span>
+      {% endif %}
+    </div>
+
+    <details class="filter-disclosure" {% if filter_form.has_advanced_values or filter_form.errors %}open{% endif %}>
+      <summary class="filter-trigger">
+        <svg class="filter-trigger-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path d="M4 6h16M7 12h10M10 18h4"/>
+        </svg>
+        <span>فیلتر و مرتب‌سازی</span>
+        {% if filter_form.active_filter_count %}
+          <span class="filter-trigger-count">{{ filter_form.active_filter_count }}</span>
+        {% endif %}
+        <span class="filter-trigger-chevron" aria-hidden="true">⌄</span>
+      </summary>
+
+      <div class="filter-bar-more">
+        <div class="filter-grid">
+          {% for field in filter_form.advanced_scalar_fields %}
+            <label class="field">
+              <span class="field-label">{{ field.label }}</span>
+              {{ field }}
+              {{ field.errors }}
+            </label>
+          {% endfor %}
+        </div>
+
+        <fieldset class="field filter-applications">
+          <legend class="field-label">{{ filter_form.applications.label }}</legend>
+          <div class="chip-row">
+            {% for choice in filter_form.applications %}
+              <label class="chip chip-choice">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
+            {% endfor %}
+          </div>
+          {{ filter_form.applications.errors }}
+        </fieldset>
+
+        {% if price_bounds.minimum or price_bounds.maximum %}
+          <p class="field-help filter-price-hint">بازه قیمت نتایج: {{ price_bounds.minimum|rial }} تا {{ price_bounds.maximum|rial }} ریال</p>
+        {% endif %}
+
+        <div class="filter-actions">
+          <button class="btn btn-primary" type="submit">اعمال فیلترها</button>
+          {% if filter_form.active_filter_count %}
+            <a class="btn btn-ghost" href="{{ request.path }}">پاک‌کردن همه</a>
+          {% endif %}
+        </div>
+      </div>
+    </details>
+  </div>
+
+  {% with active_filters=filter_form.active_filter_labels %}
+  {% if active_filters %}
+    <div class="active-filter-row" aria-label="فیلترهای فعال">
+      <span class="active-filter-heading">فیلترهای فعال:</span>
+      {% for label in active_filters %}<span class="active-filter-chip">{{ label }}</span>{% endfor %}
+      <a href="{{ request.path }}">پاک‌کردن همه</a>
+    </div>
+  {% endif %}
+  {% endwith %}
+</form>

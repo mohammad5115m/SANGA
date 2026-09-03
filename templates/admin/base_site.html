@@ -1,0 +1,6 @@
+{% extends "admin/base.html" %}
+{% load static %}
+{% block title %}{{ title }} | مدیریت سنگا{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/fonts.css' %}"><link rel="stylesheet" href="{% static 'css/admin.css' %}"><link rel="stylesheet" href="{% static 'css/calendar.css' %}">{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% static 'js/calendar.js' %}" defer></script>{% endblock %}
+{% block branding %}<div id="site-name"><a href="{% url 'admin:index' %}">مدیریت سنگا</a></div>{% endblock %}

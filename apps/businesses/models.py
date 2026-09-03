@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import uuid
 
 from django.conf import settings
@@ -7,7 +8,12 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
-from .permissions import defaults_for_role
+from .permissions import CAPABILITY_MIGRATION_MAP, defaults_for_role
+
+
+def generate_storefront_token() -> str:
+    """Opaque, URL-safe capability used to enter one seller's storefront."""
+    return secrets.token_urlsafe(24)
 
 
 class Business(models.Model):
@@ -22,9 +28,27 @@ class Business(models.Model):
         ACTIVE = "active", "فعال"
         SUSPENDED = "suspended", "معلق"
 
+    class Plan(models.TextChoices):
+        """What the Business has been given access to.
+
+        Deliberately two values and no billing engine. The MVP needs to tell a
+        browse-only account from a selling one; everything finer than that is a
+        conversation with support, not a state machine.
+        """
+
+        BROWSE = "browse", "فقط مشاهده"
+        SELLER = "seller", "فروشنده"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField("نام کسب‌وکار", max_length=200)
     slug = models.SlugField("نامک", max_length=220, unique=True, allow_unicode=True)
+    storefront_token = models.CharField(
+        "توکن ویترین",
+        max_length=64,
+        unique=True,
+        default=generate_storefront_token,
+        editable=False,
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     verification_status = models.CharField(
         max_length=20,
@@ -37,6 +61,19 @@ class Business(models.Model):
     address = models.TextField(blank=True)
     website = models.URLField(blank=True)
     logo = models.ImageField(upload_to="business_logos/", blank=True, null=True)
+
+    plan = models.CharField("پلن", max_length=20, choices=Plan.choices, default=Plan.SELLER)
+    seat_limit = models.PositiveSmallIntegerField("تعداد کاربر مجاز", default=1)
+    # Null means "no expiry set" rather than "expired": a Business provisioned by
+    # an admin who did not fill this in must not lock itself out overnight.
+    active_until = models.DateField("اعتبار تا", null=True, blank=True)
+    #: Highest invoice number allocated so far. Bumped under the same row lock
+    #: that already serialized invoice creation, so allocation is one UPDATE
+    #: rather than a scan of every invoice this Business has ever issued —
+    #: which grew with history while holding that lock. The formatted document
+    #: number is derived from it; see apps.invoicing.services.allocate_number.
+    invoice_sequence = models.PositiveIntegerField(default=0, editable=False)
+
     onboarding_step = models.PositiveSmallIntegerField(default=1)
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)
     settings = models.JSONField(default=dict, blank=True)
@@ -87,7 +124,11 @@ class BusinessMembership(models.Model):
     )
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="memberships")
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STAFF)
-    permissions = models.JSONField(default=list, blank=True)
+    # ``None`` means "not decided yet" and is replaced by the role defaults the
+    # first time the row is saved. It is a distinct state from ``[]``, which
+    # means "this member has no capabilities" and must survive a save — see
+    # :meth:`save`.
+    permissions = models.JSONField(default=None, null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     joined_at = models.DateTimeField(auto_now_add=True)
 
@@ -102,21 +143,31 @@ class BusinessMembership(models.Model):
     def __str__(self) -> str:
         return f"{self.user} @ {self.business} ({self.role})"
 
-    def clean(self) -> None:
-        if not isinstance(self.permissions, list):
-            raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
-
     def save(self, *args, **kwargs):
-        if not self.permissions:
-            self.permissions = defaults_for_role(self.role)
+        # Role defaults are materialized once, when the row is created and the
+        # caller said nothing about permissions.
+        #
+        # The old test was ``if not self.permissions``, which cannot tell "not
+        # initialized" from "deliberately empty": an admin who stripped every
+        # capability from a member and saved got the role defaults handed
+        # straight back, silently re-granting the create, price and sale access
+        # they had just removed. ``None`` is the sentinel for "decide for me";
+        # ``[]`` means what it says.
+        if self.permissions is None:
+            self.permissions = defaults_for_role(self.role) if self._state.adding else []
         super().save(*args, **kwargs)
+
+    def clean(self) -> None:
+        if self.permissions is not None and not isinstance(self.permissions, list):
+            raise ValidationError({"permissions": "مجوزها باید لیست باشند."})
 
     def has_capability(self, capability: str) -> bool:
         if self.status != self.Status.ACTIVE:
             return False
         if self.role == self.Role.OWNER:
             return True
-        return capability in (self.permissions or [])
+        current_code = CAPABILITY_MIGRATION_MAP.get(capability, capability)
+        return current_code is not None and current_code in (self.permissions or [])
 
 
 class Warehouse(models.Model):

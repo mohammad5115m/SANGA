@@ -1,0 +1,45 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}سابقه درخواست همکار | سنگا{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">سابقه قدیمی {{ inquiry.id|stringformat:"s"|slice:":8" }}</h1>
+    <p class="page-lead">{{ inquiry.buyer_business.name }} ← {{ inquiry.seller_business.name }}</p>
+  </div>
+
+  <div class="alert alert-info">
+    جریان استعلام همکاران متوقف شده است. این صفحه فقط برای حفظ سوابق قبلی نمایش
+    داده می‌شود و امکان پاسخ یا ایجاد استعلام جدید ندارد.
+  </div>
+
+  {% if inquiry.buyer_note %}<div class="panel">{{ inquiry.buyer_note }}</div>{% endif %}
+
+  <section class="panel stack-md">
+    {% for item in inquiry.items.all %}
+      <div class="list-item">
+        <div>
+          <strong>{{ item.product_name }}</strong>
+          <div class="muted">
+            {{ item.quantity_requested }} {{ item.unit }}
+            {% if item.availability_snapshot %} · موجودی ثبت‌شده: {{ item.availability_snapshot }}{% endif %}
+          </div>
+        </div>
+        {% if item.offered_unit_price %}
+          <strong>{{ item.offered_unit_price }} {{ item.currency }}</strong>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="empty-state">قلمی در این سابقه ثبت نشده است.</div>
+    {% endfor %}
+  </section>
+
+  <div class="btn-row">
+    {% if inquiry.converted_invoice %}
+      <a class="btn btn-primary" href="{% url 'invoicing:detail' inquiry.converted_invoice.id %}">مشاهده فاکتور مرتبط</a>
+    {% endif %}
+    <a class="btn btn-secondary" href="{% url 'marketplace:home' %}">بازگشت به بازار</a>
+  </div>
+</section>
+{% endblock %}

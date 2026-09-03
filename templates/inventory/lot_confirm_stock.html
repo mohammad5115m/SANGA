@@ -1,0 +1,36 @@
+{% extends "layouts/app_shell.html" %}
+
+{% block title %}تأیید موجودی | {{ lot.product.commercial_name }}{% endblock %}
+
+{% block content %}
+<section class="stack-lg">
+  <div>
+    <h1 class="page-title">تأیید موجودی</h1>
+    <p class="page-lead">{{ lot.product.commercial_name }} · <span dir="ltr">{{ lot.lot_code }}</span></p>
+  </div>
+
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    {% for field in form %}
+      <label class="field">
+        <span class="field-label">{{ field.label }}</span>
+        {{ field }}
+        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+      </label>
+    {% endfor %}
+    <button class="btn btn-primary btn-block" type="submit">تأیید موجودی</button>
+  </form>
+
+  {% comment %}The honest alternative when the answer is "we have none": this leaves the
+  product intact and simply takes it off buyer-facing surfaces.{% endcomment %}
+  <section class="panel stack-md">
+    <p class="muted">اگر این محصول دیگر موجود نیست، به‌جای وارد کردن عدد آن را ناموجود کنید.</p>
+    <form method="post" action="{% url 'inventory:lot_set_availability' lot.id %}">
+      {% csrf_token %}
+      <input type="hidden" name="available" value="0">
+      <button class="btn btn-ghost" type="submit">ناموجود کردن</button>
+    </form>
+  </section>
+</section>
+{% endblock %}

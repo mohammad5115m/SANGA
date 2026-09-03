@@ -1,0 +1,8 @@
+<span class="jalali-control" data-jalali-control data-year="{{ widget.year }}" data-month="{{ widget.month }}">
+  <input type="hidden" name="{{ widget.name }}" value="{{ widget.canonical }}">
+  <span class="jalali-date-row">
+    <input type="text" name="{{ widget.name }}_jalali" value="{{ widget.display }}" data-jalali-date {% include "django/forms/widgets/attrs.html" %}>
+    <button type="button" class="calendar-toggle" data-calendar-open aria-label="باز کردن تقویم شمسی" aria-haspopup="dialog"{% if widget.attrs.disabled %} disabled{% endif %} hidden>▦</button>
+  </span>
+  {% if widget.with_time %}<span class="jalali-time-row"><span>ساعت (تهران، ۲۴ ساعته)</span><input type="text" class="field-input" aria-label="ساعت به وقت تهران (۲۴ ساعته)" placeholder="۱۴:۳۰" autocomplete="off" name="{{ widget.name }}_time" id="{{ widget.attrs.id }}_time" value="{{ widget.clock }}" dir="ltr"{% if widget.attrs.required %} required{% endif %}{% if widget.attrs.disabled %} disabled{% endif %}{% if widget.invalid %} aria-invalid="true"{% endif %}></span>{% endif %}
+</span>

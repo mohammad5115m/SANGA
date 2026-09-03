@@ -1,8 +1,22 @@
+"""Partner inquiry history; financial finalization remains invoice-owned."""
+
 from django.contrib import admin
 
-from .models import SavedSearch
+from .models import PartnerInquiry, PartnerInquiryBatch, PartnerInquiryItem
 
 
-@admin.register(SavedSearch)
-class SavedSearchAdmin(admin.ModelAdmin):
-    list_display = ("name", "business", "user", "notify_enabled", "updated_at")
+class PartnerInquiryItemInline(admin.TabularInline):
+    model = PartnerInquiryItem
+    extra = 0
+    readonly_fields = tuple(field.name for field in PartnerInquiryItem._meta.fields)
+
+
+@admin.register(PartnerInquiry)
+class PartnerInquiryAdmin(admin.ModelAdmin):
+    list_display = ("sent_at", "buyer_business", "seller_business", "status")
+    list_filter = ("status",)
+    search_fields = ("buyer_business__name", "seller_business__name")
+    inlines = [PartnerInquiryItemInline]
+
+
+admin.site.register(PartnerInquiryBatch)

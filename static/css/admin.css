@@ -1,0 +1,28 @@
+html[data-theme="light"], :root {
+  --primary: #1f2a24; --secondary: #1f2a24; --accent: #f0e2c8;
+  --header-color: #f0e2c8; --header-branding-color: #f0e2c8;
+  --link-fg: #365740; --link-hover-color: #79521f;
+  --button-bg: #365740; --button-hover-bg: #1f2a24;
+  --default-button-bg: #1f2a24; --default-button-hover-bg: #365740;
+  --font-family-primary: "Vazirmatn", Tahoma, sans-serif;
+}
+html[data-theme="dark"] { --link-fg: #b6d7bc; --link-hover-color: #f0e2c8; }
+body, input, textarea, select, button { font-family: "Vazirmatn", Tahoma, sans-serif; }
+body { line-height: 1.7; }
+#content { min-width: 0; }
+:is(a, button, input, select, textarea, summary):focus-visible { outline: 3px solid #ad793b; outline-offset: 3px; }
+.form-row .jalali-control { max-width: 28rem; }
+.form-row .jalali-control input { box-sizing: border-box; min-height: 44px; }
+.form-row .jalali-control label { float: none; width: auto; }
+#changelist .results { overflow-x: auto; }
+.admin-date-range { padding: 0 12px 12px; display: grid; gap: 8px; }
+.admin-date-range input { box-sizing: border-box; }
+.admin-date-range button[type="submit"] { min-height: 44px; cursor: pointer; }
+.admin-date-range .calendar-toggle { flex-basis: 36px; }
+#result_list :is(td, th) { line-height: 1.7; }
+@media (max-width: 767px) {
+  #content { padding-inline: 12px; }
+  .form-row .jalali-control { width: 100%; max-width: 100%; }
+  .submit-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .submit-row input { min-height: 44px; }
+}

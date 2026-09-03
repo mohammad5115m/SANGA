@@ -1,367 +1,189 @@
 # Data Model — سنگا (SANGA)
 
-## 1. Design Principles
+Fields worth explaining are explained. Everything else is in the models, which
+are the authority; this document exists for the decisions the field names do not
+convey.
 
-- Prefer explicit FKs and DB constraints over implicit conventions.
-- Money = `Decimal` + explicit `currency` (never float).
-- Tenant-sensitive tables include `business` (or strict ownership chain).
-- Product ≠ InventoryLot.
-- Prices live in `pricing` domain, not as insecure template-only fields.
-- Soft operational states via status enums; archive rather than hard-delete when historically meaningful.
-
-## 2. Entity Relationship Overview
-
-The diagram below lists **only models that exist in code today**. Anything planned
-but unbuilt lives in §11, never here.
+## 1. Overview
 
 ```mermaid
 erDiagram
-  User ||--o{ BusinessMembership : has
-  Business ||--o{ BusinessMembership : has
-  Business ||--o{ Warehouse : owns
-  Business ||--o{ Product : owns
-  Business ||--o{ InventoryLot : owns
-  Product ||--o{ InventoryLot : "has lots"
-  Warehouse ||--o{ InventoryLot : stores
-  InventoryLot ||--o{ LotMedia : has
-  InventoryLot ||--o{ LotPrice : priced_as
-  PriceTier ||--o{ LotPrice : tier
-  Business ||--o{ SavedSearch : saves
-  InventoryLot ||--o{ Inquiry : about
-  Business ||--o{ PurchaseRequest : creates
-  PurchaseRequest ||--o{ PurchaseOffer : receives
-  PurchaseOffer |o--o{ LedgerEntry : "settled by"
-  Business ||--o{ CustomCatalog : publishes
-  CustomCatalog ||--o{ CustomCatalogItem : contains
-  InventoryLot ||--o{ CustomCatalogItem : included
-  User ||--o{ Notification : receives
-  Business ||--o{ Contact : owns
-  Business |o--o{ Contact : "linked as colleague"
-  Contact ||--o{ ContactPrice : "quoted at"
-  InventoryLot ||--o{ ContactPrice : "overridden for"
-  Business ||--o{ LedgerEntry : scoped
-  Contact ||--o{ LedgerEntry : "statement of"
-  LedgerEntry |o--o| LedgerEntry : reverses
+    Business ||--o{ BusinessMembership : "has"
+    Business ||--o{ Product : "owns"
+    Product  ||--|| InventoryLot : "has one sellable item"
+    VocabularyTerm ||--o{ Product : "classifies stone"
+    Product  }o--o{ Application : "used for"
+    InventoryLot ||--o{ LotPrice : "priced per audience"
+    InventoryLot ||--o{ LotMedia : "images and videos"
+    InventoryLot ||--o{ PurchaseRequest : "requested"
+    PurchaseRequest ||--o| Trade : "finalized into"
+    Trade ||--o{ LedgerEntry : "posts once"
+    Trade ||--o{ SalesInvoice : "invoiced as"
+    SalesInvoice ||--o{ SalesInvoiceItem : "lines"
+    Business ||--o{ LedgerEntry : "keeps books"
+    Business ||--o{ CustomerLead : "knows"
+    CustomerLead ||--o{ Inquiry : "asks"
+    Inquiry ||--o{ InquiryItem : "about products"
+    Business ||--o{ CustomCatalog : "shares"
+    CustomCatalog ||--o{ CustomCatalogItem : "selects"
 ```
 
-## 3. Core Entities
-
-### accounts.User
-
-| Field | Notes |
-|-------|-------|
-| id (UUID) | Immutable public identifier |
-| phone | Unique, primary login identifier |
-| email | Optional |
-| full_name | Display name |
-| is_active / is_staff / is_superuser | Django auth |
-| date_joined / last_login | Standard |
-
-Related: `OTPChallenge`. (There is no `UserSessionDevice` model; per-device session
-tracking is not built.)
-
-### businesses.Business
-
-| Field | Notes |
-|-------|-------|
-| id (UUID) | |
-| name | Commercial name |
-| slug | Unique public storefront slug |
-| status | active/suspended |
-| verification_status | unverified/pending/verified/rejected/suspended |
-| city / province / address | Location |
-| phone / website | Contact |
-| logo | Media |
-| onboarding_step / onboarding_completed_at | Guided onboarding |
-| settings (JSON) | Confirmation interval, auto-hide, etc. |
-
-### businesses.BusinessMembership
-
-| Field | Notes |
-|-------|-------|
-| user | FK |
-| business | FK |
-| role | owner / manager / staff / viewer (defaults) |
-| permissions | JSON/Array of capability codes |
-| status | invited / active / suspended |
-| joined_at | |
-
-Unique: `(user, business)`.
-
-### businesses.Warehouse
-
-| Field | Notes |
-|-------|-------|
-| business | FK |
-| name | |
-| city | |
-| address | |
-| is_active | |
-| is_default | One default per business preferred |
-
-### inventory.Product
-
-Stable stone identity owned by a business (or later platform-shared catalog — not required initially; start per-business products).
-
-| Field | Notes |
-|-------|-------|
-| business | FK |
-| commercial_name | |
-| slug | Unique per business |
-| stone_type | e.g. تراورتن، مرمریت |
-| quarry_region | |
-| primary_color | |
-| pattern / vein_notes | |
-| applications | M2M or JSON list |
-| interior_suitable / exterior_suitable | bool |
-| technical_notes | |
-| description_public | B2C-friendly |
-| description_professional | B2B-oriented |
-| alt_names | search aliases |
-| is_active | |
-
-### inventory.InventoryLot
-
-Physical batch.
-
-| Field | Notes |
-|-------|-------|
-| id (UUID) | |
-| business | FK (denormalized for tenant scoping) |
-| product | FK |
-| warehouse | FK |
-| lot_code | Unique per business |
-| status | draft/available/reservation_pending/reserved/partially_sold/sold/expired/hidden/needs_confirmation (the two reserved states are legacy: nothing sets them since reservations were removed) |
-| visibility | `private` (داخلی) / `colleagues` (همکاران — every business with an account) / `public` (عمومی — colleagues **and** the storefront) |
-| available_sqm / original_sqm | Decimal |
-| slab_count / bundle_count | optional ints |
-| length_cm / width_cm / thickness_mm | dimensions |
-| grade | |
-| processing_type | polished/honed/... |
-| min_sale_qty | Decimal |
-| ready_for_loading_at | date/datetime |
-| photographed_at | |
-| inventory_confirmed_at | freshness core |
-| offer_expires_at | |
-| description | |
-| defect_notes | internal-capable; gate by audience |
-| is_featured / is_urgent_sale | |
-| created_at / updated_at | |
-| archived_at | nullable |
-
-Check constraints: `available_sqm >= 0` and `original_sqm >= 0`. There is **no**
-DB constraint that `available_sqm <= original_sqm` — that remains an application
-convention, not an enforced check.
-
-### pricing.PriceTier
-
-| Field | Notes |
-|-------|-------|
-| code | `b2b`, `b2c` initially |
-| name | |
-| is_active | |
-
-### pricing.LotPrice
-
-| Field | Notes |
-|-------|-------|
-| lot | FK |
-| tier | FK |
-| amount | Decimal(14,2) |
-| currency | default IRR (or explicit) |
-| unit | per_sqm / per_slab / inquiry_only |
-
-Unique: `(lot, tier)`.
-
-### pricing.ContactPrice
-
-Contact-specific price: one number, one contact, one lot.
-
-| Field | Notes |
-|-------|-------|
-| contact | FK `contacts.Contact` (tenant scoping rides on `contact.business`) |
-| lot | FK `inventory.InventoryLot` |
-| amount | Decimal(14,2) |
-| currency | default IRR |
-| unit | per_sqm / per_slab / inquiry_only |
-| created_by / created_at / updated_at | audit trail for a commercial decision |
-
-Unique: `(contact, lot)`. The service refuses unless
-`contact.business_id == lot.business_id`. Visible only to the business named by
-`contact.linked_business`, and only through the `b2b_partner` audience — see
-[pricing.md](./pricing.md).
-
-### inventory.LotMedia
-
-| Field | Notes |
-|-------|-------|
-| lot | FK |
-| kind | image/video |
-| file | |
-| thumbnail | |
-| caption | |
-| sort_order | |
-| is_primary | |
-
-## 4. Network & Demand Entities
-
-There is **no relationship model between businesses**. `PartnerRelation` and
-`SupplierFollow` were deleted: an account *is* the relationship, so lot visibility
-is decided by `InventoryLot.visibility` alone. `matching.MatchResult` was deleted
-with the scoring rule that produced it; sellers browse the demand board instead.
-The `partners`, `matching` and `reservations` apps survive only as migration
-history and hold no models.
-
-### marketplace.SavedSearch
-
-A stored marketplace filter (`business`, `user`, `name`, `query` JSON, notify
-flag, last-matched/last-notified timestamps). Moved here from the removed
-`partners` app; a Celery beat task re-runs the filters and notifies the owner.
-
-### purchase_requests.PurchaseRequest
-
-Structured demand from B2B users: stone type, color, qty, thickness, grade, budget,
-destination city, required date, notes, status. It reaches the demand board only
-when `is_public_to_network` is set. The `matching` status is legacy — nothing sets
-it since automatic matching was removed, but existing rows keep it and the board
-still accepts it.
-
-### purchase_requests.PurchaseOffer
-
-Private seller response to a PR (not public auction). Accepting one closes the
-request and rejects the competing offers; it holds no stock. An accepted offer can
-be settled into the ledger once per business — see `LedgerEntry.related_offer`.
-
-## 5. Commercial Interaction Entities
-
-### inquiries.Inquiry
-
-Links: business, optional `lot` and/or `custom_catalog` (no purchase-request FK),
-optional `requester` user, optional `assignee` user (field exists; **no assign UI
-yet**), status pipeline (`new` → … → `converted/closed/lost`), contact fields
-(`name`, `phone`, `message`), `source`, timestamps.
-
-### contacts.Contact
-
-The CRM-lite record; there is **no** `customers.CustomerProfile` model (the
-`customers.manage` capability code predates this app and still governs it).
-
-| Field | Notes |
-|-------|-------|
-| business | FK — owning tenant; a contact is never visible to another business |
-| display_name / phone / address / notes | |
-| linked_business | Optional FK to any other **active** business; no approval involved |
-| is_active | archive instead of delete |
-| created_by / created_at / updated_at | |
-
-There is **no relationship type**. Only stone sellers and traders hold accounts,
-so every contact is a همکار who sometimes buys and sometimes sells; the former
-`is_customer` / `is_supplier` / `is_trader` flags (and the "at least one required"
-rule) were dropped in migration `contacts.0004_remove_contact_types`. Nothing keyed
-off them — no report, price rule or ledger entry — so the values were not migrated
-anywhere. The list is filtered by free-text search over name and phone.
-
-An archived contact (`is_active = False`) disappears from the default contact list
-but **not** from financial reporting while its balance is non-zero — see
-[accounting.md](./accounting.md) §6.4. It stays reachable through the list's
-«نمایش مخاطبین بایگانی‌شده» filter (`?archived=1`) and can be returned to the active
-list from its detail page (`contacts:restore`, POST only). Archiving also suspends
-that contact's `ContactPrice` overrides, so the archive confirmation screen names
-how many negotiated prices will stop applying, and restoring brings them back.
-
-Unique: `(business, linked_business)` where `linked_business` is not null
-(`uniq_linked_business_per_business`) — one colleague maps to at most one contact,
-so a colleague's balance can never split across two ledgers.
-
-### accounting.LedgerEntry
-
-Immutable per-contact ledger entry. Full semantics in
-[accounting.md](./accounting.md).
-
-| Field | Notes |
-|-------|-------|
-| business / contact | tenant + statement scope |
-| entry_type | sale / purchase / payment_received / payment_made / adjust_debit / adjust_credit / reversal |
-| amount | Decimal(14,2), positive magnitude, check constraint `> 0` |
-| balance_delta | Decimal(14,2) signed — single source of truth for balance math |
-| balance_after | Decimal(18,2) running balance, computed under a contact row lock |
-| currency / description / reference / occurred_on | |
-| related_lot / related_offer / reverses | optional links |
-| reversed_at | set on the original when a reversal is posted (bookkeeping flag) |
-| created_by / created_at | |
-
-Constraints: `ledger_amount_positive`; `uniq_trade_entry_per_offer` on
-`(business, related_offer)` for trade types with a non-null offer and
-`reversed_at IS NULL`. `save()` blocks updates and `delete()` raises.
-
-## 6. Catalog & Sharing
-
-### catalog.CustomCatalog
-
-`title`, `business`, optional free-text `customer_name` (not a Contact/Customer FK),
-`custom_message`, `share_token`, `expires_at`, `is_active`, `view_count`,
-first/last viewed timestamps.
-
-### catalog.CustomCatalogItem
-
-catalog ↔ lot ordering.
-
-Public share URLs must use B2C-safe serializers only.
-
-## 7. Platform Cross-Cutting
-
-### notifications.Notification
-
-user, business, kind, title, body, link, read state, timestamps. This is the only
-model in the app — there is no `NotificationPreference` table; per-channel
-preferences are not built.
-
-### Not built (do not document as if they exist)
-
-- **`audit.AuditEvent`** — there is no audit app or model. The `audit.view`
-  capability code exists but currently gates nothing. Writes are traced through
-  server-side logging only (`logger.info` in each service).
-- **`businesses.BusinessVerificationDocument`** — `Business.verification_status`
-  exists as a field; the document workflow does not.
-- **analytics event tables** — the `analytics.view` capability code exists but is
-  not checked anywhere yet, and there is no event table. The dashboard at `/app/`
-  reads live rows through the existing selectors; it stores and aggregates nothing
-  of its own.
-
-## 8. Indexing Strategy (Initial)
-
-- `(business, status)`, `(business, lot_code)` unique  
-- `(business, inventory_confirmed_at)`  
-- `(visibility, status, updated_at)` for marketplace feeds  
-- `(product, status)`  
-- GIN/trigram indexes for Persian search fields as needed  
-- `(share_token)` unique on custom catalogs  
-
-## 9. Soft Enum Catalog
-
-Prefer TextChoices on models for:
-
-- lot status, visibility  
-- membership role/status  
-- verification status  
-- inquiry status  
-- media kind  
-- price unit  
-
-## 10. Migration Policy
-
-- Small, reviewable migrations per domain slice  
-- No destructive data migrations without backup notes  
-- Seed command: `python manage.py seed_demo`  
-
-## 11. What We Deliberately Defer
-
-- Shared global stone taxonomy marketplace-wide (can normalize later)
-- Invoice/Order/Payment tables
-- Complex KYC document graph (incl. `BusinessVerificationDocument`)
-- Star ratings / reviews
-- Audit event table (`AuditEvent`) and per-device session tracking
-- A separate customer-profile table; `contacts.Contact` covers CRM-lite
-- Reservations/holds and automatic matching (removed; trades are recorded manually)
-- Squashing the migration history of the emptied `partners`, `matching` and
-  `reservations` apps, which is why they are still in `INSTALLED_APPS`
+## 2. Business
+
+| Field | Note |
+|-------|------|
+| `status` | active / suspended. A suspended business neither sees the marketplace nor appears in it. |
+| `verification_status` | Platform trust. Deliberately independent of `status`. |
+| `plan` | `browse` or `seller`. See [permissions.md](./permissions.md) §3.1. |
+| `seat_limit` | Active memberships allowed. Checked when adding a member, not at login. |
+| `active_until` | **Null means no expiry, not expired.** |
+
+`Warehouse` still exists for migration history but inventory no longer references
+it.
+
+## 3. Product and InventoryLot
+
+`Product` and `InventoryLot` separate descriptive fields from sellable state but
+are one-to-one and edited as one user object. A second inventory item receives a
+new Product row rather than sharing a reusable definition.
+
+The four lifecycle axes, which never share a field:
+
+| Field | Question |
+|-------|----------|
+| `is_visible` | Should the seller publish this at all? |
+| `availability_status` | Is it offered for sale right now? |
+| `stock_confirmed_at` + `stock_valid_for_days` | Do we trust the quantity? |
+| `deleted_at` | Should it still exist as an active business object? |
+
+`status` survives with two values, `draft` and `active`, meaning only "has the
+seller finished creating it". It had nine in v1, including two dead
+reservation states.
+
+Other fields worth a note:
+
+| Field | Note |
+|-------|------|
+| `stone` | FK to the admin-controlled stone vocabulary. |
+| `name_suffix` | Optional seller-entered part; `commercial_name` is derived. |
+| `lot_code` | Global, immutable stone prefix plus six random safe characters. |
+| `available_sqm` | Nullable; null means inquiry, numeric means exact confirmed stock. |
+| `stock_expires_at` | Derived **on write**, so "which items need a check?" is an indexed query. Nothing rewrites it on a timer. |
+| `public_token` | Opaque, stable share identifier. Not the primary key: share links get pasted into WhatsApp. |
+
+`Application` is a platform-wide controlled vocabulary. It replaced a free-text
+JSON list, because a primary search facet backed by unvalidated text cannot work.
+
+## 4. LotPrice
+
+Two rows per item at most: `b2b` and `b2c`, independent of each other.
+
+| Field | Note |
+|-------|------|
+| `mode` | `fixed` or `inquiry`. A check constraint forbids fixed-without-amount. |
+| `amount` | Null in inquiry mode, so «استعلام قیمت» and «رایگان» stay distinguishable. |
+| `price_confirmed_at` / `price_valid_for_days` | Independent of stock validity. |
+| `price_expires_at` | Derived on write, same reasoning as stock. |
+| `special_amount` / `special_until` | **Per tier**, so the audience gate protects it. On the item it would be an unlabelled number outside that gate. |
+
+`ContactPrice` was removed in V2.
+
+## 5. Trading
+
+`PurchaseRequest` always references one `InventoryLot`. There is no free-form
+demand; the FK is not nullable.
+
+Requested and agreed values are separate columns (`requested_qty_sqm` versus
+`final_qty_sqm`, and the same for price), because "you asked for 200 at 1.5m, I
+can do 180 at 1.6m" is the normal conversation and both halves matter afterwards.
+
+`Trade` is a commercial **header**; `TradeItem` carries the lines. One sale is
+one Trade, one total, one entry in each party's book and one invoice, however
+many stones it covered — a seller who sells travertine, marble and crystal in one
+phone call is doing one deal, and recording it as three produced three invoices
+and three balances to reconcile.
+
+Each `TradeItem` carries its own `product_name`, `stone_type`, `grade`,
+`quantity`, `unit_price` and `line_total` **snapshots**. Nothing on a trade page
+reads through `item`, which is `SET_NULL` on both the header and the line and
+exists for navigation only.
+
+`Trade.product_name`, `stone_type`, `grade`, `quantity_sqm`, `unit_price` and
+`item` are **legacy single-line columns**. They predate `TradeItem`, are still
+written for a one-line sale — every historical row and every request-driven sale
+— and are blank on a multi-line trade. New readers go through `items`; removing
+them is a later change.
+
+`Trade.submission_id` plus `uniq_trade_per_submission` (partial, scoped by
+seller) make one direct-sale submission at most one sale. Finalizing a request is
+idempotent through the `OneToOneField` to it; a direct sale has no request, so it
+needed its own key.
+
+`PurchaseRequest.ALLOWED_TRANSITIONS` enumerates every status change the product
+performs, and each one is applied to a row re-read under `select_for_update()`.
+See [trading.md](./trading.md) §7.
+
+## 6. Accounting
+
+`LedgerEntry` is immutable: `save()` raises on update, `delete()` raises
+unconditionally.
+
+| Field | Note |
+|-------|------|
+| `counterparty_business` | The colleague. V2's replacement for `contact`. |
+| `contact` / `legacy_counterparty_name` | Pre-V2 rows whose Contact had no linked Business. Read-only; never posted to again. |
+| `balance_delta` | Signed; the single source of truth for balance math. |
+| `balance_after` | Stored running total, computed under a row lock. **Never recomputed**, including by migrations. |
+| `reversed_at` | A bookkeeping flag, not financial data. The one carve-out from immutability, written with a queryset `.update()`. |
+| `related_trade` | The authoritative link for a V2 sale. |
+
+Two partial unique constraints give exactly-once posting:
+`uniq_trade_entry_per_trade` (V2) and `uniq_trade_entry_per_offer` (legacy).
+Both are scoped to live, non-reversed trade rows, so reversing frees the slot.
+
+## 7. Invoicing
+
+`SalesInvoice` and `SalesInvoiceItem` are snapshot-bearing. Every commercially
+meaningful value is copied at issue time.
+
+| Field | Note |
+|-------|------|
+| `number` | Sequential per seller, allocated under a lock, derived from MAX so cancelling never reuses one. |
+| `buyer_name` | Snapshot, so a later rename does not rewrite the document. |
+| `counterparty_type` | `business` or `customer`, with a check constraint keeping `buyer_business` consistent. |
+
+## 8. Inquiries
+
+`CustomerLead` is identity by `(business, phone)`. It is **not an account**: no
+password, no session, no membership. `phone_verified_at` records that the number
+was reachable at that moment. Category, CRM status, tags and current needs are
+durable profile fields on this tenant-scoped identity.
+
+`CustomerNote` is append-only seller context for one lead. `CustomerFollowUp`
+stores the scheduled action, priority, status, reminder time and completion
+result. `FollowUpReminderRead` records reminder read state per staff user. The
+repository always filters these records through the active Business.
+
+`Inquiry` is the request; `InquiryItem` is one product plus the metres needed.
+Lines keep a `product_name` snapshot, because an inquiry is often *why* the
+product then changes.
+
+## 9. Catalogs
+
+`CustomCatalogItem` is an explicit ordered membership. Catalog creation may use
+a short-lived filter selection, but no mode, rule JSON or inclusion state is
+stored on the catalog.
+
+Resolution is live and intersected with `eligible_items()`. See
+[catalogs.md](./catalogs.md).
+
+## 10. Retired tables
+
+| Table | Why it survives |
+|-------|-----------------|
+| `contacts.Contact` | `LedgerEntry.contact` is a PROTECT FK holding pre-V2 rows |
+| `purchase_requests.*` | `LedgerEntry.related_offer` still points at `PurchaseOffer` |
+| `businesses.Warehouse` | `inventory.0005` copied its addresses onto items; the model outlives its UI |
+
+All read-only, all registered read-only in Django admin, none reachable from the
+interface.

@@ -1,0 +1,49 @@
+<fieldset class="invoice-editor-line" data-invoice-line>
+  {% if line.non_field_errors %}<div class="alert alert-error" role="alert">{{ line.non_field_errors|striptags }}</div>{% endif %}
+  <div class="invoice-line-toolbar">
+    <strong data-line-number>ردیف {{ forloop.counter|default:"1" }}</strong>
+    <div class="btn-row">
+      <button class="btn btn-ghost btn-sm" type="button" data-line-move="up" aria-label="انتقال ردیف به بالا">↑</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-line-move="down" aria-label="انتقال ردیف به پایین">↓</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-line-remove>حذف</button>
+    </div>
+  </div>
+  {{ line.item }}{{ line.ORDER.as_hidden }}<span hidden>{{ line.DELETE }}</span>
+  {{ line.stone_type.as_hidden }}{{ line.grade.as_hidden }}{{ line.description.as_hidden }}
+  {{ line.discount_type.as_hidden }}{{ line.discount_value.as_hidden }}
+  {% if line.item.errors %}<span class="field-error">محصول انتخاب‌شده معتبر یا متعلق به این کسب‌وکار نیست.</span>{% endif %}
+  <div class="invoice-line-grid">
+    <div class="field invoice-product-field">
+      <label class="field-label" for="{{ line.product_name.id_for_label }}">نام سنگ یا محصول</label>
+      <div class="product-picker" data-product-picker data-dynamic-product-picker data-product-url="{% url 'inventory:product_options' %}">
+        <div class="product-picker-input-row">
+          <input
+            class="field-input"
+            type="search"
+            name="{{ line.product_name.html_name }}"
+            value="{{ line.product_name.value|default_if_none:'' }}"
+            id="{{ line.product_name.id_for_label }}"
+            placeholder="نام سنگ را بنویسید یا از محصولات موجود انتخاب کنید"
+            aria-label="نام سنگ یا جست‌وجوی محصول موجود"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="false"
+            aria-controls="product-results-{{ line.prefix }}"
+            autocomplete="off"
+            maxlength="200"
+            data-product-query
+          >
+          <button class="btn btn-ghost btn-sm" type="button" data-product-clear aria-label="پاک‌کردن نام محصول">پاک</button>
+        </div>
+        <div id="product-results-{{ line.prefix }}" class="product-picker-results" data-product-results role="listbox" aria-label="محصولات پیشنهادی" hidden></div>
+        <span class="field-help">اگر محصول در فهرست نیست، همان نامی که نوشته‌اید در فاکتور ثبت می‌شود.</span>
+      </div>
+      {% if line.product_name.errors %}<span class="field-error">{{ line.product_name.errors|striptags }}</span>{% endif %}
+    </div>
+    <label class="field"><span class="field-label">مقدار</span>{{ line.quantity }}{% if line.quantity.errors %}<span class="field-error">{{ line.quantity.errors|striptags }}</span>{% endif %}</label>
+    <label class="field"><span class="field-label">واحد</span>{{ line.unit }}{% if line.unit.errors %}<span class="field-error">{{ line.unit.errors|striptags }}</span>{% endif %}</label>
+    <label class="field"><span class="field-label">قیمت واحد</span>{{ line.unit_price }}{% if line.unit_price.errors %}<span class="field-error">{{ line.unit_price.errors|striptags }}</span>{% endif %}</label>
+    <div class="invoice-line-total"><span>جمع ردیف</span><strong data-line-total>۰</strong></div>
+  </div>
+</fieldset>
+

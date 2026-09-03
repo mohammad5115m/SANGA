@@ -1,70 +1,70 @@
 {% extends "layouts/app_shell.html" %}
+
 {% block title %}بازار همکاران | سنگا{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <div class="toolbar">
-    <div>
-      <h1 class="page-title">بازار همکاران</h1>
-      <p class="page-lead">موجودی شبکه B2B با قیمت همکار</p>
+<section class="product-surface stack-lg" aria-labelledby="marketplace-title">
+  <header class="surface-hero surface-hero-market">
+    <div class="surface-hero-copy">
+      <span class="surface-eyebrow">کشف محصولات همکاران</span>
+      <h1 class="page-title" id="marketplace-title">بازار همکاران</h1>
+      <p class="page-lead">سنگ‌های آماده معامله با قیمت همکار و موجودی تأییدشده.</p>
     </div>
-    <div class="btn-row">
-      <a class="btn btn-secondary" href="{% url 'purchase_requests:network_list' %}">تابلوی تقاضا</a>
+    <div class="market-trust-note">
+      <span class="market-trust-icon" aria-hidden="true">
+        <svg class="market-trust-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M12 3 20 7v5c0 4.8-3.3 7.7-8 9-4.7-1.3-8-4.2-8-9V7l8-4Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>
+        </svg>
+      </span>
+      <span>فقط قیمت و موجودی معتبر نمایش داده می‌شود.</span>
     </div>
-  </div>
+  </header>
 
-  <form method="get" class="panel filter-bar">
-    <label class="field"><span class="field-label">جستجو</span>{{ filter_form.q }}</label>
-    <label class="field"><span class="field-label">نوع</span>{{ filter_form.stone_type }}</label>
-    <label class="field"><span class="field-label">رنگ</span>{{ filter_form.color }}</label>
-    <label class="field"><span class="field-label">حداقل متراژ</span>{{ filter_form.min_qty }}</label>
-    <label class="field checkbox-field">{{ filter_form.only_urgent }} <span>{{ filter_form.only_urgent.label }}</span></label>
-    <button class="btn btn-secondary" type="submit">اعمال</button>
-  </form>
+  <nav class="surface-switcher" aria-label="بخش محصولات">
+    <a class="surface-switcher-item" href="{% url 'inventory:lot_list' %}">
+      <span>موجودی من</span>
+    </a>
+    <a class="surface-switcher-item is-active" href="{% url 'marketplace:home' %}" aria-current="page">
+      <span>بازار همکاران</span>
+      <span class="surface-switcher-count">{{ page.total }}</span>
+    </a>
+  </nav>
 
-  <form method="post" action="{% url 'marketplace:save_search' %}" class="panel stack-md">
-    {% csrf_token %}
-    <h2 class="section-title">ذخیره این جستجو</h2>
-    <input type="hidden" name="q" value="{{ filter_form.q.value|default:'' }}">
-    <input type="hidden" name="stone_type" value="{{ filter_form.stone_type.value|default:'' }}">
-    <input type="hidden" name="color" value="{{ filter_form.color.value|default:'' }}">
-    <input type="hidden" name="min_qty" value="{{ filter_form.min_qty.value|default:'' }}">
-    {% if filter_form.only_urgent.value %}<input type="hidden" name="only_urgent" value="on">{% endif %}
-    <label class="field"><span class="field-label">{{ save_form.name.label }}</span>{{ save_form.name }}</label>
-    <label class="field checkbox-field">{{ save_form.notify_enabled }} <span>{{ save_form.notify_enabled.label }}</span></label>
-    <button class="btn btn-ghost" type="submit">ذخیره جستجو</button>
-  </form>
+  {% include "inventory/_filter_bar.html" %}
 
-  {% if saved_searches %}
-  <div class="chip-row">
-    {% for s in saved_searches %}
-      <span class="chip">{{ s.name }}</span>
-    {% endfor %}
-  </div>
+  {% if cards %}
+    <div class="results-heading">
+      <div>
+        <strong>{{ page.total }} محصول آماده معامله</strong>
+        <span class="muted">برای مشخصات کامل یا ارتباط با فروشنده، محصول را باز کنید.</span>
+      </div>
+      <span class="results-heading-hint">لینک دقیق هر محصول را می‌توانید برای فروشنده بفرستید.</span>
+    </div>
   {% endif %}
 
-  <div class="catalog-grid">
+  <div class="catalog-grid marketplace-grid">
     {% for card in cards %}
-      <a class="catalog-card" href="{% url 'marketplace:lot_detail' card.lot.id %}">
-        <div class="catalog-card-media">
-          {% if card.primary_media %}
-            <img src="{{ card.primary_media.file.url }}" alt="{{ card.product.commercial_name }}" loading="lazy">
-          {% else %}
-            <div class="lot-thumb-fallback"></div>
-          {% endif %}
-          {% if card.lot.is_urgent_sale %}<span class="card-flag">فوری</span>{% endif %}
-        </div>
-        <div class="catalog-card-body">
-          <div class="list-title">{{ card.product.commercial_name }}</div>
-          <div class="muted">{{ card.supplier.name }}</div>
-          <div class="catalog-price">{{ card.price.label }}</div>
-          {# The lot's visibility is the supplier's internal distribution choice: never shown to other businesses. #}
-          <div class="muted">{{ card.lot.available_sqm }} m²</div>
-        </div>
-      </a>
+      {% url 'marketplace:lot_detail' card.lot.id as card_url %}
+      {% include "inventory/_product_card.html" with show_marketplace_meta="1" show_marketplace_actions="1" %}
     {% empty %}
-      <div class="empty-state">موردی در شبکه همکاران یافت نشد. فیلترها را تغییر دهید یا بعداً دوباره سر بزنید.</div>
+      <div class="empty-state product-empty-state">
+        <span class="empty-state-icon" aria-hidden="true">
+          <svg class="empty-state-svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M4 9h16l-1-5H5L4 9Z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/><path d="M3 9h18"/>
+          </svg>
+        </span>
+        {% if filter_form.active_filter_count %}
+          <h2>محصولی با این فیلترها پیدا نشد</h2>
+          <p>فیلترها را پاک کنید یا مشخصات دیگری را جست‌وجو کنید.</p>
+          <a class="btn btn-secondary" href="{{ request.path }}">پاک‌کردن فیلترها</a>
+        {% else %}
+          <h2>فعلاً محصول آماده معامله‌ای وجود ندارد</h2>
+          <p>محصولات پس از تأیید دوباره قیمت و موجودی، به‌صورت خودکار در اینجا دیده می‌شوند.</p>
+        {% endif %}
+      </div>
     {% endfor %}
   </div>
+
+  {% include "_pager.html" %}
 </section>
 {% endblock %}

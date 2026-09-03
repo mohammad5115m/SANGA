@@ -1,59 +1,101 @@
 from __future__ import annotations
 
-from django.db.models import Prefetch, Q, QuerySet
+from django.db.models import Exists, OuterRef, Q, QuerySet
 
 from apps.businesses.models import Business
-from apps.core.persian import normalize_persian_text
 from apps.pricing.models import LotPrice
 
+from .filters import ItemFilterSpec
 from .models import InventoryLot, Product
+from .policy import owned_items
 
 
 def products_for_business(business: Business) -> QuerySet[Product]:
-    return Product.objects.filter(business=business, is_active=True).order_by("commercial_name")
+    return (
+        Product.objects.filter(business=business, is_active=True)
+        .select_related("stone")
+        .prefetch_related("applications")
+        .order_by("commercial_name")
+    )
 
 
 def lots_for_business(business: Business) -> QuerySet[InventoryLot]:
-    return (
-        InventoryLot.objects.filter(business=business, archived_at__isnull=True)
-        .select_related("product", "warehouse")
-        .prefetch_related(
-            Prefetch("prices", queryset=LotPrice.objects.select_related("tier")),
-            "media",
-        )
-        .order_by("-updated_at")
+    """Everything the seller may manage, including hidden and unavailable items.
+
+    Owner-side listing deliberately does *not* go through
+    :func:`~apps.inventory.policy.eligible_items`: a seller has to be able to
+    find an item precisely when it has dropped off the buyer-facing surfaces.
+    """
+    return owned_items(business)
+
+
+def search_lot_options(qs: QuerySet[InventoryLot], *, q: str = "", limit: int = 20) -> list[dict]:
+    """Small, tenant-scoped payload for asynchronous product pickers."""
+    filtered = ItemFilterSpec(q=q[:100]).apply_non_price(qs)
+    lots = (
+        filtered.prefetch_related(None)
+        .select_related("product", "product__stone")
+        .order_by("-updated_at")[:limit]
     )
+    return [
+        {
+            "id": str(lot.id),
+            "label": str(lot),
+            "name": lot.product.commercial_name,
+            "stone": lot.product.stone.name,
+        }
+        for lot in lots
+    ]
 
 
 def get_business_lot(business: Business, lot_id) -> InventoryLot | None:
     return lots_for_business(business).filter(pk=lot_id).first()
 
 
-def filter_lots(
+#: Owner-side lifecycle filters, expressed in the seller's language rather than
+#: in model fields. These sit outside ItemFilterSpec because they ask about
+#: management state, which no buyer-facing surface may filter on.
+OWNER_STATE_CHOICES: tuple[tuple[str, str], ...] = (
+    ("", "همه"),
+    ("available", "موجود"),
+    ("unavailable", "ناموجود"),
+    ("hidden", "منتشر نشده"),
+    ("draft", "پیش‌نویس"),
+    ("needs_stock", "نیازمند تأیید موجودی"),
+    ("needs_price", "نیازمند بررسی قیمت"),
+)
+
+
+def filter_owned_lots(
     qs: QuerySet[InventoryLot],
     *,
-    q: str = "",
-    status: str = "",
-    visibility: str = "",
-    freshness: str = "",
+    spec: ItemFilterSpec | None = None,
+    state: str = "",
 ) -> QuerySet[InventoryLot]:
-    if q:
-        term = normalize_persian_text(q)
-        qs = qs.filter(
-            Q(lot_code__icontains=term)
-            | Q(product__commercial_name__icontains=term)
-            | Q(product__stone_type__icontains=term)
-            | Q(product__primary_color__icontains=term)
-            | Q(grade__icontains=term)
-        )
-    if status:
-        qs = qs.filter(status=status)
-    if visibility:
-        qs = qs.filter(visibility=visibility)
-    if freshness == "needs_confirmation":
-        qs = qs.filter(status=InventoryLot.Status.NEEDS_CONFIRMATION)
-    elif freshness == "urgent":
-        qs = qs.filter(is_urgent_sale=True)
-    elif freshness == "draft":
+    """Apply the shared filter schema plus the owner-only lifecycle filter."""
+    if spec is not None:
+        qs = spec.apply(qs, audience="owner")
+
+    if state == "available":
+        qs = qs.filter(availability_status=InventoryLot.Availability.AVAILABLE)
+    elif state == "unavailable":
+        qs = qs.filter(availability_status=InventoryLot.Availability.UNAVAILABLE)
+    elif state == "hidden":
+        qs = qs.filter(is_visible=False, status=InventoryLot.Status.ACTIVE)
+    elif state == "draft":
         qs = qs.filter(status=InventoryLot.Status.DRAFT)
+    elif state == "needs_stock":
+        qs = filter_needs_stock_confirmation(qs)
+    elif state == "needs_price":
+        prices = LotPrice.objects.filter(lot=OuterRef("pk"))
+        stale_prices = prices.filter(LotPrice.needs_confirmation_q())
+        qs = qs.annotate(
+            has_price=Exists(prices),
+            has_stale_price=Exists(stale_prices),
+        ).filter(Q(has_price=False) | Q(has_stale_price=True))
     return qs
+
+
+def filter_needs_stock_confirmation(qs: QuerySet[InventoryLot]) -> QuerySet[InventoryLot]:
+    """Items carrying a quantity the seller has stopped vouching for."""
+    return qs.filter(InventoryLot.needs_stock_confirmation_q())

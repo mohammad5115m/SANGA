@@ -3,24 +3,44 @@
 
 {% block content %}
 <section class="stack-lg">
-  <h1 class="page-title">{% if mode == 'create' %}کاتالوگ جدید{% else %}ویرایش کاتالوگ{% endif %}</h1>
-  <form method="post" class="panel stack-md" novalidate>
+  <div>
+    <h1 class="page-title">{% if mode == 'create' %}کاتالوگ جدید{% else %}ویرایش کاتالوگ{% endif %}</h1>
+    {% if mode == 'create' %}
+      <p class="page-lead">{{ selected_count }} محصول از موجودی انتخاب شده است.</p>
+    {% else %}
+      <p class="page-lead">اطلاعات و وضعیت لینک اشتراک را ویرایش کنید.</p>
+    {% endif %}
+  </div>
+
+  <form method="post" class="stack-lg" novalidate data-unsaved-warning>
     {% csrf_token %}
-    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
-    {% for field in form %}
-      {% if field.name != 'lots' %}
-      <label class="field">
-        <span class="field-label">{{ field.label }}</span>
-        {{ field }}
-        {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
-      </label>
+    {% if selection %}<input type="hidden" name="selection" value="{{ selection }}">{% endif %}
+    <section class="panel stack-md">
+      {% if form.non_field_errors %}
+        <div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>
       {% endif %}
-    {% endfor %}
-    <fieldset class="stack-sm">
-      <legend class="section-title">انتخاب محموله‌ها</legend>
-      <div class="lot-pick-list">{{ form.lots }}</div>
-    </fieldset>
-    <button class="btn btn-primary" type="submit">ذخیره</button>
+      {% for field in form %}
+        {% if field.name == 'is_active' %}
+          <label class="chip chip-choice">{{ field }} <span>{{ field.label }}</span></label>
+        {% else %}
+          <label class="field">
+            <span class="field-label">{{ field.label }}</span>
+            {{ field }}
+            {% if field.help_text %}<span class="field-help">{{ field.help_text }}</span>{% endif %}
+            {% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}
+          </label>
+        {% endif %}
+      {% endfor %}
+    </section>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" type="submit">ذخیره</button>
+      {% if mode == 'create' %}
+        <a class="btn btn-ghost" href="{% url 'inventory:lot_list' %}">بازگشت به موجودی</a>
+      {% else %}
+        <a class="btn btn-ghost" href="{% url 'catalog_manage:detail' catalog.id %}">انصراف</a>
+      {% endif %}
+    </div>
   </form>
 </section>
 {% endblock %}

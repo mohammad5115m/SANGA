@@ -1,63 +1,50 @@
 from __future__ import annotations
 
-from django.db.models import Prefetch, Q, QuerySet
+from django.db.models import QuerySet
+from django.utils import timezone
 
+from apps.businesses.eligibility import business_can_sell
 from apps.businesses.models import Business
-from apps.core.persian import normalize_persian_text
+from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
-from apps.pricing.models import ContactPrice, LotPrice
+from apps.inventory.policy import eligible_items, owned_items
+from apps.pricing.queries import effective_amount_subquery
 
-from .models import SavedSearch
+
+def transaction_ready_lots(qs: QuerySet[InventoryLot]) -> QuerySet[InventoryLot]:
+    """Keep only products whose B2B price and exact stock are current.
+
+    The colleague marketplace is a catalogue of products that can be invoiced
+    now, not a queue for asking sellers to reconfirm data they already own.
+    """
+    return (
+        qs.filter(
+            available_sqm__gt=0,
+            stock_expires_at__gt=timezone.now(),
+        )
+        .annotate(_marketplace_b2b_price=effective_amount_subquery("b2b"))
+        .filter(_marketplace_b2b_price__isnull=False)
+    )
 
 
 def marketplace_lots_for(viewer_business: Business) -> QuerySet[InventoryLot]:
-    """
-    B2B marketplace visibility rules:
-    - both sides must be an active business: a suspended viewer sees nothing and
-      a suspended owner's lots (with their B2B prices) are listed to nobody.
-      Same notion of "active" as ``contacts.is_linkable_business`` and the
-      membership gate in ``businesses.get_active_membership``.
-    - colleagues / public: visible to every active business with an account
-    - never private
-    - exclude viewer's own lots
-    """
-    if viewer_business is None or viewer_business.status != Business.Status.ACTIVE:
-        return InventoryLot.objects.none()
-
-    b2b_prices = LotPrice.objects.select_related("tier").filter(tier__code="b2b", tier__is_active=True)
-    # Only this viewer's own overrides, so the prefetch can never carry another
-    # colleague's negotiated price into the page.
-    viewer_contact_prices = ContactPrice.objects.select_related("contact").filter(
-        contact__linked_business=viewer_business,
-        contact__is_active=True,
+    """Transaction-ready items other eligible colleagues are offering."""
+    return transaction_ready_lots(
+        eligible_items(audience="colleague", viewer_business=viewer_business)
     )
 
-    return (
-        InventoryLot.objects.filter(
-            # A join on the owning business, not a per-lot lookup: the gate must
-            # not cost a query per row.
-            business__status=Business.Status.ACTIVE,
-            archived_at__isnull=True,
-            status__in=[
-                InventoryLot.Status.AVAILABLE,
-                InventoryLot.Status.NEEDS_CONFIRMATION,
-                InventoryLot.Status.PARTIALLY_SOLD,
-            ],
-            visibility__in=[
-                InventoryLot.Visibility.COLLEAGUES,
-                InventoryLot.Visibility.PUBLIC,
-            ],
+
+def marketplace_ready_items_for_owner(business: Business) -> QuerySet[InventoryLot]:
+    """Owner-side readiness check without excluding the owner's own products."""
+    if not business_can_sell(business):
+        return InventoryLot.objects.none()
+    return transaction_ready_lots(
+        owned_items(business).filter(
+            product__is_active=True,
+            is_visible=True,
+            availability_status=InventoryLot.Availability.AVAILABLE,
+            status=InventoryLot.Status.ACTIVE,
         )
-        .exclude(business=viewer_business)
-        .select_related("product", "warehouse", "business")
-        .prefetch_related(
-            # No to_attr: populates lot.prices.all() with ONLY B2B rows so B2C
-            # prices are never loaded in marketplace views.
-            Prefetch("prices", queryset=b2b_prices),
-            Prefetch("contact_prices", queryset=viewer_contact_prices),
-            "media",
-        )
-        .order_by("-is_urgent_sale", "-inventory_confirmed_at", "-updated_at")
     )
 
 
@@ -65,40 +52,13 @@ def get_marketplace_lot(viewer_business: Business, lot_id) -> InventoryLot | Non
     return marketplace_lots_for(viewer_business).filter(pk=lot_id).first()
 
 
+def get_marketplace_lot_by_token(
+    viewer_business: Business, public_token: str
+) -> InventoryLot | None:
+    return marketplace_lots_for(viewer_business).filter(public_token=public_token).first()
+
+
 def filter_marketplace_lots(
-    qs: QuerySet[InventoryLot],
-    *,
-    q: str = "",
-    stone_type: str = "",
-    color: str = "",
-    only_urgent: bool = False,
-    min_qty: str = "",
+    qs: QuerySet[InventoryLot], *, spec: ItemFilterSpec
 ) -> QuerySet[InventoryLot]:
-    if q:
-        term = normalize_persian_text(q)
-        qs = qs.filter(
-            Q(product__commercial_name__icontains=term)
-            | Q(product__stone_type__icontains=term)
-            | Q(product__primary_color__icontains=term)
-            | Q(business__name__icontains=term)
-            | Q(lot_code__icontains=term)
-            | Q(grade__icontains=term)
-        )
-    if stone_type:
-        qs = qs.filter(product__stone_type__icontains=normalize_persian_text(stone_type))
-    if color:
-        qs = qs.filter(product__primary_color__icontains=normalize_persian_text(color))
-    if only_urgent:
-        qs = qs.filter(is_urgent_sale=True)
-    if min_qty:
-        try:
-            from decimal import Decimal
-
-            qs = qs.filter(available_sqm__gte=Decimal(min_qty))
-        except Exception:
-            pass
-    return qs
-
-
-def saved_searches_for(business: Business, user) -> QuerySet[SavedSearch]:
-    return SavedSearch.objects.filter(business=business, user=user)
+    return spec.apply(qs, audience="colleague")
