@@ -5,11 +5,11 @@ import logging
 from django.contrib import messages
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_http_methods
 
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import LEDGER_MANAGE, LEDGER_VIEW
+from apps.core.widgets import DateRangeForm
 
 from .forms import ManualEntryForm
 from .models import LedgerEntry
@@ -51,16 +51,6 @@ def _colleague_or_404(request: HttpRequest, business_id):
     if colleague is None:
         raise Http404("همکار یافت نشد.")
     return colleague
-
-
-def _parse_date(value: str):
-    value = (value or "").strip()
-    if not value:
-        return None
-    try:
-        return parse_date(value)
-    except ValueError:
-        return None
 
 
 @business_login_required
@@ -112,8 +102,10 @@ def aging_report(request: HttpRequest) -> HttpResponse:
 @require_capability(LEDGER_VIEW)
 def statement(request: HttpRequest, business_id) -> HttpResponse:
     colleague = _colleague_or_404(request, business_id)
-    date_from = _parse_date(request.GET.get("from", ""))
-    date_to = _parse_date(request.GET.get("to", ""))
+    date_filter_form = DateRangeForm(request.GET)
+    valid_dates = date_filter_form.is_valid()
+    date_from = date_filter_form.cleaned_data.get("from")
+    date_to = date_filter_form.cleaned_data.get("to")
     entry_type = request.GET.get("type", "").strip()
 
     entries = counterparty_statement(
@@ -123,6 +115,8 @@ def statement(request: HttpRequest, business_id) -> HttpResponse:
         date_to=date_to,
         entry_type=entry_type,
     )
+    if not valid_dates:
+        entries = entries.none()
     balance = current_balance(request.business, colleague)
 
     from apps.invoicing.selectors import invoices_between
@@ -143,9 +137,10 @@ def statement(request: HttpRequest, business_id) -> HttpResponse:
             "can_manage": request.membership.has_capability(LEDGER_MANAGE),
             "type_choices": LedgerEntry.Type.choices,
             "invoices": invoices_between(request.business, colleague)[:20],
+            "date_filter_form": date_filter_form,
             "filters": {
-                "from": request.GET.get("from", ""),
-                "to": request.GET.get("to", ""),
+                "from": date_filter_form.canonical("from"),
+                "to": date_filter_form.canonical("to"),
                 "type": entry_type,
             },
         },
@@ -207,7 +202,14 @@ def reverse_view(request: HttpRequest, entry_id) -> HttpResponse:
 @require_capability(LEDGER_VIEW)
 def print_statement(request: HttpRequest, business_id) -> HttpResponse:
     colleague = _colleague_or_404(request, business_id)
-    entries = counterparty_statement(request.business, colleague)
+    dates = DateRangeForm(request.GET)
+    if not dates.is_valid():
+        return statement(request, business_id)
+    entries = counterparty_statement(
+        request.business, colleague,
+        date_from=dates.cleaned_data.get("from"), date_to=dates.cleaned_data.get("to"),
+        entry_type=request.GET.get("type", "").strip(),
+    )
     return render(
         request,
         "accounting/statement_print.html",

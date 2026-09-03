@@ -84,7 +84,7 @@
         {% for entry in ledger_entries %}
           <div class="lot-card"><div class="lot-body">
             <div class="list-title">{{ entry.get_entry_type_display }}</div>
-            <div class="muted">{{ entry.occurred_on|date:"Y/m/d" }} · <span dir="ltr">{{ entry.amount|rial }} ریال</span></div>
+            <div class="muted">{{ entry.occurred_on|jdate }} · <span dir="ltr">{{ entry.amount|rial }} ریال</span></div>
           </div></div>
         {% empty %}<div class="empty-state">هنوز سندی در این حساب ثبت نشده است.</div>{% endfor %}
       </div>
@@ -103,7 +103,7 @@
       {% for trade in trades %}
         <a class="lot-card" href="{% url 'trading:trade_detail' trade.id %}"><div class="lot-body">
           <div class="list-title">معامله نهایی · {{ trade.summary_label }}</div>
-          <div class="muted">{{ trade.finalized_at|date:"Y/m/d" }} · <span dir="ltr">{{ trade.total_amount|rial }} ریال</span></div>
+          <div class="muted">{{ trade.finalized_at|jdate }} · <span dir="ltr">{{ trade.total_amount|rial }} ریال</span></div>
         </div></a>
       {% endfor %}
     </div>

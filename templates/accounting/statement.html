@@ -13,7 +13,7 @@
       {% if can_manage %}
         <a class="btn btn-primary btn-sm" href="{% url 'accounting:add_entry' colleague.id %}">ثبت سند</a>
       {% endif %}
-      <a class="btn btn-ghost btn-sm" href="{% url 'accounting:print' colleague.id %}" target="_blank" rel="noopener">چاپ صورت‌حساب</a>
+      {% if not date_filter_form.errors %}<a class="btn btn-ghost btn-sm" href="{% url 'accounting:print' colleague.id %}?from={{ filters.from }}&amp;to={{ filters.to }}&amp;type={{ filters.type }}" target="_blank" rel="noopener">چاپ صورت‌حساب</a>{% endif %}
       <a class="btn btn-ghost btn-sm" href="{% url 'businesses:colleague_detail' colleague.id %}">بازگشت</a>
     </div>
   </div>
@@ -33,14 +33,14 @@
 
   <form method="get" class="filter-bar stack-sm">
     <div class="field-grid">
-      <label class="field">
-        <span class="field-label">از تاریخ</span>
-        <input class="field-input" type="date" name="from" value="{{ filters.from }}">
-      </label>
-      <label class="field">
-        <span class="field-label">تا تاریخ</span>
-        <input class="field-input" type="date" name="to" value="{{ filters.to }}">
-      </label>
+      <div class="field">
+        <label class="field-label" for="{{ date_filter_form.from.id_for_label }}">از تاریخ</label>
+        {{ date_filter_form.from }}{{ date_filter_form.from.errors }}
+      </div>
+      <div class="field">
+        <label class="field-label" for="{{ date_filter_form.to.id_for_label }}">تا تاریخ</label>
+        {{ date_filter_form.to }}{{ date_filter_form.to.errors }}
+      </div>
       <label class="field">
         <span class="field-label">نوع سند</span>
         <select class="field-input" name="type">
@@ -73,7 +73,7 @@
       <tbody>
         {% for entry in entries %}
           <tr>
-            <td>{{ entry.occurred_on }}</td>
+            <td>{{ entry.occurred_on|jdate }}</td>
             <td>
               <div class="list-title">{{ entry.get_entry_type_display }}</div>
               {% if entry.description %}<div class="muted">{{ entry.description }}</div>{% endif %}
@@ -136,7 +136,7 @@
   <section class="panel stack-sm">
     <h2 class="section-title">گزارش سنی بدهی</h2>
     <p class="muted">
-      بر پایه تاریخ اسناد تا {{ aging.as_of }}؛ هر بستانکاری به قدیمی‌ترین بدهی تخصیص می‌یابد.
+      بر پایه تاریخ اسناد تا {{ aging.as_of|jdate }}؛ هر بستانکاری به قدیمی‌ترین بدهی تخصیص می‌یابد.
       این گزارش مستقل از فیلترهای بالاست.
     </p>
     {% if aging.has_outstanding %}
@@ -168,7 +168,7 @@
         <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
           <div>
             <div class="list-title" dir="ltr">{{ invoice.number }}</div>
-            <div class="muted">{{ invoice.issue_date }} · {{ invoice.buyer_name }}</div>
+            <div class="muted">{{ invoice.issue_date|jdate }} · {{ invoice.buyer_name }}</div>
           </div>
           <div class="ledger-amounts">
             <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>

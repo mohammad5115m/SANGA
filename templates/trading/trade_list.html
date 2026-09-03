@@ -25,7 +25,7 @@
       <a class="lot-card" href="{% url 'trading:trade_detail' trade.id %}">
         <div class="lot-body">
           <div class="list-title">{{ trade.summary_label }}</div>
-          <div class="muted">{{ trade.seller_business.name }} ← {{ trade.counterparty_label }} · {{ trade.finalized_at|date:"Y/m/d" }}</div>
+          <div class="muted">{{ trade.seller_business.name }} ← {{ trade.counterparty_label }} · {{ trade.finalized_at|jdate }}</div>
           <div class="muted" dir="ltr">{{ trade.total_amount|rial }} {{ trade.currency }}</div>
         </div>
       </a>

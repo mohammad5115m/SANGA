@@ -5,6 +5,8 @@ from datetime import timedelta
 from django import forms
 from django.utils import timezone
 
+from apps.core.widgets import JalaliDateTimeWidget
+
 from .crm import CATEGORY_CHOICES, CUSTOMER_STATUS_CHOICES, PRIORITY_CHOICES
 
 
@@ -63,7 +65,7 @@ class FollowUpForm(forms.Form):
     scheduled_for = forms.DateTimeField(
         label="تاریخ و ساعت",
         input_formats=["%Y-%m-%dT%H:%M"],
-        widget=forms.DateTimeInput(
+        widget=JalaliDateTimeWidget(
             attrs={"class": "field-input", "type": "datetime-local"},
             format="%Y-%m-%dT%H:%M",
         ),
@@ -123,7 +125,7 @@ class RescheduleFollowUpForm(forms.Form):
     scheduled_for = forms.DateTimeField(
         label="زمان جدید",
         input_formats=["%Y-%m-%dT%H:%M"],
-        widget=forms.DateTimeInput(
+        widget=JalaliDateTimeWidget(
             attrs={"class": "field-input", "type": "datetime-local"},
             format="%Y-%m-%dT%H:%M",
         ),

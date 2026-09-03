@@ -7,7 +7,7 @@
 <section class="stack-lg">
   <div>
     <h1 class="page-title">{{ trade.summary_label }}</h1>
-    <p class="page-lead">{{ trade.finalized_at|date:"Y/m/d H:i" }}</p>
+    <p class="page-lead">{{ trade.finalized_at|jdatetime }}</p>
   </div>
 
   {% comment %}Every value here is the snapshot taken at finalization, not a live lookup:

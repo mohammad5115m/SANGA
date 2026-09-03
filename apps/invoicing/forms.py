@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.businesses.models import Business
 from apps.core.forms import PersianNumericFormMixin
+from apps.core.widgets import JalaliDateTimeWidget, JalaliDateWidget
 from apps.inventory.models import InventoryLot
 
 from .calculations import DISCOUNT_AMOUNT, to_display_amount, validate_display_unit
@@ -122,7 +123,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
     issue_date = forms.DateField(
         label="تاریخ صدور",
         initial=timezone.localdate,
-        widget=forms.DateInput(attrs={**_TEXT, "type": "date"}, format="%Y-%m-%d"),
+        widget=JalaliDateWidget(attrs={**_TEXT, "type": "date"}, format="%Y-%m-%d"),
     )
     currency = forms.ChoiceField(
         label="ارز مبنا",
@@ -228,7 +229,7 @@ class ManualInvoiceForm(PersianNumericFormMixin, forms.Form):
     cheque_due_date = forms.DateField(
         label="سررسید چک",
         required=False,
-        widget=forms.DateInput(attrs={**_TEXT, "type": "date"}, format="%Y-%m-%d"),
+        widget=JalaliDateWidget(attrs={**_TEXT, "type": "date"}, format="%Y-%m-%d"),
     )
     cheque_drawer = forms.CharField(
         label="صادرکننده چک", required=False, max_length=150, widget=forms.TextInput(attrs=_TEXT)
@@ -481,12 +482,24 @@ class InvoiceLineForm(PersianNumericFormMixin, forms.Form):
 
 
 class BaseInvoiceLineFormSet(forms.BaseFormSet):
+    ordering_widget = forms.HiddenInput
+
     def __init__(self, *args, business=None, **kwargs):
         self.business = business
         super().__init__(*args, **kwargs)
 
     def get_form_kwargs(self, index):
         return {**super().get_form_kwargs(index), "business": self.business}
+
+    def __iter__(self):
+        # Invalid bound forms must keep the user's visual order on a retry.
+        # Empty extra rows stay at the end; field prefixes remain unchanged.
+        def position(form):
+            try:
+                return int(form["ORDER"].value())
+            except (TypeError, ValueError):
+                return float("inf")
+        return iter(sorted(self.forms, key=position))
 
 
 InvoiceLineFormSet = forms.formset_factory(
@@ -611,7 +624,7 @@ class OfflineApprovalForm(forms.Form):
     signer_name = forms.CharField(label="نام امضاکننده", max_length=150, widget=forms.TextInput(attrs=_TEXT))
     confirmed_at = forms.DateTimeField(
         label="زمان تأیید خارج از سنگا",
-        widget=forms.DateTimeInput(attrs={**_TEXT, "type": "datetime-local"}),
+        widget=JalaliDateTimeWidget(attrs={**_TEXT, "type": "datetime-local"}),
     )
     signature = forms.ImageField(
         label="تصویر امضای همین فاکتور",

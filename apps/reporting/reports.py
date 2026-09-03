@@ -21,6 +21,7 @@ from django.db.models.functions import Coalesce
 from apps.accounting.models import LedgerEntry
 from apps.accounting.selectors import describe_balance
 from apps.businesses.models import Business
+from apps.core.calendar import format_jalali
 from apps.inventory.models import InventoryLot
 from apps.invoicing.models import ChequeReceivable, SalesInvoice
 from apps.pricing.models import LotPrice
@@ -45,11 +46,11 @@ class DateRange:
     @property
     def label(self) -> str:
         if self.date_from and self.date_to:
-            return f"{self.date_from} تا {self.date_to}"
+            return f"{format_jalali(self.date_from)} تا {format_jalali(self.date_to)}"
         if self.date_from:
-            return f"از {self.date_from}"
+            return f"از {format_jalali(self.date_from)}"
         if self.date_to:
-            return f"تا {self.date_to}"
+            return f"تا {format_jalali(self.date_to)}"
         return "همه تاریخ‌ها"
 
     def apply(self, qs: QuerySet, field: str) -> QuerySet:

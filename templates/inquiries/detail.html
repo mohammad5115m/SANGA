@@ -14,7 +14,7 @@
   </div>
 
   <section class="panel stack-sm">
-    <div class="kv"><span>تاریخ</span><strong>{{ inquiry.created_at|date:"Y/m/d H:i" }}</strong></div>
+    <div class="kv"><span>تاریخ</span><strong>{{ inquiry.created_at|jdatetime }}</strong></div>
     <div class="kv"><span>منبع</span><strong>{{ inquiry.get_source_display }}</strong></div>
     {% if inquiry.lead.is_verified %}
       <div class="kv"><span>شماره</span><strong>تأیید شده</strong></div>

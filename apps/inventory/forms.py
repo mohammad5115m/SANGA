@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.core.forms import PersianNumericFormMixin
 from apps.core.persian import normalize_persian_text
+from apps.core.widgets import JalaliDateTimeWidget
 from apps.pricing.models import LotPrice
 
 from .filters import SORT_CHOICES, ItemFilterSpec
@@ -241,7 +242,7 @@ class TierPriceForm(PersianNumericFormMixin, forms.Form):
     )
     special_until = forms.DateTimeField(
         label="پایان فروش ویژه", required=False,
-        widget=forms.DateTimeInput(attrs={**_TEXT, "type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
+        widget=JalaliDateTimeWidget(attrs={**_TEXT, "type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
     )
 
     def __init__(self, *args, tier_label: str = "", **kwargs):

@@ -14,6 +14,8 @@
 # Used with -c, not -r: the requirements files stay the source of truth for what
 # is a dependency, and this only constrains the resolution.
 
+jalali-core==1.0.0
+jdatetime==6.1.0
 amqp==5.3.1
 arabic-reshaper==3.0.1
 asgiref==3.12.1

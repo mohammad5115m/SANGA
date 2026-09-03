@@ -41,7 +41,7 @@
       <h4>فاکتورها</h4>
       <ul>{% for invoice in proposal.local_counterparty.invoices.all %}<li>{{ invoice.display_number }} · {{ invoice.get_status_display }} · {{ invoice.total_amount|rial }} {{ invoice.currency }}</li>{% empty %}<li>فاکتوری ثبت نشده است.</li>{% endfor %}</ul>
       <h4>سابقه دفتر فروشنده</h4>
-      <ul>{% for entry in proposal.local_counterparty.ledger_entries.all %}<li>{{ entry.occurred_on }} · {{ entry.get_entry_type_display }} · {{ entry.amount|rial }} · مانده {{ entry.balance_after|rial }}</li>{% empty %}<li>سند مالی ثبت نشده است.</li>{% endfor %}</ul>
+      <ul>{% for entry in proposal.local_counterparty.ledger_entries.all %}<li>{{ entry.occurred_on|jdate }} · {{ entry.get_entry_type_display }} · {{ entry.amount|rial }} · مانده {{ entry.balance_after|rial }}</li>{% empty %}<li>سند مالی ثبت نشده است.</li>{% endfor %}</ul>
       <p>وضعیت: {{ proposal.get_status_display }}</p>
       {% if proposal.status == 'pending' %}
       <form method="post" action="{% url 'invoicing:counterparty_link_decide' proposal.id %}" class="inline-actions">

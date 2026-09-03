@@ -8,7 +8,6 @@ from django.http import FileResponse, HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
-from django.utils.dateparse import parse_date
 from django.utils.http import content_disposition_header
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_http_methods, require_POST
@@ -33,6 +32,7 @@ from apps.businesses.permissions import (
     INVOICE_VIEW,
 )
 from apps.core.pagination import ROW_PAGE_SIZE, paginate
+from apps.core.widgets import DateRangeForm
 
 from .calculations import DISCOUNT_AMOUNT, to_display_amount
 from .documents import build_invoice_document, build_preview_document
@@ -221,19 +221,21 @@ def invoice_list(request: HttpRequest) -> HttpResponse:
     q = request.GET.get("q", "").strip()
     direction = request.GET.get("direction", "")
     origin = request.GET.get("origin", "")
-    date_from = request.GET.get("date_from", "")
-    date_to = request.GET.get("date_to", "")
+    date_filter_form = DateRangeForm(request.GET, start_name="date_from", end_name="date_to")
+    valid_dates = date_filter_form.is_valid()
+    date_from = date_filter_form.canonical("date_from")
+    date_to = date_filter_form.canonical("date_to")
     page = paginate(
         request,
         filter_invoices(
-            invoices_for(request.business),
+            invoices_for(request.business) if valid_dates else invoices_for(request.business).none(),
             business=request.business,
             status=status,
             q=q,
             direction=direction,
             origin=origin,
-            date_from=parse_date(date_from),
-            date_to=parse_date(date_to),
+            date_from=date_filter_form.cleaned_data.get("date_from"),
+            date_to=date_filter_form.cleaned_data.get("date_to"),
         ),
         per_page=ROW_PAGE_SIZE,
     )
@@ -247,6 +249,7 @@ def invoice_list(request: HttpRequest) -> HttpResponse:
             "q": q,
             "direction": direction,
             "origin": origin,
+            "date_filter_form": date_filter_form,
             "date_from": date_from,
             "date_to": date_to,
             "status_choices": SalesInvoice.Status.choices,

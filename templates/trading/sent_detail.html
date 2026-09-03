@@ -7,7 +7,7 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">درخواست خرید از {{ pr.seller_business.name }}</h1>
-      <p class="page-lead">{{ pr.created_at|date:"Y/m/d H:i" }}</p>
+      <p class="page-lead">{{ pr.created_at|jdatetime }}</p>
     </div>
     <div class="badge-row">{% include "trading/_status_badge.html" %}</div>
   </div>

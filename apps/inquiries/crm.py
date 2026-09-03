@@ -14,6 +14,7 @@ from django.db.models import Exists, OuterRef, Prefetch
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.core.calendar import format_jalali, persian_digits
 from apps.core.persian import normalize_persian_text
 
 from .models import (
@@ -587,27 +588,30 @@ class CRMRepository:
     def _due_label(value: datetime, status: str) -> str:
         local = timezone.localtime(value)
         if status == CustomerFollowUp.Status.COMPLETED:
-            return f"انجام‌شده در {local:%Y/%m/%d، %H:%M}"
+            return f"انجام‌شده در {format_jalali(local, with_time=True)}"
         if status == CustomerFollowUp.Status.CANCELLED:
-            return f"لغوشده · {local:%Y/%m/%d، %H:%M}"
+            return f"لغوشده · {format_jalali(local, with_time=True)}"
         today = timezone.localdate()
         if local.date() < today:
-            return f"{(today - local.date()).days} روز عقب‌افتاده · {local:%Y/%m/%d، %H:%M}"
+            return (
+                f"{persian_digits((today - local.date()).days)} روز عقب‌افتاده · "
+                f"{format_jalali(local, with_time=True)}"
+            )
         if local.date() == today:
-            return f"امروز، ساعت {local:%H:%M}"
+            return f"امروز، ساعت {persian_digits(local.strftime('%H:%M'))}"
         if local.date() == today + timedelta(days=1):
-            return f"فردا، ساعت {local:%H:%M}"
-        return f"{local:%Y/%m/%d، %H:%M}"
+            return f"فردا، ساعت {persian_digits(local.strftime('%H:%M'))}"
+        return f"{format_jalali(local, with_time=True)}"
 
     @staticmethod
     def _activity_label(value: datetime) -> str:
         local = timezone.localtime(value)
         today = timezone.localdate()
         if local.date() == today:
-            return f"امروز، {local:%H:%M}"
+            return f"امروز، {persian_digits(local.strftime('%H:%M'))}"
         if local.date() == today - timedelta(days=1):
-            return f"دیروز، {local:%H:%M}"
-        return f"{local:%Y/%m/%d}"
+            return f"دیروز، {persian_digits(local.strftime('%H:%M'))}"
+        return f"{format_jalali(local)}"
 
     @staticmethod
     def _customer_search_text(customer: dict) -> str:

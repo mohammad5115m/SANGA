@@ -19,12 +19,13 @@ DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "apps.core.admin_site.SangaAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.forms",
     "django.contrib.humanize",
     "django_htmx",
     "django_celery_beat",
@@ -81,6 +82,7 @@ TEMPLATES = [
         "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
+            "builtins": ["apps.core.templatetags.calendar_tags"],
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
@@ -129,7 +131,6 @@ AUTH_PASSWORD_VALIDATORS = [
 LANGUAGE_CODE = "fa"
 LANGUAGES = [
     ("fa", "فارسی"),
-    ("en", "English"),
 ]
 LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "Asia/Tehran"
@@ -316,3 +317,5 @@ if USE_S3:
 #: drift apart without somebody noticing. See config/settings/checks.py.
 if env("SANGA_MEDIA_ROOT", default=""):
     MEDIA_ROOT = env("SANGA_MEDIA_ROOT")
+
+FORM_RENDERER = "django.forms.renderers.TemplatesSetting"

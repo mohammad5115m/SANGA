@@ -3,6 +3,8 @@ from __future__ import annotations
 from django import forms
 from django.utils import timezone
 
+from apps.core.widgets import JalaliDateWidget
+
 from .models import LedgerEntry
 from .services import MANUAL_ENTRY_TYPES
 
@@ -34,7 +36,7 @@ class ManualEntryForm(forms.Form):
     occurred_on = forms.DateField(
         label="تاریخ",
         initial=timezone.localdate,
-        widget=forms.DateInput(attrs={**_TEXT, "type": "date"}, format="%Y-%m-%d"),
+        widget=JalaliDateWidget(attrs={**_TEXT, "type": "date"}, format="%Y-%m-%d"),
     )
     description = forms.CharField(
         label="شرح",

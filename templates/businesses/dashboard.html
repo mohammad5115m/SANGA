@@ -104,7 +104,7 @@ numbers and history come after. No charts.{% endcomment %}
               <div class="list-title">{{ inquiry.name }}</div>
               <div class="muted" dir="ltr">{{ inquiry.phone }}</div>
             </div>
-            <span class="badge">{{ inquiry.created_at|date:"Y/m/d" }}</span>
+            <span class="badge">{{ inquiry.created_at|jdate }}</span>
           </a>
         {% endfor %}
       </div>

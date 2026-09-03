@@ -18,7 +18,7 @@
         <summary class="btn btn-ghost btn-sm">تغییر زمان</summary>
         <form method="post" action="{% url 'inquiries:followup_reschedule' followup.id %}" class="stack-sm">
           {% csrf_token %}
-          <label class="field"><span class="field-label">زمان جدید</span><input class="field-input" type="datetime-local" name="scheduled_for" value="{{ followup.scheduled_value }}" required></label>
+          <label class="field"><span class="field-label">زمان جدید</span>{% jalali_input "scheduled_for" followup.scheduled_value with_time=True id=followup.id required=True %}</label>
           <button class="btn btn-primary btn-sm" type="submit">ذخیره زمان</button>
         </form>
       </details>

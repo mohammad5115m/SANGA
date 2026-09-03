@@ -28,7 +28,7 @@
 
   <section class="panel stack-sm">
     <div class="kv"><span>وضعیت</span><strong>{{ catalog.effective_status_label }}</strong></div>
-    {% if catalog.expires_at %}<div class="kv"><span>تاریخ انقضا</span><strong>{{ catalog.expires_at|date:"Y/m/d H:i" }}</strong></div>{% endif %}
+    {% if catalog.expires_at %}<div class="kv"><span>تاریخ انقضا</span><strong>{{ catalog.expires_at|jdatetime }}</strong></div>{% endif %}
     <div class="kv"><span>لینک اشتراک</span><strong dir="ltr">{{ share_url }}</strong></div>
     <div class="kv"><span>ویترین عمومی</span><strong dir="ltr">{{ storefront_url }}</strong></div>
     <div class="btn-row">

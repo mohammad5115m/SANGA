@@ -3,6 +3,7 @@ from __future__ import annotations
 from django import forms
 from django.utils import timezone
 
+from apps.core.widgets import JalaliDateTimeWidget
 from apps.inventory.selectors import lots_for_business
 
 from .models import CustomCatalog, StorefrontCollection
@@ -77,7 +78,7 @@ class CustomCatalogForm(forms.ModelForm):
             "title": forms.TextInput(attrs={"class": "field-input"}),
             "customer_name": forms.TextInput(attrs={"class": "field-input"}),
             "custom_message": forms.Textarea(attrs={"class": "field-input", "rows": 3}),
-            "expires_at": forms.DateTimeInput(
+            "expires_at": JalaliDateTimeWidget(
                 attrs={"class": "field-input", "type": "datetime-local"},
                 format="%Y-%m-%dT%H:%M",
             ),

@@ -11,13 +11,14 @@
   <title>{% block title %}سنگا{% endblock %}</title>
   <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
   <link rel="icon" href="{% static 'icons/icon.svg' %}" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preload" href="{% static 'fonts/Vazirmatn.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
   {# The query version bypasses an older cache-first worker controlling this first navigation. #}
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=8">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=9">
   {# Interactive controls use the CSP-safe code in static/js/app.js. #}
-  <script src="{% static 'vendor/htmx-2.0.2.min.js' %}"></script>
+  <script src="{% static 'vendor/htmx-2.0.2.min.js' %}" defer></script>
+  <link rel="stylesheet" href="{% static 'css/calendar.css' %}">
+  <script src="{% static 'js/calendar.js' %}" defer></script>
   {% block extra_head %}{% endblock %}
 </head>
 <body class="app-body {% block body_class %}{% endblock %}" hx-boost="true">
@@ -38,7 +39,7 @@
   {% block shell %}
   {% endblock %}
 
-  <script src="{% static 'js/app.js' %}?v=5"></script>
+  <script src="{% static 'js/app.js' %}?v=6"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

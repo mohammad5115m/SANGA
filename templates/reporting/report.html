@@ -23,20 +23,20 @@
   {% comment %}Date filtering applies to the sales and invoice reports. Debtors, aging and
   the freshness lists describe the present, so a window would be misleading.{% endcomment %}
   <form method="get" class="panel filter-bar">
-    <label class="field">
-      <span class="field-label">از تاریخ</span>
-      <input class="field-input" type="date" name="from" value="{{ filters.from }}">
-    </label>
-    <label class="field">
-      <span class="field-label">تا تاریخ</span>
-      <input class="field-input" type="date" name="to" value="{{ filters.to }}">
-    </label>
+    <div class="field">
+      <label class="field-label" for="{{ date_filter_form.from.id_for_label }}">از تاریخ</label>
+      {{ date_filter_form.from }}{{ date_filter_form.from.errors }}
+    </div>
+    <div class="field">
+      <label class="field-label" for="{{ date_filter_form.to.id_for_label }}">تا تاریخ</label>
+      {{ date_filter_form.to }}{{ date_filter_form.to.errors }}
+    </div>
     <button class="btn btn-secondary" type="submit">اعمال</button>
     <a class="btn btn-ghost" href="{% url 'reporting:report' active %}">حذف فیلتر</a>
   </form>
 
   <section class="panel report-body">
-    {% include "reporting/_body.html" %}
+    {% if date_filter_form.errors %}<p class="alert alert-error" role="alert">بازه تاریخ را اصلاح کنید تا گزارش نمایش داده شود.</p>{% else %}{% include "reporting/_body.html" %}{% endif %}
   </section>
 </section>
 {% endblock %}

@@ -2,7 +2,11 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>فاکتور {{ document.number|default:"پیش‌نویس" }} | سنگا</title>
+  {% if document_mode == "export" %}{% persian_font_data as font_data %}{% else %}<link rel="stylesheet" href="{% static 'css/fonts.css' %}">{% endif %}
   <style>
+    {% if document_mode == "export" %}@font-face { font-family: Vazirmatn; src: url("{{ font_data }}") format("woff2"); font-weight: 100 900; }{% endif %}
     :root { --invoice-primary: {{ document.theme.primary_color }}; --ink: #17211c; --muted: #56635c; --line: #d9dfdc; }
     * { box-sizing: border-box; }
     @page {
@@ -67,6 +71,14 @@
       .print-toolbar { display: none; }
       * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     }
+    @media screen and (max-width: 600px) {
+      .invoice-document { padding: 16px; }
+      .doc-header, .party-grid { grid-template-columns: 1fr; gap: 16px; }
+      .doc-title { text-align: right; }
+      .doc-table-scroll { overflow-x: auto; }
+      .doc-table-scroll table { min-width: 580px; }
+      table.summary { width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -84,7 +96,7 @@
       <div class="doc-title">
         <h1>فاکتور فروش</h1>
         <div class="doc-number">شماره: {{ document.number }}</div>
-        <div>تاریخ: {{ document.issue_date }}</div>
+        <div>تاریخ: {{ document.issue_date|jdate }}</div>
         <span class="doc-status">{{ document.status_label }} · {{ document.payment_status_label }}</span>
       </div>
     </header>
@@ -103,6 +115,7 @@
       </div>
     </section>
 
+    <div class="doc-table-scroll" role="region" aria-label="اقلام فاکتور" tabindex="0">
     <table aria-label="اقلام فاکتور">
       <thead><tr>
         <th scope="col" class="col-index">ردیف</th><th scope="col">شرح</th><th scope="col" class="col-qty">مقدار</th>
@@ -119,6 +132,7 @@
       {% endfor %}
       </tbody>
     </table>
+    </div>
 
     <table class="summary" aria-label="جمع مبالغ فاکتور"><tbody>
       <tr><th scope="row">جمع ناخالص اقلام</th><td>{{ document.gross_subtotal }}</td></tr>

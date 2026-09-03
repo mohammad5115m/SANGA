@@ -171,7 +171,7 @@
                         ثبت نشده
                       {% endif %}
                     </strong>
-                    {% if row.prices.b2c.is_special %}<small class="inventory-special-until">تا {{ row.prices.b2c.special_until|date:"Y/m/d، H:i" }}</small>{% endif %}
+                    {% if row.prices.b2c.is_special %}<small class="inventory-special-until">تا {{ row.prices.b2c.special_until|jdatetime }}</small>{% endif %}
                   </div>
                 </div>
               {% endif %}

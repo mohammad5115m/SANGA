@@ -114,7 +114,7 @@ prices the view populated.
       {% for invoice in invoices %}
         <tr>
           <td dir="ltr">{{ invoice.number }}</td>
-          <td>{{ invoice.issue_date }}</td>
+          <td>{{ invoice.issue_date|jdate }}</td>
           {% if invoice.seller_business_id == current_business.id %}
             <td>فروش</td><td>{{ invoice.buyer_name }}</td>
           {% else %}
@@ -140,7 +140,7 @@ prices the view populated.
     <thead><tr><th scope="col">شماره</th><th scope="col">سررسید</th><th scope="col">فاکتور</th><th scope="col">وضعیت</th><th scope="col" class="num">مبلغ</th></tr></thead>
     <tbody>
       {% for cheque in cheques %}
-        <tr><td dir="ltr">{{ cheque.reference_number }}</td><td>{{ cheque.due_date }}</td><td dir="ltr">{{ cheque.invoice.display_number }}</td><td>{{ cheque.get_status_display }}</td><td class="num">{{ cheque.amount|rial }} {{ cheque.currency }}</td></tr>
+        <tr><td dir="ltr">{{ cheque.reference_number }}</td><td>{{ cheque.due_date|jdate }}</td><td dir="ltr">{{ cheque.invoice.display_number }}</td><td>{{ cheque.get_status_display }}</td><td class="num">{{ cheque.amount|rial }} {{ cheque.currency }}</td></tr>
       {% empty %}
         <tr><td colspan="5" class="empty-state">چکی در این بازه ثبت نشده است.</td></tr>
       {% endfor %}
@@ -188,7 +188,7 @@ prices the view populated.
           <td>{{ item.product.commercial_name }}</td>
           <td dir="ltr">{{ item.lot_code }}</td>
           <td class="num">{{ item.available_sqm|sqm }}</td>
-          <td>{{ item.stock_confirmed_at|date:"Y/m/d"|default:"—" }}</td>
+          <td>{{ item.stock_confirmed_at|jdate|default:"—" }}</td>
         </tr>
       {% empty %}
         <tr><td colspan="4" class="empty-state">موجودی همه محصولات به‌روز است.</td></tr>
@@ -207,7 +207,7 @@ prices the view populated.
           <td>{{ price.lot.product.commercial_name }}</td>
           <td>{{ price.tier.name }}</td>
           <td class="num">{{ price.amount|rial }}</td>
-          <td>{{ price.price_expires_at|date:"Y/m/d"|default:"—" }}</td>
+          <td>{{ price.price_expires_at|jdate|default:"—" }}</td>
         </tr>
       {% empty %}
         <tr><td colspan="4" class="empty-state">همه قیمت‌ها به‌روز هستند.</td></tr>

@@ -48,7 +48,7 @@ def _locked_fetcher(url: str, *args, **kwargs):
 def render_pdf(invoice) -> bytes:
     try:
         from weasyprint import HTML
-    except ImportError as exc:
+    except (ImportError, OSError) as exc:
         raise DocumentRenderError("موتور PDF روی سرور نصب نشده است.") from exc
     try:
         result = HTML(string=document_html(invoice), url_fetcher=_locked_fetcher).write_pdf()

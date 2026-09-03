@@ -4,11 +4,11 @@ import logging
 
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
-from django.utils.dateparse import parse_date
 
 from apps.accounting.reports import business_aging
 from apps.businesses.decorators import business_login_required, require_capability
 from apps.businesses.permissions import REPORT_VIEW
+from apps.core.widgets import DateRangeForm
 
 from . import reports
 from .reports import DateRange
@@ -34,20 +34,6 @@ REPORTS: tuple[tuple[str, str], ...] = (
 REPORT_KEYS = {key for key, _ in REPORTS}
 
 
-def _window(request: HttpRequest) -> DateRange:
-    raw_from = (request.GET.get("from") or "").strip()
-    raw_to = (request.GET.get("to") or "").strip()
-    if not raw_from and not raw_to:
-        # Unbounded by default: "everything" is a safer first answer than a
-        # window the reader did not choose and might not notice.
-        return DateRange()
-    try:
-        return DateRange(date_from=parse_date(raw_from) if raw_from else None,
-                         date_to=parse_date(raw_to) if raw_to else None)
-    except ValueError:
-        return DateRange()
-
-
 @business_login_required
 @require_capability(REPORT_VIEW)
 def report_view(request: HttpRequest, key: str = "summary") -> HttpResponse:
@@ -58,14 +44,24 @@ def report_view(request: HttpRequest, key: str = "summary") -> HttpResponse:
     if key not in REPORT_KEYS:
         key = "summary"
     business = request.business
-    window = _window(request)
+    date_filter_form = DateRangeForm(request.GET)
+    if not date_filter_form.is_valid():
+        return render(request, "reporting/report.html", {
+            "reports": REPORTS, "active": key, "title": dict(REPORTS)[key],
+            "date_filter_form": date_filter_form, "filters": {},
+        })
+    window = DateRange(
+        date_from=date_filter_form.cleaned_data.get("from"),
+        date_to=date_filter_form.cleaned_data.get("to"),
+    )
 
     context = {
         "reports": REPORTS,
         "active": key,
         "title": dict(REPORTS)[key],
         "window": window,
-        "filters": {"from": request.GET.get("from", ""), "to": request.GET.get("to", "")},
+        "date_filter_form": date_filter_form,
+        "filters": {key: date_filter_form.canonical(key) for key in ("from", "to")},
         "summary": reports.sales_summary(business, window),
         "money": reports.money_movement(business, window),
     }

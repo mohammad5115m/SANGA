@@ -12,7 +12,7 @@
   <section class="panel stack-md">
     <div class="kv"><span>نوع سند</span><strong>{{ entry.get_entry_type_display }}</strong></div>
     <div class="kv"><span>مبلغ</span><strong>{{ entry.amount|rial }} ریال</strong></div>
-    <div class="kv"><span>تاریخ</span><strong>{{ entry.occurred_on }}</strong></div>
+    <div class="kv"><span>تاریخ</span><strong>{{ entry.occurred_on|jdate }}</strong></div>
     {% if entry.description %}<div class="kv"><span>شرح</span><strong>{{ entry.description }}</strong></div>{% endif %}
 
     <form method="post" class="btn-row">

@@ -44,7 +44,7 @@
         <div class="list-stack">
           {% for inquiry in inquiries %}
             {% if inquiry.url %}<a class="list-item" href="{{ inquiry.url }}">{% else %}<div class="list-item">{% endif %}
-              <div><div class="list-title">{{ inquiry.title }}</div><div class="muted">{{ inquiry.created_at|date:"Y/m/d H:i" }}</div></div>
+              <div><div class="list-title">{{ inquiry.title }}</div><div class="muted">{{ inquiry.created_at|jdatetime }}</div></div>
               <span class="badge">{{ inquiry.status_label }}</span>
             {% if inquiry.url %}</a>{% else %}</div>{% endif %}
           {% empty %}<div class="empty-state">درخواست خریدی برای این مشتری ثبت نشده است.</div>{% endfor %}
@@ -58,7 +58,7 @@
             <li>
               <span class="crm-timeline-dot" aria-hidden="true"></span>
               <div>
-                <div class="crm-timeline-meta"><span>{{ activity.kind }}</span><time>{{ activity.created_at|date:"Y/m/d H:i" }}</time></div>
+                <div class="crm-timeline-meta"><span>{{ activity.kind }}</span><time>{{ activity.created_at|jdatetime }}</time></div>
                 {% if activity.url %}<a class="list-title" href="{{ activity.url }}">{{ activity.title }}</a>{% else %}<strong class="list-title">{{ activity.title }}</strong>{% endif %}
                 <p class="muted">{{ activity.detail }}</p>
               </div>
@@ -95,7 +95,7 @@
       <section class="panel stack-md" aria-labelledby="notes-heading">
         <h2 class="section-title" id="notes-heading">یادداشت‌ها</h2>
         <div class="crm-note-list">
-          {% for note in lead.notes %}<article><p>{{ note.text }}</p><time class="muted">{{ note.created_at|date:"Y/m/d H:i" }}</time></article>{% empty %}<p class="muted">یادداشتی ثبت نشده است.</p>{% endfor %}
+          {% for note in lead.notes %}<article><p>{{ note.text }}</p><time class="muted">{{ note.created_at|jdatetime }}</time></article>{% empty %}<p class="muted">یادداشتی ثبت نشده است.</p>{% endfor %}
         </div>
         {% if can_manage %}
           <form method="post" action="{% url 'inquiries:lead_add_note' lead.id %}" class="stack-sm">

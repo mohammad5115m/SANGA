@@ -34,7 +34,7 @@
           <div class="list-title">{{ inquiry.name }}</div>
           <div class="muted" dir="ltr">{{ inquiry.phone }}</div>
           <div class="muted">
-            {{ inquiry.items.all|length }} محصول · {{ inquiry.created_at|date:"Y/m/d H:i" }}
+            {{ inquiry.items.all|length }} محصول · {{ inquiry.created_at|jdatetime }}
           </div>
         </div>
         <span class="badge">{{ inquiry.get_status_display }}</span>

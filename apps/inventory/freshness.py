@@ -15,6 +15,7 @@ from enum import StrEnum
 
 from django.utils import timezone
 
+from apps.core.calendar import format_jalali, persian_digits
 from apps.core.formatting import format_decimal
 
 from .models import InventoryLot
@@ -57,10 +58,10 @@ def humanize_confirmed(confirmed_at: timezone.datetime | None) -> str:
     local = timezone.localtime(confirmed_at)
     delta = now - confirmed_at
     if delta < timedelta(hours=24) and local.date() == timezone.localdate():
-        return f"امروز، {local.strftime('%H:%M')}"
+        return f"امروز، {persian_digits(local.strftime('%H:%M'))}"
     if delta < timedelta(hours=48):
-        return f"دیروز، {local.strftime('%H:%M')}"
-    return local.strftime("%Y/%m/%d، %H:%M")
+        return f"دیروز، {persian_digits(local.strftime('%H:%M'))}"
+    return format_jalali(local, with_time=True)
 
 
 def stock_view(lot: InventoryLot) -> StockView:

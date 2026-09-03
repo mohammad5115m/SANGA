@@ -6,7 +6,11 @@ from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from django.views.decorators.cache import cache_control
+from django.views.decorators.http import require_GET
+
+from .calendar import calendar_month, jalali_parts
 
 logger = logging.getLogger(__name__)
 
@@ -52,3 +56,14 @@ def service_worker(request: HttpRequest) -> HttpResponse:
         logger.exception("Service worker file missing at %s", sw_path)
         return HttpResponse(status=404)
     return HttpResponse(source, content_type="application/javascript")
+
+
+@require_GET
+def persian_calendar_month(request):
+    today = jalali_parts(timezone.localdate())
+    try:
+        year = int(request.GET.get("year", today.year))
+        month = int(request.GET.get("month", today.month))
+        return JsonResponse(calendar_month(year, month))
+    except (ValueError, OverflowError, TypeError):
+        return JsonResponse({"error": "ماه یا سال معتبر نیست."}, status=400)

@@ -54,7 +54,7 @@
         <p class="sr-only" id="invoice-party-help">با تغییر نوع خریدار، فقط فیلدهای مرتبط همان خریدار فعال می‌شوند.</p>
         <p class="invoice-mode-hint" id="invoice-mode-hint" data-mode-hint aria-live="polite">فاکتور مشتری پس از دریافت کامل مبلغ نهایی می‌شود.</p>
         <div class="form-grid invoice-party-grid">
-          <label class="field field-issue_date"><span class="field-label">{{ form.issue_date.label }}</span>{{ form.issue_date }}{% if form.issue_date.errors %}<span class="field-error">{{ form.issue_date.errors|striptags }}</span>{% endif %}</label>
+          <div class="field field-issue_date"><label class="field-label" for="{{ form.issue_date.id_for_label }}">{{ form.issue_date.label }}</label>{{ form.issue_date }}{% if form.issue_date.errors %}<span class="field-error">{{ form.issue_date.errors|striptags }}</span>{% endif %}</div>
         </div>
         <div class="form-grid invoice-choice-panel" id="invoice-customer-fields" data-counterparty-section="customer" data-counterparty-panel>
           <label class="field field-customer_name"><span class="field-label">{{ form.customer_name.label }}</span>{{ form.customer_name }}{% if form.customer_name.errors %}<span class="field-error">{{ form.customer_name.errors|striptags }}</span>{% endif %}</label>
@@ -152,4 +152,4 @@
 </section>
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}?v=4"></script><script src="{% static 'js/invoice_editor.js' %}?v=5"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/invoice_calculator.js' %}?v=4"></script><script src="{% static 'js/invoice_editor.js' %}?v=6"></script>{% endblock %}

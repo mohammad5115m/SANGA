@@ -35,7 +35,7 @@
         <strong class="catalog-price catalog-price-lg" dir="ltr">{{ price.label }}</strong>
         <small>قیمت معتبر برای همکار واردشده</small>
         {% if price.is_special and price.special_until %}
-          <span class="badge badge-special">فروش ویژه تا {{ price.special_until|date:"Y/m/d" }}</span>
+          <span class="badge badge-special">فروش ویژه تا {{ price.special_until|jdate }}</span>
         {% endif %}
       </div>
 

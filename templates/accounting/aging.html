@@ -7,7 +7,7 @@
   <div class="toolbar">
     <div>
       <h1 class="page-title">گزارش سنی بدهی</h1>
-      <p class="page-lead">مطالبات باز به تفکیک عمر بدهی، تا تاریخ {{ report.as_of }}</p>
+      <p class="page-lead">مطالبات باز به تفکیک عمر بدهی، تا تاریخ {{ report.as_of|jdate }}</p>
     </div>
     <a class="btn btn-ghost btn-sm" href="{% url 'accounting:index' %}">دفتر حساب</a>
   </div>
