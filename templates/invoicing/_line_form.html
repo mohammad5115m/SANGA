@@ -8,7 +8,7 @@
       <button class="btn btn-ghost btn-sm" type="button" data-line-remove>حذف</button>
     </div>
   </div>
-  {{ line.item }}{{ line.ORDER }}<span hidden>{{ line.DELETE }}</span>
+  {{ line.item }}{{ line.ORDER.as_hidden }}<span hidden>{{ line.DELETE }}</span>
   {{ line.stone_type.as_hidden }}{{ line.grade.as_hidden }}{{ line.description.as_hidden }}
   {{ line.discount_type.as_hidden }}{{ line.discount_value.as_hidden }}
   {% if line.item.errors %}<span class="field-error">محصول انتخاب‌شده معتبر یا متعلق به این کسب‌وکار نیست.</span>{% endif %}

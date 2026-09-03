@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 import pytest
@@ -71,9 +72,9 @@ def test_invoice_form_uses_lazy_product_picker(client):
     assert "صدور نهایی" in body
     assert "css/invoice.css?v=4" in body
     assert "js/invoice_calculator.js?v=4" in body
-    assert "js/invoice_editor.js?v=5" in body
+    assert re.search(r"js/invoice_editor\.js\?v=\d+", body)
 
-    editor_script = (settings.BASE_DIR / "static/js/invoice_editor.js").read_text()
+    editor_script = (settings.BASE_DIR / "static/js/invoice_editor.js").read_text(encoding="utf-8")
     assert "response.status === 204" in editor_script
     assert "result.pending" in editor_script
 

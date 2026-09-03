@@ -51,11 +51,16 @@
   function initToasts(root) {
     elementsWithin(root, ".toast:not([data-ui-ready])").forEach(function (toast) {
       toast.dataset.uiReady = "true";
-      var timer = window.setTimeout(function () { dismiss(toast); }, 6000);
+      var persistent = toast.classList.contains("toast-error") || toast.classList.contains("toast-warning");
+      var timer = persistent ? null : window.setTimeout(function () { dismiss(toast); }, 8000);
+      toast.addEventListener("focusin", function () { window.clearTimeout(timer); });
+      toast.addEventListener("focusout", function () {
+        if (!persistent) timer = window.setTimeout(function () { dismiss(toast); }, 8000);
+      });
 
       toast.addEventListener("mouseenter", function () { window.clearTimeout(timer); });
       toast.addEventListener("mouseleave", function () {
-        timer = window.setTimeout(function () { dismiss(toast); }, 3000);
+        if (!persistent) timer = window.setTimeout(function () { dismiss(toast); }, 8000);
       });
 
       var close = toast.querySelector(".toast-close");
@@ -352,7 +357,7 @@
   function initUnsavedForms(root) {
     elementsWithin(root, "form[data-unsaved-warning]:not([data-ui-ready])").forEach(function (form) {
       form.dataset.uiReady = "true";
-      form.dataset.dirty = "false";
+      form.dataset.dirty = form.dataset.dirty || "false";
       function markDirty() { form.dataset.dirty = "true"; }
       form.addEventListener("input", markDirty);
       form.addEventListener("change", markDirty);
@@ -361,10 +366,47 @@
 
   function focusFirstError(root) {
     var invalid = root.querySelector && root.querySelector('[aria-invalid="true"]');
-    if (invalid) invalid.focus({preventScroll: true});
+    if (invalid && invalid.getBoundingClientRect().width) invalid.focus();
+  }
+
+  function initFormAccessibility(root) {
+    elementsWithin(root, ".field, .form-row").forEach(function (group) {
+      var errors = group.querySelector(".field-error, .errorlist");
+      if (!errors) return;
+      var control = group.querySelector("input:not([type=hidden]), select, textarea");
+      if (!control) return;
+      if (!errors.id) errors.id = (control.id || "field-" + Date.now()) + "_errors";
+      control.setAttribute("aria-invalid", "true");
+      var descriptions = new Set((control.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean));
+      descriptions.add(errors.id);
+      control.setAttribute("aria-describedby", Array.from(descriptions).join(" "));
+    });
+  }
+
+  function resetForm(form, failed) {
+    if (!form || !form.matches("form")) return;
+    if (failed && form.dataset.wasDirty === "true") form.dataset.dirty = "true";
+    delete form.dataset.submitting;
+    delete form.dataset.wasDirty;
+    form.querySelectorAll('[aria-busy="true"]').forEach(function (button) {
+      button.removeAttribute("aria-busy");
+      button.classList.remove("is-disabled");
+    });
+  }
+
+  function requestError() {
+    var main = document.getElementById("main-content");
+    if (!main || main.querySelector("[data-request-error]")) return;
+    var alert = document.createElement("div");
+    alert.className = "alert alert-error";
+    alert.dataset.requestError = "true";
+    alert.setAttribute("role", "alert");
+    alert.textContent = "ارتباط با سرور برقرار نشد. اطلاعات شما در فرم باقی مانده؛ دوباره تلاش کنید.";
+    main.prepend(alert);
   }
 
   function init(root) {
+    initFormAccessibility(root);
     initToasts(root);
     initGalleries(root);
     initShareActions(root);
@@ -404,7 +446,9 @@
     }
 
     var link = event.target.closest("a[href]");
-    if (link && hasDirtyForm() && !window.confirm("تغییرات ذخیره‌نشده دارید. از این صفحه خارج می‌شوید؟")) {
+    var samePage = link && link.origin === window.location.origin && link.pathname === window.location.pathname && link.search === window.location.search;
+    var leavesPage = link && !samePage && !link.target && !link.hasAttribute("download") && /^https?:/.test(link.protocol);
+    if (leavesPage && hasDirtyForm() && !window.confirm("تغییرات ذخیره‌نشده دارید. از این صفحه خارج می‌شوید؟")) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
@@ -421,13 +465,16 @@
     var submitter = event.submitter;
     if (submitter && submitter.dataset.confirm && !window.confirm(submitter.dataset.confirm)) {
       event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
     if (form.dataset.submitting === "true") {
       event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
     if (!event.defaultPrevented) {
+      form.dataset.wasDirty = form.dataset.dirty || "false";
       form.dataset.dirty = "false";
       form.dataset.submitting = "true";
       submitter = submitter || form.querySelector('[type="submit"]');
@@ -436,20 +483,58 @@
         submitter.classList.add("is-disabled");
       }
     }
-  });
+  }, true);
 
   document.addEventListener("htmx:beforeRequest", function () {
+    document.querySelectorAll("[data-request-error]").forEach(function (alert) { alert.remove(); });
     document.body.classList.add("is-loading");
     announce("در حال بارگذاری…");
   });
-  ["htmx:afterRequest", "htmx:sendError", "htmx:responseError"].forEach(function (eventName) {
+  ["htmx:afterRequest", "htmx:sendError", "htmx:responseError", "htmx:timeout", "htmx:sendAbort"].forEach(function (eventName) {
     document.addEventListener(eventName, function (event) {
       document.body.classList.remove("is-loading");
+      var failed = eventName !== "htmx:afterRequest" || (event.detail && event.detail.successful === false);
+      var source = event.detail && event.detail.elt;
+      resetForm(source && (source.matches("form") ? source : source.closest("form")), failed);
       if (eventName !== "htmx:afterRequest" || (event.detail && event.detail.successful === false)) {
         announce("در بارگذاری صفحه مشکلی پیش آمد؛ دوباره تلاش کنید.");
+        if (eventName !== "htmx:sendAbort") requestError();
       } else {
         announce("صفحه به‌روزرسانی شد.");
       }
+    });
+  });
+  window.addEventListener("pageshow", function () {
+    document.querySelectorAll("form[data-submitting]").forEach(function (form) { resetForm(form, true); });
+    document.body.classList.remove("is-loading");
+  });
+  document.addEventListener("htmx:historyRestore", function () {
+    document.querySelectorAll("[data-ui-ready]").forEach(function (element) {
+      delete element.dataset.uiReady;
+    });
+    document.querySelectorAll("form[data-submitting]").forEach(function (form) { resetForm(form, true); });
+    init(document);
+    if (window.SangaInvoiceEditorInit) window.SangaInvoiceEditorInit();
+  });
+  document.addEventListener("htmx:beforeSwap", function (event) {
+    var xhr = event.detail.xhr;
+    if (xhr && [400, 422].includes(xhr.status) && xhr.responseText.includes('id="main-content"')) {
+      event.detail.shouldSwap = true;
+      event.detail.isError = false;
+    }
+  });
+  document.addEventListener("htmx:afterSettle", function (event) {
+    if (event.detail.target !== document.body) return;
+    var focus = document.querySelector('[aria-invalid="true"], #main-content');
+    if (focus) focus.focus();
+  });
+  document.addEventListener("pointerdown", function (event) {
+    document.querySelectorAll("[data-product-picker]").forEach(function (picker) {
+      if (picker.contains(event.target)) return;
+      var results = picker.querySelector("[data-product-results]");
+      var query = picker.querySelector("[data-product-query]");
+      if (results) results.hidden = true;
+      if (query) { query.setAttribute("aria-expanded", "false"); query.removeAttribute("aria-activedescendant"); }
     });
   });
   document.addEventListener("htmx:load", function (event) { init(event.detail.elt || document); });

@@ -3,7 +3,7 @@
 {% block title %}صورت‌حساب {{ colleague.name }}{% endblock %}
 
 {% block shell %}
-<main class="print-sheet">
+<main class="print-sheet" id="main-content" tabindex="-1">
   <div class="print-actions no-print">
     <button class="btn btn-primary btn-sm" type="button" data-print-action>چاپ / ذخیره PDF</button>
   </div>
@@ -23,6 +23,7 @@
     مانده حساب: <strong>{{ balance.amount|rial }} ریال · {{ balance.label }}</strong>
   </div>
 
+  <div class="table-wrap" role="region" aria-label="گردش حساب" tabindex="0">
   <table class="print-table">
     <thead>
       <tr>
@@ -37,7 +38,7 @@
     <tbody>
       {% for entry in entries %}
         <tr>
-          <td>{{ entry.occurred_on }}</td>
+          <td>{{ entry.occurred_on|jdate }}</td>
           <td>{{ entry.get_entry_type_display }}{% if entry.description %} — {{ entry.description }}{% endif %}</td>
           <td>{{ entry.reference|default:"—" }}</td>
           <td>{% if entry.is_debit %}{{ entry.amount|rial }}{% else %}—{% endif %}</td>
@@ -67,5 +68,6 @@
       </tfoot>
     {% endif %}
   </table>
+  </div>
 </main>
 {% endblock %}

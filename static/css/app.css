@@ -12,7 +12,7 @@
   --color-success: #2f6b4f;
   --color-danger: #8f2d2d;
   --color-info: #2f4f6b;
-  --color-focus: #b9792f;
+  --color-focus: #79521f;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
@@ -1153,7 +1153,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
 /* Printable statement */
 .print-sheet { max-width: 820px; margin: 0 auto; padding: var(--space-5); background: #fff; }
 .print-actions { margin-bottom: var(--space-4); }
-.print-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid var(--color-line); padding-bottom: var(--space-3); margin-bottom: var(--space-3); }
+.print-head { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; align-items: flex-start; border-bottom: 2px solid var(--color-line); padding-bottom: var(--space-3); margin-bottom: var(--space-3); }
 .print-balance { margin: var(--space-3) 0; font-size: 1.05rem; }
 .print-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .print-table th, .print-table td { border: 1px solid var(--color-line); padding: 0.5rem; text-align: right; }
@@ -3031,4 +3031,30 @@ input[type="number"], input[type="tel"], input[type="date"] {
   .catalog-builder-chevron {
     transition: none;
   }
+}
+
+
+/* Shared operational controls and readable mixed-direction content. */
+:where(input, select, textarea) { scroll-margin-block: 100px; }
+.field { min-width: 0; }
+.field :is(input, select, textarea) { max-width: 100%; }
+.field-error, .errorlist { color: var(--color-danger); font-size: .875rem; }
+.errorlist { margin: .35rem 0; padding-inline-start: 1.2rem; }
+[aria-invalid="true"] { border-color: var(--color-danger); }
+.btn-row { row-gap: var(--space-2); }
+.btn[aria-busy="true"] { cursor: progress; opacity: .72; }
+time, .jalali-date-row input { font-variant-numeric: tabular-nums; }
+[dir="ltr"] { unicode-bidi: isolate; }
+.list-item > div, .toolbar > div, .kv > * { min-width: 0; overflow-wrap: anywhere; }
+.panel :is(table, .table-wrap) { max-width: 100%; }
+.gallery-slide video { aspect-ratio: 4 / 3; object-fit: contain; }
+.toast:focus-within { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .field-input, .jalali-control input, .jalali-control select { font-size: 1rem; }
+  .toolbar > .btn-row { width: 100%; }
+  .btn-row .btn { min-height: 44px; }
+  .kv { gap: var(--space-2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

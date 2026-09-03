@@ -1,8 +1,10 @@
-(function () {
+(function initInvoiceEditor() {
   "use strict";
 
   var editor = document.querySelector("[data-invoice-editor]");
-  if (!editor) return;
+  window.SangaInvoiceEditorInit = initInvoiceEditor;
+  if (!editor || editor.sangaEditorReady) return;
+  editor.sangaEditorReady = true;
   editor.classList.add("is-enhanced");
   var form = editor.querySelector("[data-invoice-form]");
   var lines = editor.querySelector("[data-invoice-lines]");
@@ -17,6 +19,7 @@
   var compactPreview = window.matchMedia("(max-width: 899px)");
   var previewTimer;
   var previewController;
+  var disposePickers = [];
   var customerName = form.elements.customer_name;
   var customerOptions = editor.querySelector("#invoice-customer-options");
   var modeHint = editor.querySelector("[data-mode-hint]");
@@ -158,8 +161,8 @@
   }
 
   function initPicker(picker) {
-    if (picker.dataset.ready === "true") return;
-    picker.dataset.ready = "true";
+    if (picker.sangaPickerReady) return;
+    picker.sangaPickerReady = true;
     var row = picker.closest("[data-invoice-line]");
     var query = picker.querySelector("[data-product-query]");
     var results = picker.querySelector("[data-product-results]");
@@ -167,6 +170,10 @@
     var hidden = field(row, "item");
     var timer;
     var controller;
+    disposePickers.push(function () {
+      clearTimeout(timer);
+      if (controller) controller.abort();
+    });
 
     var activeIndex = -1;
     function setExpanded(value) {
@@ -254,9 +261,7 @@
       query.focus();
       changed();
     });
-    document.addEventListener("pointerdown", function (event) {
-      if (!picker.contains(event.target)) hide();
-    });
+
   }
 
   function initRow(row) {
@@ -312,6 +317,7 @@
 
   function requestPreview(immediate) {
     clearTimeout(previewTimer);
+    if (!editor.isConnected) return;
     if (compactPreview.matches && !previewPanel.classList.contains("is-preview-open")) {
       previewStatus.textContent = "برای مشاهده، پیش‌نمایش را باز کنید";
       setPreviewLoading(false);
@@ -429,13 +435,33 @@
   changed();
   var errorSummary = editor.querySelector("[data-error-summary]");
   if (errorSummary) errorSummary.focus();
-  window.addEventListener("pageshow", function () {
+  var pageShow = function () {
     syncCounterpartyMode();
     changed();
-  });
+  };
+  window.addEventListener("pageshow", pageShow);
   var handlePreviewViewportChange = function () {
     if (!compactPreview.matches) requestPreview(true);
   };
+  function cleanup(event) {
+    if (event.detail.elt !== editor && !event.detail.elt.contains(editor)) return;
+    clearTimeout(previewTimer);
+    if (previewController) previewController.abort();
+    window.removeEventListener("pageshow", pageShow);
+    disposePickers.forEach(function (dispose) { dispose(); });
+    if (compactPreview.removeEventListener) compactPreview.removeEventListener("change", handlePreviewViewportChange);
+    else compactPreview.removeListener(handlePreviewViewportChange);
+    document.removeEventListener("htmx:beforeCleanupElement", cleanup);
+  }
+  document.addEventListener("htmx:beforeCleanupElement", cleanup);
+  editor.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && editor.classList.contains("is-preview-expanded")) {
+      editor.classList.remove("is-preview-expanded");
+      previewExpand.setAttribute("aria-expanded", "false");
+      previewExpand.textContent = "نمایش بزرگ";
+      previewExpand.focus();
+    }
+  });
   if (compactPreview.addEventListener) compactPreview.addEventListener("change", handlePreviewViewportChange);
   else compactPreview.addListener(handlePreviewViewportChange);
 })();

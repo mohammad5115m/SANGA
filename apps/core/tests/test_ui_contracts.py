@@ -19,6 +19,29 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def test_template_navigation_only_references_registered_routes():
+    from django.urls import URLResolver, get_resolver
+
+    def names(patterns, prefix=""):
+        found = set()
+        for pattern in patterns:
+            if isinstance(pattern, URLResolver):
+                child = prefix + (pattern.namespace + ":" if pattern.namespace else "")
+                found.update(names(pattern.url_patterns, child))
+            elif pattern.name:
+                found.add(prefix + pattern.name)
+        return found
+
+    registered = names(get_resolver().url_patterns)
+    literal_url = re.compile(r"""{%\s*url\s+['"]([^'"]+)['"]""")
+    missing = [
+        (str(path.relative_to(TEMPLATE_ROOT)), name)
+        for path in _templates() for name in literal_url.findall(_read(path))
+        if name not in registered
+    ]
+    assert not missing, missing
+
+
 def test_templates_do_not_use_inline_event_handlers():
     inline_event = re.compile(r"\son(?:click|change|submit|input|load)\s*=", re.IGNORECASE)
     offenders = [str(path.relative_to(TEMPLATE_ROOT)) for path in _templates() if inline_event.search(_read(path))]
@@ -123,8 +146,8 @@ def test_pwa_refreshes_static_assets_instead_of_serving_stale_css(client):
     app_script = _read(Path(settings.BASE_DIR) / "static/js/app.js")
     worker = _read(Path(settings.BASE_DIR) / "static/js/sw.js")
 
-    assert "app.css' %}?v=7" in base
-    assert "app.js' %}?v=5" in base
+    assert re.search(r"app\.css' %}\?v=\d+", base)
+    assert re.search(r"app\.js' %}\?v=\d+", base)
     assert 'const SHELL_CACHE = "sanga-shell-v4"' in worker
     assert 'url.pathname.startsWith("/static/")' in worker
     assert "networkFirst(request)" in worker

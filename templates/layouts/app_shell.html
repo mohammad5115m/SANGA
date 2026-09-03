@@ -27,9 +27,9 @@ hourly, so the primary bar stays short enough to read on a phone.
       {% url 'businesses:dashboard' as home_url %}
       <a class="topbar-link {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
          {% if request.path == home_url %}aria-current="page"{% endif %}>خانه</a>
-      <a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}"
+      {% if 'inventory.view' in capabilities %}<a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}"
          href="{% url 'inventory:lot_list' %}"
-         {% if request.resolver_match.app_name == 'inventory' %}aria-current="page"{% endif %}>موجودی من</a>
+         {% if request.resolver_match.app_name == 'inventory' %}aria-current="page"{% endif %}>موجودی من</a>{% endif %}
       <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
          href="{% url 'marketplace:home' %}"
          {% if request.resolver_match.app_name == 'marketplace' %}aria-current="page"{% endif %}>بازار</a>
@@ -78,12 +78,12 @@ hourly, so the primary bar stays short enough to read on a phone.
       <svg class="nav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
       <span class="nav-label">خانه</span>
     </a>
-    <a class="nav-item {% if request.resolver_match.app_name == 'inventory' and 'quick_add' not in request.resolver_match.url_name %}is-active{% endif %}"
+    {% if 'inventory.view' in capabilities %}<a class="nav-item {% if request.resolver_match.app_name == 'inventory' and 'quick_add' not in request.resolver_match.url_name %}is-active{% endif %}"
        href="{% url 'inventory:lot_list' %}"
        {% if request.resolver_match.app_name == 'inventory' and 'quick_add' not in request.resolver_match.url_name %}aria-current="page"{% endif %}>
       <svg class="nav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
       <span class="nav-label">موجودی من</span>
-    </a>
+    </a>{% endif %}
     {% comment %}
     Gated on plan as well as capability. A browse-only or expired owner bypasses
     every capability check by design, so checking capabilities alone left the

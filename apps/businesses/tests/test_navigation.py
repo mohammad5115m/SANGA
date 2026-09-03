@@ -35,6 +35,17 @@ def _login(client, business, membership=None):
 PRIMARY_NAV = ("خانه", "موجودی من", "بازار", "فاکتورها", "کاتالوگ‌ها", "بیشتر")
 
 
+@pytest.mark.parametrize("permissions", [[], ["ledger.view"], ["report.view"]])
+def test_navigation_matches_restricted_member_capabilities(client, shop, permissions):
+    staff = BusinessMembership.objects.create(
+        business=shop, user=make_user("09995550201"), role="staff", permissions=permissions,
+    )
+    _login(client, shop, staff)
+    body = client.get(reverse("businesses:more")).content.decode()
+    assert 'href="/app/inventory/"' not in body
+    assert ('href="/app/reports/"' in body) == ("report.view" in permissions)
+
+
 @pytest.mark.django_db
 def test_the_primary_navigation_has_the_six_destinations(client, shop):
     _login(client, shop)

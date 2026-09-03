@@ -21,16 +21,16 @@
       <h2 class="section-title" id="guided-heading">سنگ را برای کجا می‌خواهید؟</h2>
       <p class="muted">یکی از کاربردها را بزنید؛ فقط محصولاتی می‌آیند که فروشنده برای همان کار ثبت کرده است.</p>
     </div>
-    <div class="guided-options" role="list">
+    <nav class="guided-options" aria-label="انتخاب کاربرد سنگ">
       {% for application in guided_applications %}
         <a class="guided-option{% if application.code in selected_applications %} is-active{% endif %}"
-           href="?applications={{ application.code }}#all-products-heading" role="listitem">
+           href="?applications={{ application.code }}#all-products-heading">
           <span class="guided-option-icon" aria-hidden="true">{{ forloop.counter }}</span>
           <span>{{ application.name }}</span>
         </a>
       {% endfor %}
-      <a class="guided-option guided-option-more" href="#product-filters" role="listitem"><span aria-hidden="true">＋</span><span>فیلترهای دقیق‌تر</span></a>
-    </div>
+      <a class="guided-option guided-option-more" href="#product-filters"><span aria-hidden="true">＋</span><span>فیلترهای دقیق‌تر</span></a>
+    </nav>
     {% if business.phone %}<p class="guided-help">هنوز مطمئن نیستید؟ <a href="tel:{{ business.phone }}">برای انتخاب سنگ مشاوره بگیرید</a>.</p>{% endif %}
   </section>
 
@@ -46,7 +46,7 @@
     <div class="product-rail" role="list">
       {% for card in special_cards %}
         {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
-        <div role="listitem">{% include "inventory/_product_card.html" with show_select=True %}</div>
+        <div>{% include "inventory/_product_card.html" with show_select=True %}</div>
       {% endfor %}
     </div>
   </section>
@@ -63,7 +63,7 @@
     <div class="product-rail" role="list">
       {% for card in section.cards %}
         {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
-        <div role="listitem">{% include "inventory/_product_card.html" with show_select=True %}</div>
+        <div>{% include "inventory/_product_card.html" with show_select=True %}</div>
       {% endfor %}
     </div>
   </section>
