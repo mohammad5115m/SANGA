@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
-from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
 class PriceTier(models.Model):
@@ -26,10 +27,19 @@ class PriceTier(models.Model):
 
 
 class LotPrice(models.Model):
-    class Unit(models.TextChoices):
-        PER_SQM = "per_sqm", "به ازای متر مربع"
-        PER_SLAB = "per_slab", "به ازای اسلب"
-        INQUIRY_ONLY = "inquiry_only", "فقط استعلام"
+    """One audience's price for one item.
+
+    Freshness and special-sale pricing live on this row rather than on the item,
+    and that placement is a security decision, not a modelling preference. A
+    single ``special_price`` column on the item would be an unlabelled number
+    that some public template eventually renders — leaking a B2B figure. Here,
+    the tier gate that already protects ``amount`` protects the special price
+    for free.
+    """
+
+    class Mode(models.TextChoices):
+        FIXED = "fixed", "قیمت مشخص"
+        INQUIRY = "inquiry", "استعلام قیمت"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # FK added when inventory.InventoryLot exists; use string reference.
@@ -39,84 +49,137 @@ class LotPrice(models.Model):
         related_name="prices",
     )
     tier = models.ForeignKey(PriceTier, on_delete=models.PROTECT, related_name="lot_prices")
+    mode = models.CharField("نوع قیمت", max_length=20, choices=Mode.choices, default=Mode.FIXED)
     amount = models.DecimalField(
-        max_digits=14,
+        # The product form accepts up to fourteen whole Rial digits. DecimalField's
+        # max_digits includes decimal_places, so this must be 16 rather than 14.
+        # SQLite otherwise stores the value and only crashes when it is read back.
+        max_digits=16,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal("0"))],
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
     currency = models.CharField(max_length=3, default="IRR")
-    unit = models.CharField(max_length=20, choices=Unit.choices, default=Unit.PER_SQM)
+
+    # Price validity is independent of stock validity: a seller may trust their
+    # stock for ten days and their price for two.
+    price_confirmed_at = models.DateTimeField(null=True, blank=True)
+    price_valid_for_days = models.PositiveSmallIntegerField("اعتبار قیمت (روز)", default=7)
+    # Derived on write from the two fields above, so "which prices need
+    # rechecking?" is an indexed query rather than a Python scan. Nothing
+    # rewrites this on a timer.
+    price_expires_at = models.DateTimeField(null=True, blank=True, db_index=True, editable=False)
+
+    special_amount = models.DecimalField(
+        "قیمت فروش ویژه",
+        max_digits=16,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    special_until = models.DateTimeField("پایان فروش ویژه", null=True, blank=True)
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "قیمت محموله"
-        verbose_name_plural = "قیمت محموله‌ها"
+        verbose_name = "قیمت محصول"
+        verbose_name_plural = "قیمت محصولات"
         constraints = [
             models.UniqueConstraint(fields=["lot", "tier"], name="uniq_price_per_lot_tier"),
+            models.CheckConstraint(
+                condition=models.Q(mode="inquiry") | models.Q(amount__isnull=False),
+                name="price_fixed_requires_amount",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__isnull=True) | models.Q(amount__gt=0),
+                name="price_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(special_amount__isnull=True) | models.Q(special_amount__gt=0),
+                name="price_special_positive",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(special_amount__isnull=True, special_until__isnull=True)
+                    | models.Q(special_amount__isnull=False, special_until__isnull=False)
+                ),
+                name="price_special_pair",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(special_amount__isnull=True)
+                    | (
+                        models.Q(mode="fixed", amount__isnull=False)
+                        & models.Q(special_amount__lt=models.F("amount"))
+                    )
+                ),
+                name="price_special_below_amount",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(price_valid_for_days__gte=1, price_valid_for_days__lte=365),
+                name="price_valid_days_range",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"{self.lot_id} / {self.tier.code}: {self.amount} {self.currency}"
 
+    def save(self, *args, **kwargs):
+        expires_at = self.compute_price_expiry()
+        if expires_at != self.price_expires_at:
+            self.price_expires_at = expires_at
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "price_expires_at"}
+        super().save(*args, **kwargs)
 
-class ContactPrice(models.Model):
-    """A price for one lot, offered to one specific contact of the lot's owner.
+    def compute_price_expiry(self):
+        if self.mode != self.Mode.FIXED or self.price_confirmed_at is None:
+            return None
+        return self.price_confirmed_at + timedelta(days=self.price_valid_for_days)
 
-    This is not a rules engine: it is a plain per-contact override that wins over
-    the B2B tier for that one partner and nobody else. Tenant scoping rides on
-    ``contact.business``, which the service checks against ``lot.business`` so a
-    business can never price another business's lot.
+    @property
+    def is_fresh(self) -> bool:
+        expires_at = self.compute_price_expiry()
+        return expires_at is not None and expires_at > timezone.now()
 
-    An override only ever reaches a viewer through
-    ``services.resolve_prices_for_viewer`` with the ``b2b_partner`` audience, and
-    only when the viewer *is* the business the contact is linked to. The public
-    B2C catalog and anonymous visitors never see one.
-    """
+    @classmethod
+    def needs_confirmation_q(cls):
+        """Predicate for a fixed price that has stopped being current."""
+        from django.db.models import Q
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    contact = models.ForeignKey(
-        "contacts.Contact",
-        on_delete=models.CASCADE,
-        related_name="lot_prices",
-    )
-    lot = models.ForeignKey(
-        "inventory.InventoryLot",
-        on_delete=models.CASCADE,
-        related_name="contact_prices",
-    )
-    amount = models.DecimalField(
-        "مبلغ",
-        max_digits=14,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal("0"))],
-    )
-    currency = models.CharField(max_length=3, default="IRR")
-    unit = models.CharField(
-        "واحد",
-        max_length=20,
-        choices=LotPrice.Unit.choices,
-        default=LotPrice.Unit.PER_SQM,
-    )
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="contact_prices_created",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+        return Q(mode=cls.Mode.FIXED) & (
+            Q(price_expires_at__isnull=True) | Q(price_expires_at__lte=timezone.now())
+        )
 
-    class Meta:
-        verbose_name = "قیمت اختصاصی مخاطب"
-        verbose_name_plural = "قیمت‌های اختصاصی مخاطبین"
-        ordering = ["contact__display_name"]
-        constraints = [
-            models.UniqueConstraint(fields=["contact", "lot"], name="uniq_price_per_contact_lot"),
-        ]
-        indexes = [
-            models.Index(fields=["lot", "contact"]),
-        ]
+    @property
+    def special_is_live(self) -> bool:
+        if self.special_amount is None or self.special_until is None:
+            return False
+        # A promotion cannot revive an underlying price the seller no longer
+        # confirms. Both numbers disappear together when regular price freshness
+        # expires, even if the promotion end time is later.
+        return self.is_fresh and self.special_until > timezone.now()
 
-    def __str__(self) -> str:
-        return f"{self.lot_id} / {self.contact_id}: {self.amount} {self.currency}"
+    def effective_amount(self) -> Decimal | None:
+        """The number to show, or ``None`` when it must read «استعلام قیمت».
+
+        An expired fixed price returns ``None``: the stored figure is kept so the
+        seller can see what they last set, but it stops being presented as
+        current. A live special sale beats the standard amount.
+        """
+        if self.mode == self.Mode.INQUIRY:
+            return None
+        if self.special_is_live:
+            return self.special_amount
+        if not self.is_fresh:
+            return None
+        return self.amount
+
+
+# ContactPrice (a per-colleague price override) was removed in V2. Two channels —
+# B2B and B2C — are what the business actually needs, and a third, per-counterparty
+# axis made every price question ("what does this cost?") depend on who is asking
+# in a way sellers could not audit. See pricing.0003.

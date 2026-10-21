@@ -1,4 +1,4 @@
-# Design System Notes — سنگا
+# Design System Notes — Sang Esf
 
 ## Direction
 

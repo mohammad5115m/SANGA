@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block body_class %}onboarding-body{% endblock %}
 
 {% block shell %}
 <div class="onboarding-shell">
   <header class="onboarding-header">
-    <div class="brand-name">سنگا</div>
+    <img class="sanga-logo" src="{% static 'icons/logo.svg' %}?v=5" alt="Sang Esf" width="285" height="78">
     {% if step and total_steps %}
     <div class="stepper" aria-label="پیشرفت راه‌اندازی">
       <div class="stepper-track">
@@ -15,7 +16,7 @@
     </div>
     {% endif %}
   </header>
-  <main class="onboarding-main">
+  <main class="onboarding-main" id="main-content" tabindex="-1">
     {% block content %}{% endblock %}
   </main>
 </div>

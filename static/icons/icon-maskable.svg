@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="logo-title">
+  <title id="logo-title">Sang Esf</title>
+  <rect width="96" height="96" fill="#23362d"/><g transform="translate(10 10) scale(.791667)">
+<path d="M22 75V45C22 31 33 22 48 14C63 22 74 31 74 45V75" fill="none" stroke="#d3bd99" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M39 37 57 38 68 50 63 66 48 73 31 64 28 51Z" fill="#fffdf9"/>
+<path d="M39 37 57 38 68 50 47 52Z" fill="#8b5e2b"/>
+<path d="M47 52 68 50 63 66 48 73Z" fill="#d3bd99"/>
+</g>
+</svg>

@@ -5,4 +5,4 @@ class ContactsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.contacts"
     label = "contacts"
-    verbose_name = "Contacts"
+    verbose_name = "مخاطبان"

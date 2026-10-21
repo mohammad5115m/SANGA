@@ -34,7 +34,7 @@ class Contact(models.Model):
         null=True,
         blank=True,
         related_name="linked_contacts",
-        help_text="اتصال اختیاری به یک همکار در سنگا",
+        help_text="اتصال اختیاری به یک همکار در Sang Esf",
     )
 
     is_active = models.BooleanField(default=True)

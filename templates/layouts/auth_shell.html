@@ -1,19 +1,19 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block body_class %}auth-body{% endblock %}
 
 {% block shell %}
 <div class="auth-shell">
   <div class="auth-hero" aria-hidden="true"></div>
-  <div class="auth-panel">
-    <div class="brand-lockup brand-lockup-lg">
-      <span class="brand-mark" aria-hidden="true"></span>
+  <main class="auth-panel" id="main-content" tabindex="-1">
+    <div class="brand-lockup brand-lockup-lg sanga-brand">
       <div>
-        <div class="brand-name">سنگا</div>
-        <div class="brand-sub">موجودی یک‌بار؛ فروش چندکاناله</div>
+        <img class="sanga-logo" src="{% static 'icons/logo.svg' %}?v=5" alt="Sang Esf" width="285" height="78">
+        <div class="brand-sub">بازار تخصصی سنگ اصفهان</div>
       </div>
     </div>
     {% block content %}{% endblock %}
-  </div>
+  </main>
 </div>
 {% endblock %}

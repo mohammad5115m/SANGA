@@ -1,0 +1,11 @@
+{% if proposal.status == 'draft' %}
+  <span class="badge">پیش‌نویس</span>
+{% elif proposal.status == 'pending' %}
+  <span class="badge badge-warn">در انتظار تأیید</span>
+{% elif proposal.status == 'confirmed' %}
+  <span class="badge badge-success">تأیید و نهایی شد</span>
+{% elif proposal.status == 'rejected' %}
+  <span class="badge badge-danger">رد شد</span>
+{% else %}
+  <span class="badge">لغو شد</span>
+{% endif %}

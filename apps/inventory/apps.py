@@ -5,4 +5,4 @@ class InventoryConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.inventory"
     label = "inventory"
-    verbose_name = "Inventory"
+    verbose_name = "محصولات و موجودی"

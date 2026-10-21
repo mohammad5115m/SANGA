@@ -1,0 +1,32 @@
+{% comment %}Explicit public-safe buyer specifications; never loop over model fields.{% endcomment %}
+<section class="panel stack-md public-specs" aria-labelledby="specs-heading">
+  <div>
+    <span class="section-kicker">برای تصمیم سریع</span>
+    <h2 class="section-title" id="specs-heading">این سنگ برای چه کاری مناسب است؟</h2>
+  </div>
+
+  {% if product.applications.all %}
+    <div class="public-use-list">
+      {% for application in product.applications.all %}<span>مناسب {{ application.name }}</span>{% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">کاربرد پیشنهادی هنوز ثبت نشده؛ پیش از سفارش از فروشنده راهنمایی بگیرید.</p>
+  {% endif %}
+
+  <dl class="public-decision-facts">
+    <div><dt>ابعاد قابل انتخاب</dt><dd>{% if lot.length_cm and lot.width_cm %}{{ lot.length_cm }}×{{ lot.width_cm }} سانتی‌متر{% elif lot.length_cm %}طول {{ lot.length_cm }} سانتی‌متر{% elif lot.width_cm %}عرض {{ lot.width_cm }} سانتی‌متر{% else %}ابعاد آزاد{% endif %}</dd></div>
+    <div><dt>ظاهر سطح</dt><dd>{{ lot.processing_type|default:"از فروشنده بپرسید" }}</dd></div>
+    {% if lot.thickness_cm %}<div><dt>ضخامت</dt><dd>{{ lot.thickness_cm }} سانتی‌متر</dd></div>{% endif %}
+  </dl>
+
+  <details class="public-spec-details">
+    <summary>مشاهده مشخصات فنی کامل</summary>
+    <dl class="public-spec-list">
+      <div class="kv"><dt>نوع سنگ</dt><dd>{{ product.stone.name|default:"ثبت نشده" }}</dd></div>
+      {% if lot.processing_type %}<div class="kv"><dt>فرآوری</dt><dd>{{ lot.processing_type }}</dd></div>{% endif %}
+      <div class="kv"><dt>ابعاد</dt><dd>{% if lot.length_cm and lot.width_cm %}{{ lot.length_cm }}×{{ lot.width_cm }} سانتی‌متر{% elif lot.length_cm %}طول {{ lot.length_cm }} سانتی‌متر{% elif lot.width_cm %}عرض {{ lot.width_cm }} سانتی‌متر{% else %}ابعاد آزاد{% endif %}</dd></div>
+      {% if lot.thickness_cm %}<div class="kv"><dt>ضخامت</dt><dd>{{ lot.thickness_cm }} سانتی‌متر</dd></div>{% endif %}
+      {% if lot.min_sale_qty %}<div class="kv"><dt>حداقل سفارش</dt><dd>{{ lot.min_sale_qty }} متر مربع</dd></div>{% endif %}
+    </dl>
+  </details>
+</section>

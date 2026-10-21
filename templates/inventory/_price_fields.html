@@ -1,0 +1,20 @@
+{% comment %}
+One price channel's fields. Included twice — once per audience — so the two
+channels stay visibly separate in the UI as well as in the model.
+
+Expects: price_form (a TierPriceForm bound with its own prefix)
+{% endcomment %}
+{% if price_form.non_field_errors %}
+  <div class="alert alert-error">{{ price_form.non_field_errors|striptags }}</div>
+{% endif %}
+<div class="stack-md" data-price-tier>
+  <div class="form-grid">
+    {% with field=price_form.amount %}{% include "components/form_field.html" %}{% endwith %}
+    {% with field=price_form.valid_for_days %}{% include "components/form_field.html" %}{% endwith %}
+  </div>
+  {% with field=price_form.is_special %}{% include "components/form_field.html" %}{% endwith %}
+  <div class="form-grid special-price-fields" data-special-fields>
+    {% with field=price_form.special_amount %}{% include "components/form_field.html" with force_required=True %}{% endwith %}
+    {% with field=price_form.special_valid_for_days %}{% include "components/form_field.html" with force_required=True %}{% endwith %}
+  </div>
+</div>

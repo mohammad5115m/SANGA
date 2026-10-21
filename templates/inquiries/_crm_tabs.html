@@ -1,0 +1,11 @@
+<nav class="crm-tabs" aria-label="بخش‌های ارتباط با مشتری">
+  <a class="crm-tab{% if request.resolver_match.url_name == 'leads' or request.resolver_match.url_name == 'lead_detail' %} is-active{% endif %}"
+     href="{% url 'inquiries:leads' %}"
+     {% if request.resolver_match.url_name == 'leads' or request.resolver_match.url_name == 'lead_detail' %}aria-current="page"{% endif %}>مشتریان</a>
+  <a class="crm-tab{% if 'followup' in request.resolver_match.url_name %} is-active{% endif %}"
+     href="{% url 'inquiries:followups' %}"
+     {% if 'followup' in request.resolver_match.url_name %}aria-current="page"{% endif %}>پیگیری‌ها</a>
+  <a class="crm-tab{% if request.resolver_match.url_name == 'inbox' or request.resolver_match.url_name == 'detail' %} is-active{% endif %}"
+     href="{% url 'inquiries:inbox' %}"
+     {% if request.resolver_match.url_name == 'inbox' or request.resolver_match.url_name == 'detail' %}aria-current="page"{% endif %}>درخواست‌های خرید</a>
+</nav>

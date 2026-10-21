@@ -1,6 +1,6 @@
 # AGENTS.md
 
-SANGA (سنگا) is a Django 5.1 monolith: a Persian, right-to-left B2B/B2C stone
+Sang Esf is a Django 5.1 monolith: a Persian, right-to-left B2B/B2C stone
 inventory platform. Standard developer commands live in `README.md` and
 `docs/testing.md`; read those first. This file only records non-obvious,
 durable context for automated agents.

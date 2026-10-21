@@ -14,3 +14,10 @@ INTERNAL_IPS = ["127.0.0.1", "localhost"]
 STORAGES["staticfiles"] = {  # noqa: F405
     "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
 }
+
+# Fictional local demo accounts. Requesting a login OTP provisions/reactivates
+# only these explicitly approved phones; every other unknown phone stays closed.
+SANGA_LOGIN_PHONE_ALLOWLIST = env.list(  # noqa: F405
+    "SANGA_LOGIN_PHONE_ALLOWLIST",
+    default=["09121111111", "09122222222"],
+)

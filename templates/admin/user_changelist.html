@@ -1,0 +1,6 @@
+{% extends "admin/change_list.html" %}
+{% block object-tools-items %}
+  <li><a href="{% url 'admin:provision_business' %}" class="addlink">افزودن کسب‌وکار و مالک</a></li>
+  <li><a href="{% url 'admin:provision_member' %}" class="addlink">افزودن کاربر به کسب‌وکار</a></li>
+  {{ block.super }}
+{% endblock %}

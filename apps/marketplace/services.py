@@ -1,76 +1,78 @@
 from __future__ import annotations
 
-from django.db import transaction
+from decimal import ROUND_HALF_UP, Decimal
 
-from apps.businesses.models import Business
+from django.utils import timezone
+
+from apps.core.formatting import format_rial
+from apps.inventory.freshness import stock_view
 from apps.inventory.models import InventoryLot
-from apps.pricing.services import CONTACT_TIER_CODE, effective_price, resolve_prices_for_viewer
-
-from .models import SavedSearch
-
-
-class MarketplaceError(Exception):
-    def __init__(self, message: str) -> None:
-        self.message = message
-        super().__init__(message)
+from apps.pricing.services import effective_price, resolve_prices_for_viewer
 
 
 def b2b_price_context(lot: InventoryLot, viewer_business=None) -> dict:
-    """Partner marketplace price payload: B2B only.
-
-    When ``viewer_business`` is given and the lot's owner has set a
-    partner-specific price for the contact linked to that business, the override
-    is shown instead of the plain B2B tier. Without a viewer there is no
-    override — the payload degrades to the tier price.
-    """
-    prices = resolve_prices_for_viewer(lot, "b2b_partner", viewer_business=viewer_business)
+    """Return the audience-safe current B2B price for a marketplace product."""
+    prices = resolve_prices_for_viewer(
+        lot, "b2b_partner", viewer_business=viewer_business
+    )
     price = effective_price(prices, "b2b_partner")
-    if price is None or price.display_as_inquiry or price.amount is None:
+    if price is None or price.amount is None:
         return {
             "has_price": False,
             "amount": None,
             "currency": None,
-            "unit": None,
-            "label": "استعلام بگیرید",
-            "is_partner_price": False,
+            "label": "استعلام قیمت",
+            "is_special": False,
+            "regular_label": "",
+            "discount_percent": None,
+            "remaining_label": "",
         }
+    regular_amount = price.regular_amount if price.is_special else None
+    discount_percent = None
+    if regular_amount and price.amount:
+        raw = (regular_amount - price.amount) / regular_amount * Decimal("100")
+        discount_percent = min(99, max(0, int(raw.quantize(Decimal("1"), rounding=ROUND_HALF_UP))))
+    remaining_label = ""
+    if price.special_until:
+        seconds = max(0, int((price.special_until - timezone.now()).total_seconds()))
+        days, remainder = divmod(seconds, 86400)
+        hours = remainder // 3600
+        if days:
+            remaining_label = f"{days} روز و {hours} ساعت تا پایان پیشنهاد"
+        elif hours:
+            remaining_label = f"{hours} ساعت تا پایان پیشنهاد"
+        else:
+            remaining_label = f"{max(1, seconds // 60)} دقیقه تا پایان پیشنهاد"
     return {
         "has_price": True,
         "amount": price.amount,
         "currency": price.currency,
-        "unit": price.unit,
-        "label": f"{price.amount:,.0f} {price.currency}",
-        "is_partner_price": price.tier_code == CONTACT_TIER_CODE,
+        "label": format_rial(price.amount),
+        "is_special": price.is_special,
+        "special_until": price.special_until,
+        "regular_label": format_rial(regular_amount) if regular_amount else "",
+        "discount_percent": discount_percent,
+        "remaining_label": remaining_label,
     }
 
 
-@transaction.atomic
-def save_search(
-    *,
-    business: Business,
-    user,
-    name: str,
-    query: dict,
-    notify_enabled: bool = True,
-) -> SavedSearch:
-    name = (name or "").strip()
-    if len(name) < 2:
-        raise MarketplaceError("نام جستجو خیلی کوتاه است.")
-    return SavedSearch.objects.create(
-        business=business,
-        user=user,
-        name=name,
-        query=query or {},
-        notify_enabled=notify_enabled,
-    )
-
-
 def marketplace_lot_card(lot: InventoryLot, viewer_business=None) -> dict:
-    primary = next((m for m in lot.media.all() if m.is_primary), None) or next(iter(lot.media.all()), None)
+    primary = next(
+        (media for media in lot.media.all() if media.kind == "image" and media.is_primary),
+        None,
+    ) or next((media for media in lot.media.all() if media.kind == "image"), None)
+    dimensions = []
+    if lot.length_cm:
+        dimensions.append(f"{lot.length_cm:g}")
+    if lot.width_cm:
+        dimensions.append(f"{lot.width_cm:g}")
     return {
         "lot": lot,
         "product": lot.product,
         "supplier": lot.business,
         "price": b2b_price_context(lot, viewer_business),
+        "stock": stock_view(lot),
         "primary_media": primary,
+        "applications": list(lot.product.applications.all())[:2],
+        "size_label": " × ".join(dimensions) + " سانتی‌متر" if dimensions else "ابعاد آزاد",
     }

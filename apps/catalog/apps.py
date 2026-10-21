@@ -5,4 +5,4 @@ class CatalogConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.catalog"
     label = "catalog"
-    verbose_name = "Catalog"
+    verbose_name = "کاتالوگ‌ها"

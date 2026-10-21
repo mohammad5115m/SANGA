@@ -5,4 +5,4 @@ class AccountingConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.accounting"
     label = "accounting"
-    verbose_name = "Accounting"
+    verbose_name = "دفتر حساب"

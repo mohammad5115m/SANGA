@@ -1,0 +1,19 @@
+<button class="sticky toggle-nav-sidebar" id="toggle-nav-sidebar" aria-label="نمایش یا پنهان کردن منو"></button>
+<nav class="sticky admin-sidebar" id="nav-sidebar" aria-label="منوی مدیریت">
+  <div class="sidebar-intro"><span>مدیریت پلتفرم</span><strong>دسترسی سریع</strong></div>
+  <a class="sidebar-home" href="{% url 'admin:index' %}">نمای کلی <span aria-hidden="true">←</span></a>
+  <div class="sidebar-links">
+    {% for link in admin_quick_nav %}<a href="{{ link.url }}">{{ link.name }} <span aria-hidden="true">←</span></a>{% endfor %}
+  </div>
+  <div class="sidebar-operations">
+    <span class="sidebar-label">عملیات روزمره</span>
+    <a href="{% url 'admin:provision_business' %}">افزودن کسب‌وکار</a>
+    <a href="{% url 'admin:provision_member' %}">افزودن کاربر</a>
+  </div>
+  <details class="sidebar-all-models">
+    <summary>همه بخش‌ها</summary>
+    <label for="nav-filter" class="visually-hidden">جست‌وجو در بخش‌ها</label>
+    <input type="search" id="nav-filter" placeholder="نام بخش را بنویسید…" aria-label="جست‌وجو در بخش‌ها">
+    {% include 'admin/app_list.html' with app_list=available_apps show_changelinks=False %}
+  </details>
+</nav>

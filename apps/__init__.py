@@ -1,1 +1,1 @@
-"""SANGA domain applications."""
+"""Sang Esf domain applications."""

@@ -1,0 +1,28 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "DJ",  # flake8-django
+    "C4",  # flake8-comprehensions
+]
+ignore = [
+    # Django models legitimately use mutable class attributes for Meta options
+    # and TextChoices; RUF012 is not selected, but B008-style false positives
+    # on Django field defaults are.
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Settings modules intentionally star-import and rebind.
+"config/settings/*.py" = ["F403", "F405"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]

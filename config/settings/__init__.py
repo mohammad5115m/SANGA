@@ -1,1 +1,1 @@
-"""Settings package for SANGA."""
+"""Settings package for Sang Esf."""

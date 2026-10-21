@@ -4,7 +4,7 @@ from django.db.models import QuerySet
 
 from apps.accounts.models import User
 
-from .models import Business, BusinessMembership, Warehouse
+from .models import BusinessMembership
 
 
 def memberships_for_user(user: User) -> QuerySet[BusinessMembership]:
@@ -22,7 +22,3 @@ def get_active_membership(user: User, business_id: str | None) -> BusinessMember
     if business_id:
         return qs.filter(business_id=business_id).first()
     return qs.first()
-
-
-def warehouses_for_business(business: Business) -> QuerySet[Warehouse]:
-    return Warehouse.objects.filter(business=business, is_active=True)

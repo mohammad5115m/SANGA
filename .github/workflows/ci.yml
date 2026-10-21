@@ -1,0 +1,214 @@
+name: CI
+
+# The gate the repository did not have. Every one of these ran locally and by
+# convention before; none of them blocked a merge, so "all five green" was a
+# promise rather than a fact.
+#
+# The PostgreSQL job is not a slower copy of the fast one. Locking, partial
+# unique indexes and two writers racing cannot be demonstrated on SQLite, so the
+# tests that prove the financial and OTP invariants only really run there.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint and system checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Django system check
+        run: python manage.py check
+      - name: No unrecorded model changes
+        run: python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_DATABASE: sqlite
+
+  tests:
+    name: Tests (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - run: pytest
+        env:
+          DJANGO_DATABASE: sqlite
+
+  postgres:
+    name: Tests and concurrency (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sanga
+          POSTGRES_USER: sanga
+          POSTGRES_PASSWORD: sanga
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: Full suite, including the concurrency lane
+        run: ./scripts/run_pg_tests.sh
+        env:
+          POSTGRES_HOST: 127.0.0.1
+      - name: The concurrency tests must actually have run
+        # A skipped test is a green tick that proves nothing, and this job exists
+        # for exactly those tests.
+        #
+        # Asserted from the JUnit XML rather than by grepping the console
+        # summary. Grepping was wrong twice over: pytest.ini already sets -q, so
+        # passing another one made it -qq and suppressed the very "N passed" line
+        # the grep was looking for — the tests passed and the assertion failed
+        # anyway. And `grep -qv "no tests ran"` succeeds whenever *any* line
+        # differs, which is true of almost any output, so it never asserted
+        # anything at all. The XML answers the real question directly: how many
+        # ran, and how many were skipped.
+        run: |
+          set -euo pipefail
+          ./scripts/run_pg_tests.sh -m concurrency --junitxml=concurrency-results.xml
+          python - concurrency-results.xml <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          suites = list(ET.parse(sys.argv[1]).getroot().iter("testsuite"))
+          ran = sum(int(suite.get("tests", "0")) for suite in suites)
+          skipped = sum(int(suite.get("skipped", "0")) for suite in suites)
+
+          if not ran:
+              sys.exit("no concurrency tests were collected; this job exists to run them")
+          if skipped:
+              sys.exit(f"{skipped} of {ran} concurrency tests were skipped, which proves nothing")
+          print(f"{ran} concurrency tests ran against PostgreSQL, none skipped")
+          PY
+        env:
+          POSTGRES_HOST: 127.0.0.1
+
+  migrations:
+    name: Fresh migrate from zero
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sanga
+          POSTGRES_USER: sanga
+          POSTGRES_PASSWORD: sanga
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: SQLite, from an empty file
+        run: ./scripts/check_fresh_migrate.sh
+      - name: PostgreSQL, from an empty database
+        run: python manage.py migrate --no-input
+        env:
+          DJANGO_DATABASE: postgres
+          POSTGRES_HOST: 127.0.0.1
+
+  deploy_check:
+    name: Production settings fail closed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Invoice renderer system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
+      - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: check --deploy with a production-like environment
+        run: python manage.py check --deploy --fail-level WARNING
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.production
+          DJANGO_SECRET_KEY: ci-only-secret-never-used-to-serve-a-request-0123456789abcdef
+          DJANGO_ALLOWED_HOSTS: sanga.example.com
+          DJANGO_DATABASE: sqlite
+          # No real gateway exists in CI, so the escape hatch is set explicitly.
+          # That it has to be set at all is the property under test: production
+          # refuses to start on a provider that cannot deliver.
+          SMS_PROVIDER: console
+          SMS_ALLOW_UNDELIVERED: "true"
+          # Likewise for media: production refuses to start with neither object
+          # storage nor a named persistent volume, because the old default wrote
+          # uploads into the container and discarded them on the next deploy.
+          # CI has no bucket, so it declares the local-media mode by name.
+          SANGA_ALLOW_LOCAL_MEDIA: "true"
+          SANGA_MEDIA_ROOT: /tmp/sanga-media
+
+  dependency_audit:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install pip-audit
+      - name: Audit the pinned dependencies
+        # Blocking. It was advisory while the pins carried known vulnerabilities,
+        # which meant the job was permanently red and therefore told nobody
+        # anything: an advisory check that never passes is indistinguishable from
+        # one that never runs.
+        #
+        # The pins are now clean, so the check can mean what it says. If a new
+        # advisory lands against a pinned version, this fails and the fix is to
+        # upgrade the dependency — or, where there is genuinely no upstream fix,
+        # to add an explicit `--ignore-vuln` here alongside a note in
+        # FINAL_HARDENING_IMPLEMENTATION_REPORT.md saying who accepted it and
+        # why. Both are visible in review; `continue-on-error` was not.
+        run: pip-audit --requirement requirements/constraints.txt --strict

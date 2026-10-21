@@ -1,0 +1,29 @@
+{% comment %}
+The pager for every list. `page.querystring` already carries the active filters
+and sort, so following a page link never silently resets the search.
+{% endcomment %}
+{% if page.is_paginated %}
+  <nav class="pager" aria-label="صفحه‌بندی">
+    {% if page.has_previous %}
+      <a class="btn btn-ghost btn-sm" href="?{{ page.querystring }}page={{ page.previous_page_number }}">
+        قبلی
+      </a>
+    {% else %}
+      <span class="btn btn-ghost btn-sm is-disabled" aria-disabled="true">قبلی</span>
+    {% endif %}
+
+    <span class="pager-status">
+      صفحه {{ page.number }} از {{ page.num_pages }} · {{ page.total }} مورد
+    </span>
+
+    {% if page.has_next %}
+      <a class="btn btn-ghost btn-sm" href="?{{ page.querystring }}page={{ page.next_page_number }}">
+        بعدی
+      </a>
+    {% else %}
+      <span class="btn btn-ghost btn-sm is-disabled" aria-disabled="true">بعدی</span>
+    {% endif %}
+  </nav>
+{% elif page.total %}
+  <p class="muted pager-status">{{ page.total }} مورد</p>
+{% endif %}

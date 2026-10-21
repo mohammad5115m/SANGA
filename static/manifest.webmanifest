@@ -1,19 +1,25 @@
 {
-  "name": "سنگا",
-  "short_name": "سنگا",
-  "description": "مدیریت موجودی سنگ، شبکه B2B و کاتالوگ B2C",
+  "name": "Sang Esf",
+  "short_name": "Sang Esf",
+  "description": "بازار تخصصی سنگ اصفهان؛ ویترین کارخانه‌ها، محصولات و کاتالوگ‌ها",
   "start_url": "/",
   "display": "standalone",
   "dir": "rtl",
   "lang": "fa",
-  "background_color": "#f3efe6",
-  "theme_color": "#1f2a24",
+  "background_color": "#f4f1eb",
+  "theme_color": "#23362d",
   "icons": [
     {
-      "src": "/static/icons/icon.svg",
+      "src": "/static/icons/icon.svg?v=5",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-maskable.svg?v=5",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }

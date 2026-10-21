@@ -1,35 +1,288 @@
+"""Public customer inquiries.
+
+A customer asks about **several products at once**, because that is how anyone
+actually shops for stone: a floor, a facade and a staircase in one conversation.
+V1 modelled one inquiry per product, which forced the customer to submit three
+times and gave the seller three unrelated leads.
+
+Public customers are never platform Users. :class:`CustomerLead` is a light
+identity keyed by phone number, not an account — no login, no password, no
+membership. It exists so a seller can see that the same person asked twice.
+"""
+
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 
 
-class Inquiry(models.Model):
-    class Status(models.TextChoices):
-        NEW = "new", "جدید"
-        VIEWED = "viewed", "دیده‌شده"
-        CONTACTED = "contacted", "تماس گرفته‌شده"
-        NEGOTIATING = "negotiating", "در حال مذاکره"
-        CONVERTED = "converted", "تبدیل‌شده"
-        CLOSED = "closed", "بسته"
-        LOST = "lost", "از دست‌رفته"
+class CustomerLead(models.Model):
+    """A retail customer, identified by phone, scoped to one seller.
 
-    class Source(models.TextChoices):
-        STOREFRONT = "storefront", "ویترین"
-        LOT_DETAIL = "lot_detail", "صفحه محموله"
-        CUSTOM_CATALOG = "custom_catalog", "کاتالوگ اختصاصی"
-        SHARE = "share", "اشتراک‌گذاری"
-        MARKETPLACE = "marketplace", "بازار همکاران"
+    CRM profile fields live on the customer identity. Notes and follow-up
+    activities are separate rows so history remains append-only and queryable.
+
+    Scoped per business rather than platform-wide so one seller's customer list
+    is not another seller's, which is both a privacy property and the reason two
+    sellers can hold different names for the same number without conflict.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    class Category(models.TextChoices):
+        BUILDER = "builder", "سازنده"
+        CONSUMER = "consumer", "مصرف‌کننده نهایی"
+        WAREHOUSE = "warehouse", "انباردار"
+        CONTRACTOR = "contractor", "پیمانکار"
+        ARCHITECT = "architect", "معمار / طراح"
+        PARTNER = "partner", "فروشنده / همکار"
         OTHER = "other", "سایر"
+
+    class CRMStatus(models.TextChoices):
+        NEW = "new", "مشتری جدید"
+        ACTIVE = "active", "در حال بررسی"
+        NEGOTIATING = "negotiating", "در حال مذاکره"
+        WON = "won", "خرید انجام‌شده"
+        INACTIVE = "inactive", "غیرفعال"
+
+    business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.CASCADE,
+        related_name="customer_leads",
+    )
+    name = models.CharField("نام", max_length=150)
+    phone = models.CharField("موبایل", max_length=20)
+    # Set when the customer completed an OTP challenge at submission. Not a
+    # login: it only records that the phone was reachable at that moment.
+    phone_verified_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField("یادداشت فروشنده", blank=True)
+    category = models.CharField(
+        "دسته‌بندی",
+        max_length=20,
+        choices=Category.choices,
+        default=Category.OTHER,
+    )
+    crm_status = models.CharField(
+        "وضعیت ارتباط",
+        max_length=20,
+        choices=CRMStatus.choices,
+        default=CRMStatus.NEW,
+    )
+    tags = models.JSONField("برچسب‌ها", default=list, blank=True)
+    current_needs = models.TextField("نیاز فعلی", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "مشتری"
+        verbose_name_plural = "مشتریان"
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["business", "phone"], name="uniq_lead_phone_per_business"),
+        ]
+        indexes = [
+            models.Index(fields=["business", "-updated_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.phone})"
+
+    @property
+    def is_verified(self) -> bool:
+        return self.phone_verified_at is not None
+
+
+class CustomerNote(models.Model):
+    """One durable, tenant-scoped note in a customer's activity history."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     business = models.ForeignKey(
         "businesses.Business",
         on_delete=models.CASCADE,
+        related_name="customer_notes",
+    )
+    customer = models.ForeignKey(
+        CustomerLead,
+        on_delete=models.CASCADE,
+        related_name="crm_notes",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_notes",
+    )
+    text = models.TextField("متن یادداشت")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "یادداشت مشتری"
+        verbose_name_plural = "یادداشت‌های مشتری"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["business", "customer", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.customer.name}: {self.text[:40]}"
+
+
+class CustomerFollowUp(models.Model):
+    """A durable next action for a customer, portable across SQL backends."""
+
+    class Status(models.TextChoices):
+        SCHEDULED = "scheduled", "زمان‌بندی‌شده"
+        COMPLETED = "completed", "انجام‌شده"
+        POSTPONED = "postponed", "به‌تعویق‌افتاده"
+        CANCELLED = "cancelled", "لغوشده"
+
+    class Priority(models.TextChoices):
+        NORMAL = "normal", "عادی"
+        HIGH = "high", "مهم"
+        URGENT = "urgent", "فوری"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.CASCADE,
+        related_name="customer_followups",
+    )
+    customer = models.ForeignKey(
+        CustomerLead,
+        on_delete=models.CASCADE,
+        related_name="crm_followups",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_customer_followups",
+    )
+    title = models.CharField("موضوع", max_length=160)
+    scheduled_for = models.DateTimeField("زمان پیگیری")
+    reminder_minutes = models.PositiveIntegerField("دقایق یادآوری", default=60)
+    remind_at = models.DateTimeField("زمان یادآوری", db_index=True)
+    priority = models.CharField(
+        "اولویت",
+        max_length=12,
+        choices=Priority.choices,
+        default=Priority.NORMAL,
+    )
+    status = models.CharField(
+        "وضعیت",
+        max_length=12,
+        choices=Status.choices,
+        default=Status.SCHEDULED,
+    )
+    note = models.TextField("توضیح", blank=True)
+    related_context = models.CharField("موضوع مرتبط", max_length=255, blank=True)
+    completed_at = models.DateTimeField("زمان انجام", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "پیگیری مشتری"
+        verbose_name_plural = "پیگیری‌های مشتری"
+        ordering = ["scheduled_for", "created_at"]
+        indexes = [
+            models.Index(fields=["business", "status", "scheduled_for"]),
+            models.Index(fields=["customer", "status", "scheduled_for"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(reminder_minutes__lte=10080),
+                name="followup_reminder_within_one_week",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.customer.name}: {self.title}"
+
+
+class FollowUpReminderRead(models.Model):
+    """Per-user durable read state for a derived follow-up reminder."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    followup = models.ForeignKey(
+        CustomerFollowUp,
+        on_delete=models.CASCADE,
+        related_name="reminder_reads",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="read_followup_reminders",
+    )
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "خواندن یادآوری پیگیری"
+        verbose_name_plural = "خواندن‌های یادآوری پیگیری"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["followup", "user"],
+                name="uniq_followup_reminder_read_per_user",
+            ),
+        ]
+        indexes = [models.Index(fields=["user", "read_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.user} / {self.followup}"
+
+
+class Inquiry(models.Model):
+    """One request from one customer, covering one or more products."""
+
+    class Status(models.TextChoices):
+        # Four states, matching what a seller actually does: see it, call them,
+        # finish. V1 had seven, and the middle three were never distinguishable.
+        NEW = "new", "جدید"
+        CONTACTED = "contacted", "تماس گرفته‌شده"
+        CONVERTED = "converted", "تبدیل به فروش"
+        CLOSED = "closed", "بسته"
+
+    OPEN_STATUSES = (Status.NEW, Status.CONTACTED)
+
+    class Source(models.TextChoices):
+        PUBLIC_SEARCH = "public_search", "جستجوی عمومی"
+        STOREFRONT = "storefront", "ویترین"
+        ITEM_DETAIL = "item_detail", "صفحه محصول"
+        SHARE_LINK = "share_link", "لینک اشتراک"
+        CUSTOM_CATALOG = "custom_catalog", "کاتالوگ"
+        MARKETPLACE = "marketplace", "بازار همکاران"
+        OTHER = "other", "سایر"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: Groups the inquiries produced by one public submission.
+    #:
+    #: A customer's selection can span several sellers, and each seller gets
+    #: their own inquiry. Without a token identifying the submission, a failure
+    #: partway through left the earlier sellers' inquiries committed while the
+    #: page reported an error — and the retry the customer then made duplicated
+    #: them. Minted before the OTP is sent, so a refresh, a double-click or a
+    #: resubmitted form all carry the same one.
+    #:
+    #: Null for inquiries that did not come from the public submission flow.
+    submission_id = models.UUIDField(null=True, blank=True, editable=False, db_index=True)
+    business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.CASCADE,
         related_name="inquiries",
     )
+    lead = models.ForeignKey(
+        CustomerLead,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="inquiries",
+    )
+    # Legacy single-product link. New inquiries use InquiryItem; this stays
+    # populated for pre-V2 rows and for the one-product shortcut so existing
+    # queries and the dashboard keep working.
     lot = models.ForeignKey(
         "inventory.InventoryLot",
         on_delete=models.SET_NULL,
@@ -51,18 +304,15 @@ class Inquiry(models.Model):
         blank=True,
         related_name="inquiries",
     )
-    assignee = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="assigned_inquiries",
-    )
+
+    # Copied from the lead at submission so the inquiry still reads correctly if
+    # the customer later gives a different name.
     name = models.CharField("نام", max_length=150)
     phone = models.CharField("موبایل", max_length=20)
     message = models.TextField("پیام", blank=True)
+
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
-    source = models.CharField(max_length=32, choices=Source.choices, default=Source.STOREFRONT)
+    source = models.CharField(max_length=32, choices=Source.choices, default=Source.PUBLIC_SEARCH)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     viewed_at = models.DateTimeField(null=True, blank=True)
@@ -72,9 +322,61 @@ class Inquiry(models.Model):
         ordering = ["-created_at"]
         verbose_name = "استعلام"
         verbose_name_plural = "استعلام‌ها"
+        constraints = [
+            # One submission yields at most one inquiry per seller. This is the
+            # invariant a retry relies on: the second attempt loses the race and
+            # is handed the first attempt's row instead of creating a twin.
+            models.UniqueConstraint(
+                fields=["submission_id", "business"],
+                condition=models.Q(submission_id__isnull=False),
+                name="uniq_inquiry_per_submission_and_seller",
+            ),
+        ]
         indexes = [
             models.Index(fields=["business", "status", "created_at"]),
         ]
 
     def __str__(self) -> str:
         return f"{self.name} / {self.business}"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in self.OPEN_STATUSES
+
+
+class InquiryItem(models.Model):
+    """One product the customer asked about, with the quantity they need."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    inquiry = models.ForeignKey(Inquiry, on_delete=models.CASCADE, related_name="items")
+    item = models.ForeignKey(
+        "inventory.InventoryLot",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inquiry_items",
+    )
+    # Snapshot so the seller can still read the request after the product is
+    # renamed or withdrawn — which is common, since an inquiry often *is* the
+    # reason the product changes.
+    product_name = models.CharField("نام محصول", max_length=200)
+    requested_qty_sqm = models.DecimalField(
+        "متراژ درخواستی",
+        max_digits=12,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
+    note = models.CharField("توضیح", max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "ردیف استعلام"
+        verbose_name_plural = "ردیف‌های استعلام"
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(fields=["inquiry", "item"], name="uniq_item_per_inquiry"),
+        ]
+
+    def __str__(self) -> str:
+        return self.product_name

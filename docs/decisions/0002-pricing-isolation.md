@@ -2,7 +2,15 @@
 
 ## Status
 
-Accepted (amended for contact-specific overrides)
+Accepted; **amended in V2** — the `ContactPrice` part below was superseded
+
+> **V2 amendment.** The pricing app and its audience boundary stand and were
+> strengthened. `ContactPrice` — the per-contact override described below — was
+> removed: it made "what does this cost?" depend on who was asking in a way
+> sellers could not audit, and it hung off a manually created Contact, which the
+> Business directory replaces. Freshness and special-sale pricing now live on the
+> tier row for the same reason the tier boundary existed in the first place. See
+> [pricing.md](../pricing.md).
 
 ## Context
 

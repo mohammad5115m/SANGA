@@ -1,8 +1,10 @@
 {% extends "layouts/storefront_shell.html" %}
-{% block title %}یافت نشد | {{ business.name }}{% endblock %}
+{% block title %}محصول در دسترس نیست | {{ business.name }}{% endblock %}
 {% block content %}
-<section class="empty-state stack-md">
-  <div>این سنگ در کاتالوگ عمومی موجود نیست یا دیگر قابل نمایش نیست.</div>
-  <a class="btn btn-primary" href="{% url 'catalog:storefront' business.slug %}">مشاهده کاتالوگ</a>
+<section class="empty-state product-empty-state">
+  <span class="empty-state-icon" aria-hidden="true">◇</span>
+  <h1 class="page-title">این محصول در ویترین عمومی نیست</h1>
+  <p>ممکن است فروش آن متوقف شده یا لینک قدیمی باشد. محصولات فعال فروشنده همچنان در دسترس‌اند.</p>
+  <a class="btn btn-primary" href="{% url 'catalog:storefront' business.storefront_token %}">مشاهده محصولات فعال</a>
 </section>
 {% endblock %}

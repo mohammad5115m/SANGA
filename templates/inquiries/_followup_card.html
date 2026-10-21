@@ -1,0 +1,28 @@
+<article class="followup-card followup-state-{{ followup.bucket }} priority-border-{{ followup.priority }}">
+  <div class="followup-card-main">
+    <div class="followup-card-heading">
+      <div><a class="list-title" href="{{ followup.customer_url }}">{{ followup.customer_name }}</a><span class="muted" dir="ltr">{{ followup.customer_phone }}</span></div>
+      <span class="badge priority-{{ followup.priority }}">{{ followup.priority_label }}</span>
+    </div>
+    <div><h3 class="followup-title">{{ followup.title }}</h3><strong class="crm-due">{{ followup.due_label }}</strong></div>
+    {% if followup.related_context %}<p class="followup-context">{{ followup.related_context }}</p>{% endif %}
+    {% if followup.note %}<p class="muted">{{ followup.note }}</p>{% endif %}
+    <div class="badge-row"><span class="badge">{{ followup.status_label }}</span></div>
+  </div>
+  <div class="followup-card-actions">
+    <a class="btn btn-ghost btn-sm" href="{{ followup.customer_url }}">پرونده مشتری</a>
+    {% if can_manage and followup.bucket != 'completed' %}
+      <form method="post" action="{% url 'inquiries:followup_complete' followup.id %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">انجام شد</button></form>
+      <form method="post" action="{% url 'inquiries:followup_postpone' followup.id %}">{% csrf_token %}<button class="btn btn-secondary btn-sm" type="submit">فردا پیگیری شود</button></form>
+      <details class="followup-reschedule">
+        <summary class="btn btn-ghost btn-sm">تغییر زمان</summary>
+        <form method="post" action="{% url 'inquiries:followup_reschedule' followup.id %}" class="stack-sm">
+          {% csrf_token %}
+          <label class="field"><span class="field-label">زمان جدید</span>{% jalali_input "scheduled_for" followup.scheduled_value with_time=True id=followup.id required=True %}</label>
+          <button class="btn btn-primary btn-sm" type="submit">ذخیره زمان</button>
+        </form>
+      </details>
+      <form method="post" action="{% url 'inquiries:followup_cancel' followup.id %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit" data-confirm="این پیگیری لغو شود؟">لغو</button></form>
+    {% endif %}
+  </div>
+</article>

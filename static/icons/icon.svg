@@ -1,5 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="SANGA">
-  <rect width="128" height="128" rx="28" fill="#1f2a24"/>
-  <path d="M20 84 L64 24 L108 84 Z" fill="#9a6b2f"/>
-  <path d="M36 84 L64 44 L92 84 Z" fill="#f0e2c8"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-labelledby="logo-title">
+  <title id="logo-title">Sang Esf</title>
+  <rect width="96" height="96" rx="21" fill="#23362d"/>
+<path d="M22 75V45C22 31 33 22 48 14C63 22 74 31 74 45V75" fill="none" stroke="#d3bd99" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M39 37 57 38 68 50 63 66 48 73 31 64 28 51Z" fill="#fffdf9"/>
+<path d="M39 37 57 38 68 50 47 52Z" fill="#8b5e2b"/>
+<path d="M47 52 68 50 63 66 48 73Z" fill="#d3bd99"/>
+
 </svg>

@@ -1,0 +1,40 @@
+{% extends "admin/base_site.html" %}
+{% load humanize %}
+{% block bodyclass %}dashboard admin-dashboard{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block content_title %}{% endblock %}
+{% block content %}
+<div class="portal-dashboard">
+  <section class="portal-hero" aria-labelledby="portal-title">
+    <div><p class="eyebrow">مدیریت پلتفرم · {{ admin_today }}</p><h1 id="portal-title">نمای کلی سنگ اصفهان</h1><p>فعالیت‌ها، پرونده‌های نیازمند رسیدگی و مسیرهای مدیریت در یک جا.</p></div>
+    <div class="hero-actions"><a class="portal-button portal-button-light" href="{% url 'admin:provision_business' %}">+ کسب‌وکار جدید</a><a class="portal-button portal-button-outline" href="{% url 'admin:provision_member' %}">+ کاربر جدید</a></div>
+  </section>
+
+  <form class="portal-search" method="get" role="search" aria-label="جست‌وجوی پلتفرم">
+    <label for="portal-query">جست‌وجو در پلتفرم</label>
+    <div><input id="portal-query" type="search" name="q" value="{{ admin_search_term }}" placeholder="نام کسب‌وکار، موبایل، محصول، فاکتور یا مشتری" minlength="2"><button type="submit">جست‌وجو</button></div>
+  </form>
+  {% if admin_search_ready %}
+  <section class="portal-panel search-results" aria-labelledby="search-title">
+    <div class="panel-heading"><h2 id="search-title">نتایج «{{ admin_search_term }}»</h2><a href="{% url 'admin:index' %}">پاک کردن جست‌وجو</a></div>
+    {% if admin_search_results %}<div class="search-result-grid">{% for result in admin_search_results %}<a href="{{ result.url }}"><span class="result-kind">{{ result.kind }}</span><strong>{{ result.label }}</strong><small>{{ result.detail }}</small></a>{% endfor %}</div>{% else %}<p class="empty-state">موردی پیدا نشد. عبارت دیگری را امتحان کنید.</p>{% endif %}
+  </section>
+  {% endif %}
+
+  <section class="dashboard-section" aria-labelledby="stats-title"><div class="section-heading"><div><p class="eyebrow">وضعیت فعلی</p><h2 id="stats-title">آمار پلتفرم</h2></div></div><div class="stats-grid">{% for stat in admin_stats %}<a class="stat-card" href="{{ stat.url }}"><span>{{ stat.label }}</span><strong>{{ stat.value|intcomma }}</strong><small>مشاهده جزئیات <span aria-hidden="true">←</span></small></a>{% endfor %}</div></section>
+
+  <div class="dashboard-columns">
+    <section class="portal-panel" aria-labelledby="queue-title"><div class="panel-heading"><div><p class="eyebrow">نیازمند رسیدگی</p><h2 id="queue-title">صف پیگیری</h2></div></div><div class="queue-list">{% for item in admin_queue %}<a href="{{ item.url }}"><span class="queue-dot tone-{{ item.tone }}" aria-hidden="true"></span><span>{{ item.label }}</span><strong>{{ item.count|intcomma }}</strong><span aria-hidden="true">←</span></a>{% endfor %}</div></section>
+    <section class="portal-panel" aria-labelledby="pending-title"><div class="panel-heading"><div><p class="eyebrow">بررسی هویت</p><h2 id="pending-title">کسب‌وکارهای منتظر تأیید</h2></div><a href="{% url 'admin:businesses_business_changelist' %}">همه</a></div>{% if admin_pending_businesses %}<div class="compact-list">{% for business in admin_pending_businesses %}<a href="{% url 'admin:businesses_business_change' business.pk %}"><span><strong>{{ business.name }}</strong><small>{{ business.city|default:"شهر ثبت نشده" }} · {{ business.phone }}</small></span><span aria-hidden="true">←</span></a>{% endfor %}</div>{% else %}<p class="empty-state">پرونده‌ای برای تأیید وجود ندارد.</p>{% endif %}</section>
+  </div>
+
+  <section class="dashboard-section" aria-labelledby="sections-title"><div class="section-heading"><div><p class="eyebrow">دسترسی به امکانات</p><h2 id="sections-title">بخش‌های مدیریت</h2></div></div><div class="sections-grid">{% for section in admin_sections %}<div class="portal-panel section-card"><h3>{{ section.title }}</h3><p>{{ section.description }}</p><div class="section-links">{% for model in section.models %}{% if model.admin_url %}<a href="{{ model.admin_url }}">{{ model.name }} <span aria-hidden="true">←</span></a>{% endif %}{% endfor %}</div></div>{% endfor %}</div></section>
+
+  <details class="portal-panel advanced-models"><summary>همه بخش‌ها و ابزارهای پیشرفته</summary><div class="advanced-model-grid">{% for app in available_apps %}<div><h3>{{ app.name }}</h3><div class="section-links">{% for model in app.models %}{% if model.admin_url %}<a href="{{ model.admin_url }}">{{ model.name }}</a>{% endif %}{% endfor %}</div></div>{% endfor %}</div></details>
+
+  <div class="dashboard-columns dashboard-foot">
+    <section class="portal-panel" aria-labelledby="recent-title"><div class="panel-heading"><h2 id="recent-title">کسب‌وکارهای تازه</h2><a href="{% url 'admin:businesses_business_changelist' %}">همه</a></div>{% if admin_recent_businesses %}<div class="compact-list">{% for business in admin_recent_businesses %}<a href="{% url 'admin:businesses_business_change' business.pk %}"><span><strong>{{ business.name }}</strong><small>{{ business.get_verification_status_display }}</small></span><span aria-hidden="true">←</span></a>{% endfor %}</div>{% else %}<p class="empty-state">هنوز کسب‌وکاری ثبت نشده است.</p>{% endif %}</section>
+    <section class="portal-panel" aria-labelledby="activity-title"><div class="panel-heading"><h2 id="activity-title">فعالیت‌های مدیریتی</h2></div>{% if admin_activity %}<div class="compact-list">{% for entry in admin_activity %}<div class="activity-row"><span><strong>{{ entry.object_repr }}</strong><small>{{ entry.content_type }} · {{ entry.action_time|date:"Y/m/d H:i" }}</small></span></div>{% endfor %}</div>{% else %}<p class="empty-state">هنوز فعالیتی ثبت نشده است.</p>{% endif %}</section>
+  </div>
+</div>
+{% endblock %}
