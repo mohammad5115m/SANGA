@@ -41,6 +41,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
 COPY --chown=sanga:sanga . /app
+RUN chmod +x /app/scripts/entrypoint.sh
 
 # Static files are collected at build time, so a replica starting under load is
 # not also compressing CSS, and the image is identical to the one that was tested.
