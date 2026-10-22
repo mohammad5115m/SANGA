@@ -141,9 +141,12 @@ html[data-theme="dark"] .sidebar-home { background: #344e3d; color: #e8f3e8 !imp
 .provision-form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 24px; }
 .provision-field { min-width: 0; }
 .provision-field label { display: block; font-size: 12px; font-weight: 800; margin-bottom: 5px; }
-.provision-field input:not([type="checkbox"]), .provision-field select { box-sizing: border-box; width: 100%; min-height: 43px; background: var(--portal-soft); color: var(--portal-text); border: 1px solid var(--portal-line); border-radius: 8px; padding: 8px 10px; }
+.provision-field input:not([type="checkbox"]), .provision-field select { box-sizing: border-box; width: 100%; min-height: 44px; background: var(--portal-soft); color: var(--portal-text); border: 1px solid var(--portal-line); border-radius: 8px; padding: 8px 10px; }
+.provision-required { color: var(--portal-muted); font-size: 11px; font-weight: 400; }
+.provision-field.has-error :is(input, select) { border-color: var(--error-fg); }
 .provision-field input[type="checkbox"] { width: 18px; height: 18px; vertical-align: middle; accent-color: #2a6245; }
-.provision-field:has(input[type="checkbox"]) { grid-column: 1 / -1; }
+.provision-field:has(input[type="checkbox"]) { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.provision-field:has(input[type="checkbox"]) label { margin: 0; cursor: pointer; }
 .provision-field small { color: var(--portal-muted); display: block; }
 .field-errors, .form-errors { color: #ab382e; font-size: 11px; }
 .form-errors, .provision-actions { grid-column: 1 / -1; }

@@ -39,10 +39,10 @@
 
     <div class="topbar-actions">
       {% if mvp_navigation and can_manage_catalogs %}<a class="btn btn-ghost btn-sm topbar-more-link" href="{% url 'businesses:more' %}">بیشتر</a>{% endif %}
-      <a class="btn btn-ghost btn-sm notification-link" href="{% url 'notifications:list' %}">
-        اعلان‌ها{% if notification_badge_count %}<span class="notification-count" aria-label="{{ notification_badge_count }} اعلان خوانده‌نشده">{{ notification_badge_count }}</span>{% endif %}
+      <a class="btn btn-ghost btn-sm notification-link" href="{% url 'notifications:list' %}"{% if request.resolver_match.app_name == 'notifications' %} aria-current="page"{% endif %}>
+        اعلان‌ها{% if notification_badge_count %}<span class="notification-count" aria-label="{{ notification_badge_count|fa_digits }} اعلان خوانده‌نشده">{{ notification_badge_count|fa_digits }}</span>{% endif %}
       </a>
-      <a class="btn btn-ghost btn-sm" href="{% url 'accounts:profile' %}">پروفایل</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'accounts:profile' %}"{% if request.resolver_match.url_name == 'profile' %} aria-current="page"{% endif %}>پروفایل</a>
     </div>
   </header>
 

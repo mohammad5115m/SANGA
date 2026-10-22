@@ -60,7 +60,7 @@ def owned_items(business: Business) -> QuerySet[InventoryLot]:
         InventoryLot.objects.filter(business=business, deleted_at__isnull=True)
         .select_related("product", "product__stone", "business")
         .prefetch_related(_price_prefetch("owner"), "media")
-        .order_by("-updated_at")
+        .order_by("-updated_at", "-pk")
     )
 
 

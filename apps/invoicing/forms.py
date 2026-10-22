@@ -629,6 +629,7 @@ class InvoiceCancelForm(forms.Form):
 
 
 class PartnerDecisionForm(forms.Form):
+    revision_number = forms.IntegerField(min_value=1, widget=forms.HiddenInput)
     reason = forms.CharField(
         label="علت رد",
         required=False,

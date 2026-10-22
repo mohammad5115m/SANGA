@@ -24,21 +24,25 @@
   <nav class="surface-switcher" aria-label="بخش محصولات">
     <a class="surface-switcher-item is-active" href="{% url 'inventory:lot_list' %}" aria-current="page">
       <span>موجودی من</span>
-      <span class="surface-switcher-count">{{ page.total }}</span>
+      <span class="surface-switcher-count">{{ page.total|fa_digits }}</span>
     </a>
     <a class="surface-switcher-item" href="{% url 'marketplace:home' %}">
       <span>بازار همکاران</span>
     </a>
   </nav>
 
+  <nav class="inventory-quick-filters" aria-label="رسیدگی به موجودی">
+    {% for item in quick_filters %}<a class="chip" href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}
+  </nav>
+
   {% include "inventory/_filter_bar.html" %}
 
-  <form method="post" action="{% url 'inventory:catalog_selection_start' %}" class="inventory-selection-form stack-md">
+  <form method="post" action="{% url 'inventory:catalog_selection_start' %}" class="inventory-selection-form stack-md"{% if can_manage_catalogs %} data-inventory-selection{% endif %}>
     {% csrf_token %}
     <input type="hidden" name="filter_query" value="{{ request.GET.urlencode }}">
 
     {% if can_manage_catalogs %}
-      <details class="panel catalog-builder"{% if selected_catalog %} open{% endif %}>
+      <details class="panel catalog-builder" data-selection-details{% if selected_catalog %} open{% endif %}>
         <summary class="catalog-builder-summary">
           <span class="catalog-builder-icon" aria-hidden="true">
             <svg class="catalog-builder-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -48,7 +52,7 @@
           </span>
           <span>
             <strong>انتخاب برای کاتالوگ</strong>
-            <small>محصول‌ها را علامت بزنید و به کاتالوگ جدید یا قبلی اضافه کنید.</small>
+            <small data-selection-count aria-live="polite">محصول‌ها را علامت بزنید و به کاتالوگ جدید یا قبلی اضافه کنید.</small>
           </span>
           <span class="catalog-builder-chevron" aria-hidden="true">⌄</span>
         </summary>
@@ -64,8 +68,8 @@
             {% if selected_catalog %}<span class="field-help">پس از افزودن، به «{{ selected_catalog.title }}» بازمی‌گردید.</span>{% endif %}
           </label>
           <div class="btn-row catalog-builder-actions">
-            <button class="btn btn-secondary" type="submit" name="selection_scope" value="selected">محصول‌های انتخاب‌شده</button>
-            <button class="btn btn-ghost" type="submit" name="selection_scope" value="filter">همه نتایج این فیلتر</button>
+            <button class="btn btn-secondary" type="submit" name="selection_scope" value="selected" data-selection-submit>افزودن انتخاب‌شده‌ها</button>
+            <button class="btn btn-ghost" type="submit" name="selection_scope" value="filter"{% if not page.total or filter_form.errors %} disabled{% endif %}>همهٔ {{ page.total|fa_digits }} نتیجهٔ فیلتر</button>
           </div>
         </div>
       </details>
@@ -74,11 +78,11 @@
     {% if rows %}
       <div class="results-heading">
         <div>
-          <strong>{{ page.total }} محصول</strong>
+          <strong>{{ page.total|fa_digits }} محصول</strong>
           <span class="muted">برای مشاهده و مدیریت، یک محصول را باز کنید.</span>
         </div>
         {% if can_manage_catalogs %}
-          <span class="results-heading-hint">دایره کنار هر محصول برای انتخاب کاتالوگ است.</span>
+          <label class="inventory-select-all" hidden data-select-all-label><input type="checkbox" data-select-all> انتخاب همهٔ این صفحه</label>
         {% endif %}
       </div>
     {% endif %}
@@ -188,7 +192,7 @@
           {% if filter_form.active_filter_count %}
             <h2>محصولی با این فیلترها پیدا نشد</h2>
             <p>فیلترها را پاک کنید یا عبارت جست‌وجوی دیگری بنویسید.</p>
-            <a class="btn btn-secondary" href="{{ request.path }}">پاک‌کردن فیلترها</a>
+            <a class="btn btn-secondary" href="{{ filter_reset_url }}">پاک‌کردن فیلترها</a>
           {% else %}
             <h2>هنوز محصولی ثبت نشده است</h2>
             <p>اولین سنگ را ثبت کنید تا موجودی، قیمت و انتشار آن را مدیریت کنید.</p>

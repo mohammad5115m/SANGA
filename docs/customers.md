@@ -134,6 +134,12 @@ follow-up. `/app/leads/followups/` is the overdue/today/upcoming/completed work
 queue. Due follow-ups also appear in the existing in-app notification center;
 no external follow-up notification channel is used.
 
+The notification center paginates stored messages and due reminders together.
+It shows the active business plus account-wide personal messages; the shell
+badge uses the same scope. Opening the list does not change read state. Each
+notification has an explicit POST-only read action, and “read all” applies only
+to that scope. Reminder read state remains per user and resets on rescheduling.
+
 Statuses are four, matching what a seller actually does:
 
 | Status | Meaning |

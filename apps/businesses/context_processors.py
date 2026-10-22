@@ -70,15 +70,9 @@ def _notification_badge_count(request: HttpRequest, membership, business: Busine
     if not request.user.is_authenticated or business is None or membership is None:
         return 0
 
-    from apps.businesses.permissions import LEADS_MANAGE
+    from apps.notifications.selectors import unread_notification_count
 
-    if membership.has_capability(LEADS_MANAGE):
-        from apps.inquiries.crm import CRMRepository
-
-        # One indexed, tenant-scoped COUNT keeps the shell badge consistent
-        # across browsers. The query is flat in the number of customers.
-        return CRMRepository(request).unread_reminder_count()
-    return 0
+    return unread_notification_count(request)
 
 
 def _capability_codes(membership) -> frozenset[str]:

@@ -4,9 +4,39 @@ import logging
 
 from django.db import transaction
 
+from apps.inquiries.models import FollowUpReminderRead
+
 from .models import Notification
+from .selectors import reminder_notifications, stored_notifications
 
 logger = logging.getLogger(__name__)
+
+
+@transaction.atomic
+def mark_notification_read(request, *, source, notification_id) -> bool:
+    if source == "stored":
+        return bool(stored_notifications(request).filter(pk=notification_id).update(is_read=True))
+    if source == "reminder":
+        followup = reminder_notifications(request).filter(pk=notification_id).first()
+        if followup is not None:
+            FollowUpReminderRead.objects.get_or_create(followup=followup, user=request.user)
+            return True
+    return False
+
+
+@transaction.atomic
+def mark_all_notifications_read(request) -> None:
+    stored_notifications(request).filter(is_read=False).update(is_read=True)
+    batch = []
+    for followup_id in reminder_notifications(request).exclude(
+        reminder_reads__user=request.user,
+    ).values_list("pk", flat=True).iterator(chunk_size=200):
+        batch.append(FollowUpReminderRead(followup_id=followup_id, user=request.user))
+        if len(batch) == 200:
+            FollowUpReminderRead.objects.bulk_create(batch, ignore_conflicts=True)
+            batch = []
+    if batch:
+        FollowUpReminderRead.objects.bulk_create(batch, ignore_conflicts=True)
 
 
 def members_who_can(business, capability: str) -> list:

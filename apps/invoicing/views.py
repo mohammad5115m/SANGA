@@ -291,7 +291,7 @@ def invoice_detail(request: HttpRequest, invoice_id) -> HttpResponse:
             "can_manage_cheques": request.membership.has_capability(CHEQUE_MANAGE),
             "has_business_signature": bool(current_settings and current_settings.signature),
             "has_personal_signature": UserInvoiceSignature.objects.filter(user=request.user).exists(),
-            "decision_form": PartnerDecisionForm(),
+            "decision_form": PartnerDecisionForm(initial={"revision_number": invoice.current_revision_number}),
             "offline_form": OfflineApprovalForm(
                 initial={"confirmed_at": timezone.localtime().strftime("%Y-%m-%dT%H:%M")}
             ),
@@ -722,8 +722,14 @@ def invoice_confirm(request: HttpRequest, invoice_id) -> HttpResponse:
     if invoice is None:
         messages.error(request, "فاکتور دریافتی یافت نشد.")
         return redirect("invoicing:list")
+    form = PartnerDecisionForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "نسخه فاکتور مشخص نیست. صفحه را تازه کنید و دوباره بررسی کنید.")
+        return redirect("invoicing:detail", invoice_id=invoice.id)
     try:
-        confirm_partner_invoice(invoice=invoice, membership=request.membership)
+        confirm_partner_invoice(
+            invoice=invoice, membership=request.membership, expected_revision=form.cleaned_data["revision_number"],
+        )
     except InvoiceError as exc:
         messages.error(request, exc.message)
     else:
@@ -740,7 +746,10 @@ def invoice_reject(request: HttpRequest, invoice_id) -> HttpResponse:
     if invoice is None:
         messages.error(request, "فاکتور دریافتی یافت نشد.")
         return redirect("invoicing:list")
-    if not form.is_valid() or not (form.cleaned_data.get("reason") or "").strip():
+    if not form.is_valid():
+        messages.error(request, "نسخه یا اطلاعات تصمیم معتبر نیست. صفحه را تازه کنید و دوباره بررسی کنید.")
+        return redirect("invoicing:detail", invoice_id=invoice.id)
+    if not (form.cleaned_data.get("reason") or "").strip():
         messages.error(request, "علت رد فاکتور را وارد کنید.")
         return redirect("invoicing:detail", invoice_id=invoice.id)
     try:
@@ -748,6 +757,7 @@ def invoice_reject(request: HttpRequest, invoice_id) -> HttpResponse:
             invoice=invoice,
             membership=request.membership,
             reason=form.cleaned_data["reason"],
+            expected_revision=form.cleaned_data["revision_number"],
         )
     except InvoiceError as exc:
         messages.error(request, exc.message)
@@ -766,11 +776,15 @@ def invoice_cancel_pending(request: HttpRequest, invoice_id) -> HttpResponse:
     if invoice is None:
         messages.error(request, "فاکتور یافت نشد.")
         return redirect("invoicing:list")
+    if not form.is_valid():
+        messages.error(request, "نسخه یا اطلاعات تصمیم معتبر نیست. صفحه را تازه کنید و دوباره بررسی کنید.")
+        return redirect("invoicing:detail", invoice_id=invoice.id)
     try:
         cancel_pending_partner_invoice(
             invoice=invoice,
             membership=request.membership,
-            reason=form.cleaned_data.get("reason", "") if form.is_valid() else "",
+            reason=form.cleaned_data.get("reason", ""),
+            expected_revision=form.cleaned_data["revision_number"],
         )
     except InvoiceError as exc:
         messages.error(request, exc.message)

@@ -20,6 +20,33 @@ class BusinessServiceError(Exception):
         super().__init__(message)
 
 
+def validate_membership_status_change(*, membership: BusinessMembership, status: str) -> None:
+    if membership.role == BusinessMembership.Role.OWNER:
+        raise BusinessServiceError("عضویت مالک از این مسیر قابل تغییر نیست.")
+    if status not in BusinessMembership.Status.values:
+        raise BusinessServiceError("وضعیت عضویت معتبر نیست.")
+    if status == BusinessMembership.Status.ACTIVE and membership.status != status:
+        try:
+            require_seat_available(membership.business)
+        except EntitlementError as exc:
+            raise BusinessServiceError(exc.message) from exc
+
+
+@transaction.atomic
+def set_membership_status(*, membership: BusinessMembership, status: str, actor: User) -> BusinessMembership:
+    """Platform-only status changes serialize with the admin provisioning path."""
+    if not (actor.is_active and actor.is_superuser):
+        raise BusinessServiceError("فقط مدیر پلتفرم اجازه تغییر وضعیت عضویت را دارد.")
+    business = Business.objects.select_for_update().get(pk=membership.business_id)
+    current = BusinessMembership.objects.select_for_update().get(pk=membership.pk, business=business)
+    current.business = business
+    validate_membership_status_change(membership=current, status=status)
+    if current.status != status:
+        current.status = status
+        current.save(update_fields=["status"])
+    return current
+
+
 @transaction.atomic
 def create_business_for_owner(
     *,
@@ -111,6 +138,7 @@ def invite_member(
     if not actor_membership.has_capability(TEAM_MANAGE):
         raise BusinessServiceError("اجازه مدیریت تیم را ندارید.")
 
+    business = Business.objects.select_for_update().get(pk=business.pk)
     existing = BusinessMembership.objects.filter(user=user, business=business).first()
     if existing is not None and existing.status == BusinessMembership.Status.ACTIVE:
         return existing

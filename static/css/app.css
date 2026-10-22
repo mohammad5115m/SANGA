@@ -1945,6 +1945,13 @@ input[type="number"], input[type="tel"], input[type="date"] {
   display: grid;
   gap: var(--space-3);
 }
+.inventory-quick-filters { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.inventory-quick-filters .chip { min-height: 44px; padding-inline: var(--space-3); }
+.inventory-quick-filters [aria-current] { color: #fff; border-color: var(--color-brand); background: var(--color-brand); }
+.inventory-select-all { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; cursor: pointer; }
+.inventory-select-all[hidden] { display: none; }
+.inventory-select-all input { width: 1.2rem; height: 1.2rem; accent-color: var(--color-brand); }
+.inventory-card:has(input[name="lot_ids"]:checked) { border-color: var(--color-brand); box-shadow: 0 0 0 2px var(--color-brand); }
 .inventory-card {
   position: relative;
   min-width: 0;
@@ -2802,7 +2809,30 @@ input[type="number"], input[type="tel"], input[type="date"] {
 .priority-urgent { color: var(--color-danger); background: #f8e8e8; }
 .empty-state-compact { min-height: 6rem; }
 
-/* Notification reminders */
+/* Personal account and notification center */
+.account-page, .notification-page { width: 100%; max-width: 70rem; margin-inline: auto; }
+.account-header { display: flex; align-items: center; gap: var(--space-4); }
+.account-avatar { display: grid; flex: none; place-items: center; width: 4rem; height: 4rem; border-radius: var(--radius-lg); background: var(--color-brand); color: #fff; font-size: 1.75rem; font-weight: 800; }
+.account-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+.account-grid > * { min-width: 0; }
+.account-business-name { overflow-wrap: anywhere; font-size: 1.1rem; }
+.account-facts { display: grid; gap: var(--space-3); margin: 0; }
+.account-facts > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
+.account-facts dt { color: var(--color-ink-muted); }
+.account-facts dd { margin: 0; font-weight: 700; }
+.account-phone { font-variant-numeric: tabular-nums; background: var(--color-bg-subtle); }
+.account-save { justify-self: start; }
+.account-session, .page-heading-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-4); }
+.account-session p { margin-bottom: 0; }
+.notification-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.notification-tabs a { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-2) var(--space-4); border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-bg-elevated); color: var(--color-ink); }
+.notification-tabs a[aria-current] { color: #fff; border-color: var(--color-brand); background: var(--color-brand); }
+.notification-help { margin: 0; font-size: 0.82rem; }
+.notification-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.notification-actions .btn { min-height: 44px; }
+.notification-read-state { font-weight: 600; }
+.notification-item.is-unread .notification-read-state { color: var(--color-accent); }
+.notification-due { font-size: 0.78rem; color: var(--color-ink); }
 .notification-link { position: relative; }
 .notification-count {
   display: grid;
@@ -2814,7 +2844,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
   background: var(--color-danger);
   font-size: 0.68rem;
 }
-.notification-list { max-width: 52rem; }
+.notification-list { width: 100%; }
 .notification-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2830,8 +2860,9 @@ input[type="number"], input[type="tel"], input[type="date"] {
 .notification-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--color-line-strong); }
 .notification-item.is-unread .notification-dot { background: var(--color-accent); }
 .notification-copy { min-width: 0; }
+.notification-copy .list-title { overflow-wrap: anywhere; font-size: 1.05rem; line-height: 1.7; margin: var(--space-1) 0; }
 .notification-copy p { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
-.notification-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--color-ink-muted); font-size: 0.72rem; }
+.notification-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--color-ink-muted); font-size: 0.8rem; }
 .notification-meta span::after { content: "·"; margin-inline-start: var(--space-2); }
 
 @media (max-width: 1050px) {
@@ -2844,6 +2875,9 @@ input[type="number"], input[type="tel"], input[type="date"] {
 }
 
 @media (max-width: 760px) {
+  .account-grid { grid-template-columns: minmax(0, 1fr); }
+  .account-session { align-items: stretch; flex-direction: column; }
+  .account-session .btn, .account-save { width: 100%; }
   .guided-discovery,
   .crm-detail-layout,
   .crm-profile-header { grid-template-columns: 1fr; }
@@ -2867,7 +2901,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
   .followup-summary-item { min-width: 8rem; }
   .followup-grid { grid-template-columns: 1fr; }
   .notification-item { grid-template-columns: auto minmax(0, 1fr); }
-  .notification-item .btn { grid-column: 2; justify-self: start; }
+  .notification-actions { grid-column: 2; justify-self: start; }
 }
 
 @media (max-width: 420px) {
@@ -2892,6 +2926,9 @@ input[type="number"], input[type="tel"], input[type="date"] {
   .notification-item { transition: none; }
 }
 @media (max-width: 620px) {
+  .surface-hero-inventory { padding: var(--space-4); gap: var(--space-3); }
+  .surface-hero-inventory .page-lead { font-size: 0.88rem; }
+  .inventory-quick-filters { gap: var(--space-1); }
   .surface-hero {
     align-items: stretch;
     flex-direction: column;

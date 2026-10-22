@@ -14,7 +14,7 @@
   <link rel="preload" href="{% static 'fonts/Vazirmatn.woff2' %}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
   {# The query version bypasses an older cache-first worker controlling this first navigation. #}
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=16">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=17">
   {# Interactive controls use the CSP-safe code in static/js/app.js. #}
   <script src="{% static 'vendor/htmx-2.0.2.min.js' %}" defer></script>
   <link rel="stylesheet" href="{% static 'css/calendar.css' %}?v=2">
@@ -39,7 +39,7 @@
   {% block shell %}
   {% endblock %}
 
-  <script src="{% static 'js/app.js' %}?v=7"></script>
+  <script src="{% static 'js/app.js' %}?v=8"></script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

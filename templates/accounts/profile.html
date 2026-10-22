@@ -3,28 +3,49 @@
 {% block title %}پروفایل | Sang Esf{% endblock %}
 
 {% block content %}
-<section class="stack-lg">
-  <div>
-    <h1 class="page-title">پروفایل</h1>
-    <p class="page-lead">اطلاعات شخصی حساب شما</p>
+<section class="stack-lg account-page" aria-labelledby="profile-title">
+  <header class="account-header">
+    <span class="account-avatar" aria-hidden="true">{{ request.user.full_name|first|default:"س" }}</span>
+    <div><span class="section-kicker">حساب شخصی</span><h1 class="page-title" id="profile-title">پروفایل</h1><p class="page-lead">اطلاعات حساب و کسب‌وکار فعال شما</p></div>
+  </header>
+  <div class="account-grid">
+  <form method="post" class="panel stack-md account-details" novalidate data-unsaved-warning>
+    {% csrf_token %}
+    <h2 class="section-title">اطلاعات شخصی</h2>
+    {% if form.non_field_errors %}<div class="alert alert-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    {% include "components/form_field.html" with field=form.full_name %}
+    <div class="field">
+      <label class="field-label" for="profile-phone">شماره موبایل برای ورود</label>
+      <input class="field-input account-phone" id="profile-phone" type="tel" value="{{ request.user.phone }}" dir="ltr" readonly aria-describedby="profile-phone-help" autocomplete="tel">
+      <p class="field-help" id="profile-phone-help">ورود با کد یک‌بارمصرف این شماره انجام می‌شود. برای تغییر شماره با مدیر پلتفرم هماهنگ کنید.</p>
+    </div>
+    <button class="btn btn-primary account-save" type="submit">ذخیرهٔ تغییرات</button>
+  </form>
+  <aside class="panel stack-md account-business" aria-labelledby="account-business-heading">
+    <h2 class="section-title" id="account-business-heading">کسب‌وکار فعال</h2>
+    {% if current_business %}
+      <strong class="account-business-name">{{ current_business.name }}</strong>
+      <dl class="account-facts"><div><dt>نقش شما</dt><dd>{{ current_membership.get_role_display }}</dd></div><div><dt>وضعیت</dt><dd>{% if business_can_write %}فعال{% elif business_block_reason == 'expired' %}اشتراک منقضی{% else %}معلق{% endif %}</dd></div></dl>
+      <div class="btn-row">
+        {% if 'business.settings' in capabilities %}<a class="btn btn-secondary" href="{% url 'businesses:settings' %}">تنظیمات کسب‌وکار</a>{% endif %}
+        {% if 'inventory.view' in capabilities %}<a class="btn btn-ghost" href="{% url 'inventory:lot_list' %}">موجودی من</a>{% endif %}
+      </div>
+    {% else %}<p class="muted">هنوز کسب‌وکاری برای این حساب فعال نشده است. با مدیر پلتفرم هماهنگ کنید.</p>{% endif %}
+    {% if user_memberships|length > 1 %}
+      <form class="stack-sm" method="post" action="{% url 'businesses:switch_business' %}">{% csrf_token %}
+        <label class="field-label" for="profile-business">انتخاب کسب‌وکار</label>
+        <select class="field-input" name="business_id" id="profile-business">{% for member in user_memberships %}<option value="{{ member.business_id }}"{% if member.business_id == current_business.id %} selected{% endif %}>{{ member.business.name }}</option>{% endfor %}</select>
+        <button class="btn btn-secondary" type="submit">تغییر کسب‌وکار فعال</button>
+      </form>
+    {% endif %}
+  </aside>
   </div>
-
-  <form method="post" class="panel stack-md">
+  <section class="panel account-session" aria-labelledby="account-session-heading">
+    <div><h2 class="section-title" id="account-session-heading">نشست فعلی</h2><p class="muted">پس از خروج، برای ورود دوباره به کد پیامکی نیاز دارید.</p></div>
+    <form method="post" action="{% url 'accounts:logout' %}">
     {% csrf_token %}
-    <label class="field">
-      <span class="field-label">نام کامل</span>
-      <input class="field-input" type="text" name="full_name" value="{{ request.user.full_name }}" autocomplete="name">
-    </label>
-    <label class="field">
-      <span class="field-label">شماره موبایل</span>
-      <input class="field-input" type="text" value="{{ request.user.phone }}" dir="ltr" disabled>
-    </label>
-    <button class="btn btn-primary" type="submit">ذخیره</button>
-  </form>
-
-  <form method="post" action="{% url 'accounts:logout' %}">
-    {% csrf_token %}
-    <button class="btn btn-danger btn-block" type="submit">خروج از حساب</button>
-  </form>
+      <button class="btn btn-danger" type="submit">خروج از حساب</button>
+    </form>
+  </section>
 </section>
 {% endblock %}

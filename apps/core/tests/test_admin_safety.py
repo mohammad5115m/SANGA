@@ -102,8 +102,8 @@ def test_an_issued_invoice_is_read_only(records):
 
 
 @pytest.mark.django_db
-def test_a_draft_invoice_stays_editable(records):
-    """The lock is on documents that have been sent, not on ones being written."""
+def test_a_draft_invoice_uses_the_app_editor(records):
+    """Admin must not bypass totals, settlement validation or status transitions."""
     invoice = SalesInvoice.objects.create(
         seller_business=records["seller"],
         buyer_business=records["buyer"],
@@ -112,7 +112,7 @@ def test_a_draft_invoice_stays_editable(records):
     )
 
     readonly = set(_admin(SalesInvoice).get_readonly_fields(_Request(), invoice))
-    assert "notes" not in readonly
+    assert "notes" in readonly
     assert "number" in readonly, "the allocated number is never editable"
 
 
@@ -136,7 +136,8 @@ def test_history_can_still_be_opened_and_read(records):
     from django.contrib.auth import get_user_model
 
     superuser = get_user_model().objects.create_superuser(phone="09441119999", password="not-used-for-otp-login")
-    assert _admin(Trade).has_change_permission(_Request(superuser), records["trade"]) is True
+    assert _admin(Trade).has_view_permission(_Request(superuser), records["trade"]) is True
+    assert _admin(Trade).has_change_permission(_Request(superuser), records["trade"]) is False
 
 
 # --- retired concepts are gone from admin ---------------------------------------

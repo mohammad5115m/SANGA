@@ -398,16 +398,23 @@ class SalesInvoice(models.Model):
                 name="invoice_included_balance_same_currency",
             ),
             models.CheckConstraint(
-                condition=(models.Q(status__in=("draft", "awaiting_confirmation")) | ~models.Q(number="")),
+                condition=(
+                    models.Q(status__in=("draft", "awaiting_confirmation", "cancelled_by_sender"))
+                    | ~models.Q(number="")
+                ),
                 name="invoice_finalized_has_number",
             ),
             models.CheckConstraint(
-                condition=(models.Q(status__in=("draft", "awaiting_confirmation")) | models.Q(issued_at__isnull=False)),
+                condition=(
+                    models.Q(status__in=("draft", "awaiting_confirmation", "cancelled_by_sender"))
+                    | models.Q(issued_at__isnull=False)
+                ),
                 name="invoice_finalized_has_issued_at",
             ),
             models.CheckConstraint(
                 condition=(
-                    ~models.Q(status="cancelled") | (models.Q(cancelled_at__isnull=False) & ~models.Q(cancel_reason=""))
+                    ~models.Q(status__in=("cancelled", "cancelled_by_sender"))
+                    | (models.Q(cancelled_at__isnull=False) & ~models.Q(cancel_reason=""))
                 ),
                 name="invoice_cancelled_has_audit",
             ),
@@ -425,11 +432,14 @@ class SalesInvoice(models.Model):
         return f"{self.number or 'پیش‌نویس'} — {self.buyer_name}"
 
     def save(self, *args, **kwargs):
-        if self.status not in {self.Status.DRAFT, self.Status.AWAITING_CONFIRMATION} and (
+        unissued_statuses = {self.Status.DRAFT, self.Status.AWAITING_CONFIRMATION, self.Status.CANCELLED_BY_SENDER}
+        if self.status not in unissued_statuses and (
             not self.number or self.issued_at is None or not self.seller_snapshot
         ):
             raise ValidationError("سند نهایی باید شماره، زمان صدور و اطلاعات ثابت فروشنده داشته باشد.")
-        if self.status == self.Status.CANCELLED and (self.cancelled_at is None or not self.cancel_reason.strip()):
+        if self.status in {self.Status.CANCELLED, self.Status.CANCELLED_BY_SENDER} and (
+            self.cancelled_at is None or not self.cancel_reason.strip()
+        ):
             raise ValidationError("برای ابطال سند، زمان و علت ابطال الزامی است.")
         if self.pk and not self._state.adding:
             original = SalesInvoice.objects.filter(pk=self.pk).first()
@@ -504,7 +514,7 @@ class SalesInvoice(models.Model):
                     "cancelled_by_id",
                     "cancel_reason",
                 )
-                if original.status == self.Status.CANCELLED and any(
+                if original.status in {self.Status.CANCELLED, self.Status.CANCELLED_BY_SENDER} and any(
                     getattr(self, field) != getattr(original, field) for field in cancellation_audit
                 ):
                     raise ValidationError("تاریخچه ابطال فاکتور تغییرناپذیر است.")

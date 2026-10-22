@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.models import ADDITION, LogEntry
@@ -38,7 +40,11 @@ def _valid_mobile(value: str) -> str:
 
 class BusinessProvisionForm(forms.Form):
     name = forms.CharField(label="نام کسب‌وکار", max_length=200, min_length=2)
-    owner_phone = forms.CharField(label="موبایل مالک", max_length=20)
+    owner_phone = forms.CharField(
+        label="موبایل مالک", max_length=20,
+        widget=forms.TextInput(attrs={"type": "tel", "inputmode": "tel", "dir": "ltr", "autocomplete": "tel"}),
+        help_text="مانند ۰۹۱۲۳۴۵۶۷۸۹؛ ارقام فارسی و انگلیسی پذیرفته می‌شوند.",
+    )
     owner_name = forms.CharField(label="نام مالک", max_length=150, required=False)
     city = forms.CharField(label="شهر", max_length=100, required=False)
     province = forms.CharField(label="استان", max_length=100, required=False)
@@ -56,7 +62,11 @@ class BusinessProvisionForm(forms.Form):
 
 class MemberProvisionForm(forms.Form):
     business = forms.ModelChoiceField(label="کسب‌وکار", queryset=Business.objects.none())
-    phone = forms.CharField(label="موبایل کاربر", max_length=20)
+    phone = forms.CharField(
+        label="موبایل کاربر", max_length=20,
+        widget=forms.TextInput(attrs={"type": "tel", "inputmode": "tel", "dir": "ltr", "autocomplete": "tel"}),
+        help_text="مانند ۰۹۱۲۳۴۵۶۷۸۹؛ ارقام فارسی و انگلیسی پذیرفته می‌شوند.",
+    )
     full_name = forms.CharField(label="نام کاربر", max_length=150, required=False)
     role = forms.ChoiceField(
         label="نقش در کسب‌وکار",
@@ -284,6 +294,10 @@ def _object_url(app: str, model: str, pk) -> str:
     return reverse(f"admin:{app}_{model}_change", args=[pk])
 
 
+def _list_url(app: str, model: str, **filters) -> str:
+    return reverse(f"admin:{app}_{model}_changelist") + "?" + urlencode(filters)
+
+
 def _search_results(term: str) -> list[dict]:
     results = []
     sources = (
@@ -361,7 +375,7 @@ def dashboard_context(request: HttpRequest) -> dict:
     new_inquiries = Inquiry.objects.filter(status=Inquiry.Status.NEW)
     pending_invoices = SalesInvoice.objects.filter(status=SalesInvoice.Status.AWAITING_CONFIRMATION)
     overdue_followups = CustomerFollowUp.objects.filter(
-        status=CustomerFollowUp.Status.SCHEDULED,
+        status__in=(CustomerFollowUp.Status.SCHEDULED, CustomerFollowUp.Status.POSTPONED),
         scheduled_for__lt=now,
     )
     term = normalize_digits((request.GET.get("q") or "").strip()[:80])
@@ -372,19 +386,22 @@ def dashboard_context(request: HttpRequest) -> dict:
             {
                 "label": "کسب‌وکار فعال",
                 "value": Business.objects.filter(status=Business.Status.ACTIVE).count(),
-                "url": reverse("admin:businesses_business_changelist"),
+                "url": _list_url("businesses", "business", status__exact=Business.Status.ACTIVE),
             },
             {
                 "label": "کاربر فعال",
                 "value": User.objects.filter(is_active=True, is_superuser=False).count(),
-                "url": reverse("admin:accounts_user_changelist"),
+                "url": _list_url("accounts", "user", is_active__exact=1, is_superuser__exact=0),
             },
             {
                 "label": "محصول منتشرشده",
                 "value": InventoryLot.objects.filter(
                     status=InventoryLot.Status.ACTIVE, is_visible=True, deleted_at__isnull=True
                 ).count(),
-                "url": reverse("admin:inventory_inventorylot_changelist"),
+                "url": _list_url(
+                    "inventory", "inventorylot", status__exact=InventoryLot.Status.ACTIVE,
+                    is_visible__exact=1, deleted_at__isnull=True,
+                ),
             },
             {"label": "فروش نهایی", "value": Trade.objects.count(), "url": reverse("admin:trading_trade_changelist")},
         ],
@@ -410,7 +427,12 @@ def dashboard_context(request: HttpRequest) -> dict:
             {
                 "label": "پیگیری عقب‌افتاده",
                 "count": overdue_followups.count(),
-                "url": reverse("admin:inquiries_customerfollowup_changelist"),
+                "url": _list_url(
+                    "inquiries", "customerfollowup", status__in=",".join((
+                        CustomerFollowUp.Status.SCHEDULED, CustomerFollowUp.Status.POSTPONED,
+                    )),
+                    scheduled_for__lt=now.isoformat(),
+                ),
                 "tone": "red",
             },
         ],

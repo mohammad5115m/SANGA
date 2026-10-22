@@ -39,6 +39,7 @@ class Command(BaseCommand):
         if business is None:
             raise CommandError(f"No business matches '{reference}'")
 
+        business = Business.objects.select_for_update().get(pk=business.pk)
         if BusinessMembership.objects.filter(user__phone=phone, business=business).exists():
             raise CommandError(f"{phone} is already a member of {business.name}")
 

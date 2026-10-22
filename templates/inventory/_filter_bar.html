@@ -7,6 +7,7 @@ Expects: filter_form
 {% endcomment %}
 {% load money %}
 <form method="get" class="panel filter-bar filter-panel" role="search" aria-label="جست‌وجو و فیلتر محصولات" novalidate>
+  {% if selected_catalog %}<input type="hidden" name="catalog" value="{{ selected_catalog.pk }}">{% endif %}
   {% if filter_form.non_field_errors %}
     <div class="field-errors" role="alert">{{ filter_form.non_field_errors }}</div>
   {% endif %}
@@ -27,9 +28,9 @@ Expects: filter_form
 
   <div class="filter-control-row">
     <div class="filter-meta" aria-live="polite">
-      <strong>{{ page.total }} نتیجه</strong>
+      <strong>{{ page.total|fa_digits }} نتیجه</strong>
       {% if filter_form.active_filter_count %}
-        <span>{{ filter_form.active_filter_count }} فیلتر فعال</span>
+        <span>{{ filter_form.active_filter_count|fa_digits }} فیلتر فعال</span>
       {% else %}
         <span>نمایش همه محصولات</span>
       {% endif %}
@@ -42,7 +43,7 @@ Expects: filter_form
         </svg>
         <span>فیلتر و مرتب‌سازی</span>
         {% if filter_form.active_filter_count %}
-          <span class="filter-trigger-count">{{ filter_form.active_filter_count }}</span>
+          <span class="filter-trigger-count">{{ filter_form.active_filter_count|fa_digits }}</span>
         {% endif %}
         <span class="filter-trigger-chevron" aria-hidden="true">⌄</span>
       </summary>
@@ -68,14 +69,14 @@ Expects: filter_form
           {{ filter_form.applications.errors }}
         </fieldset>
 
-        {% if price_bounds.minimum or price_bounds.maximum %}
+        {% if price_bounds.minimum != None or price_bounds.maximum != None %}
           <p class="field-help filter-price-hint">بازه قیمت نتایج: {{ price_bounds.minimum|rial }} تا {{ price_bounds.maximum|rial }} ریال</p>
         {% endif %}
 
         <div class="filter-actions">
           <button class="btn btn-primary" type="submit">اعمال فیلترها</button>
           {% if filter_form.active_filter_count %}
-            <a class="btn btn-ghost" href="{{ request.path }}">پاک‌کردن همه</a>
+            <a class="btn btn-ghost" href="{{ filter_reset_url|default:request.path }}">پاک‌کردن همه</a>
           {% endif %}
         </div>
       </div>
@@ -87,7 +88,7 @@ Expects: filter_form
     <div class="active-filter-row" aria-label="فیلترهای فعال">
       <span class="active-filter-heading">فیلترهای فعال:</span>
       {% for label in active_filters %}<span class="active-filter-chip">{{ label }}</span>{% endfor %}
-      <a href="{{ request.path }}">پاک‌کردن همه</a>
+      <a href="{{ filter_reset_url|default:request.path }}">پاک‌کردن همه</a>
     </div>
   {% endif %}
   {% endwith %}

@@ -11,7 +11,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods, require_POST
 
-from .forms import OTPVerifyForm, PhoneLoginForm
+from .forms import OTPVerifyForm, PhoneLoginForm, ProfileForm
 from .services import OTPError, request_login_otp, verify_login_otp
 
 logger = logging.getLogger(__name__)
@@ -110,10 +110,9 @@ def logout_view(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_http_methods(["GET", "POST"])
 def profile_view(request: HttpRequest) -> HttpResponse:
-    if request.method == "POST":
-        full_name = (request.POST.get("full_name") or "").strip()[:150]
-        request.user.full_name = full_name
-        request.user.save(update_fields=["full_name"])
+    form = ProfileForm(request.POST if request.method == "POST" else None, instance=request.user)
+    if request.method == "POST" and form.is_valid():
+        form.save(commit=False).save(update_fields=["full_name"])
         messages.success(request, "پروفایل به‌روزرسانی شد.")
         return redirect("accounts:profile")
-    return render(request, "accounts/profile.html")
+    return render(request, "accounts/profile.html", {"form": form})

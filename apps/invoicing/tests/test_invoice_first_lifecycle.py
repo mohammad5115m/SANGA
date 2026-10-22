@@ -100,13 +100,13 @@ def test_registered_partner_confirm_freezes_both_signatures_and_posts_once():
     )
     sent = send_partner_invoice(invoice=invoice, membership=seller_member)
     assert sent.status == SalesInvoice.Status.AWAITING_CONFIRMATION
-    confirmed = confirm_partner_invoice(invoice=sent, membership=buyer_member)
+    confirmed = confirm_partner_invoice(invoice=sent, membership=buyer_member, expected_revision=1)
     revision = InvoiceRevision.objects.get(invoice=confirmed, revision_number=1)
     assert confirmed.status == SalesInvoice.Status.CONFIRMED
     assert revision.seller_business_signature and revision.seller_user_signature
     assert revision.buyer_business_signature and revision.buyer_user_signature
     assert LedgerEntry.objects.filter(related_invoice=confirmed).count() == 2
-    confirm_partner_invoice(invoice=confirmed, membership=buyer_member)
+    confirm_partner_invoice(invoice=confirmed, membership=buyer_member, expected_revision=1)
     assert LedgerEntry.objects.filter(related_invoice=confirmed).count() == 2
 
 
@@ -161,7 +161,9 @@ def test_rejection_preserves_revision_and_resends_same_invoice_identity():
     send_partner_invoice(invoice=invoice, membership=seller_member)
     rejected_id = invoice.id
     first_hash = invoice.revisions.get(revision_number=1).payload_hash
-    reject_partner_invoice(invoice=invoice, membership=buyer_member, reason="قیمت نیاز به اصلاح دارد")
+    reject_partner_invoice(
+        invoice=invoice, membership=buyer_member, reason="قیمت نیاز به اصلاح دارد", expected_revision=1,
+    )
     invoice.refresh_from_db()
     first = invoice.revisions.get(revision_number=1)
     assert invoice.id == rejected_id
@@ -209,7 +211,7 @@ def test_cheque_bounce_restores_registered_balances_exactly_once():
         },
     )
     send_partner_invoice(invoice=invoice, membership=seller_member)
-    confirmed = confirm_partner_invoice(invoice=invoice, membership=buyer_member)
+    confirmed = confirm_partner_invoice(invoice=invoice, membership=buyer_member, expected_revision=1)
     cheque = confirmed.cheques.get()
     assert LedgerEntry.objects.filter(related_invoice=confirmed).count() == 4
     assert ChequeEvent.objects.filter(cheque=cheque).count() == 1
@@ -311,7 +313,7 @@ def test_customer_registered_and_local_sales_share_reporting_source():
         credit_amount=Decimal("200"),
     )
     send_partner_invoice(invoice=partner, membership=seller_member)
-    confirm_partner_invoice(invoice=partner, membership=buyer_member)
+    confirm_partner_invoice(invoice=partner, membership=buyer_member, expected_revision=1)
     local = resolve_local_counterparty(
         business=seller,
         membership=seller_member,

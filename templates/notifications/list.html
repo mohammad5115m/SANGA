@@ -2,26 +2,45 @@
 {% block title %}اعلان‌ها | Sang Esf{% endblock %}
 
 {% block content %}
-<section class="stack-lg notification-page">
-  <div>
+<section class="stack-lg notification-page" aria-labelledby="notifications-title">
+  <header class="page-heading-row">
+   <div>
     <span class="section-kicker">مرکز کارهای مهم</span>
-    <h1 class="page-title">اعلان‌ها</h1>
-    <p class="page-lead">درخواست‌های تازه و یادآوری پیگیری مشتریان در همین بخش نمایش داده می‌شوند.</p>
-  </div>
-  <div class="list-stack notification-list">
+    <h1 class="page-title" id="notifications-title">اعلان‌ها</h1>
+    <p class="page-lead">اعلان‌های {{ current_business.name }} و پیام‌های شخصی حساب شما؛ {{ unread_count|fa_digits }} مورد خوانده‌نشده.</p>
+   </div>
+   {% if unread_count %}<form method="post" action="{% url 'notifications:read_all' %}">{% csrf_token %}
+     <input type="hidden" name="state" value="{{ state }}"><input type="hidden" name="page" value="{{ page.number }}">
+     <button class="btn btn-secondary" type="submit">همه را خواندم</button>
+   </form>{% endif %}
+  </header>
+  <nav class="notification-tabs" aria-label="فیلتر اعلان‌ها">
+    <a href="{% url 'notifications:list' %}"{% if state == 'all' %} aria-current="page"{% endif %}>همه اعلان‌ها</a>
+    <a href="?state=unread"{% if state == 'unread' %} aria-current="page"{% endif %}>خوانده‌نشده‌ها <span>{{ unread_count|fa_digits }}</span></a>
+  </nav>
+  <p class="muted notification-help">بازکردن این صفحه اعلان‌ها را خوانده‌شده نمی‌کند؛ پس از بررسی، «خواندم» را بزنید.</p>
+  <div class="list-stack notification-list"{% if notifications %} role="list"{% endif %}>
     {% for note in notifications %}
-      <article class="notification-item{% if not note.is_read %} is-unread{% endif %}">
+      <article class="notification-item{% if not note.is_read %} is-unread{% endif %}" role="listitem">
         <span class="notification-dot" aria-hidden="true"></span>
         <div class="notification-copy">
-          <div class="notification-meta"><span>{{ note.kind_label }}</span><time>{{ note.created_at|jdatetime }}</time></div>
+          <div class="notification-meta"><span>{{ note.kind_label }}</span><time datetime="{{ note.created_at|date:'c' }}">{{ note.created_at|jdatetime }}</time><b class="notification-read-state">{% if note.is_read %}خوانده‌شده{% else %}خوانده‌نشده{% endif %}</b></div>
           <h2 class="list-title">{{ note.title }}</h2>
-          {% if note.body %}<p class="muted">{{ note.body }}</p>{% endif %}
+          {% if note.body %}<p class="muted"><bdi>{{ note.body }}</bdi></p>{% endif %}
+          {% if note.scheduled_for %}<p class="notification-due">زمان پیگیری: {{ note.scheduled_for|jdatetime }}</p>{% endif %}
         </div>
-        {% if note.link %}<a class="btn btn-secondary btn-sm" href="{{ note.link }}">مشاهده و اقدام</a>{% endif %}
+        <div class="notification-actions">
+          {% if note.link %}<a class="btn btn-secondary btn-sm" href="{{ note.link }}" aria-label="مشاهده و اقدام: {{ note.title }}">مشاهده و اقدام</a>{% endif %}
+          {% if not note.is_read %}<form method="post" action="{% url 'notifications:read' note.source note.id %}">{% csrf_token %}
+            <input type="hidden" name="state" value="{{ state }}"><input type="hidden" name="page" value="{{ page.number }}">
+            <button class="btn btn-ghost btn-sm" type="submit" aria-label="خواندم: {{ note.title }}">خواندم</button>
+          </form>{% endif %}
+        </div>
       </article>
     {% empty %}
-      <div class="empty-state stack-md"><h2 class="section-title">اعلان تازه‌ای ندارید</h2><p>وقتی درخواست یا پیگیری جدیدی نیاز به توجه داشته باشد، اینجا دیده می‌شود.</p></div>
+      <div class="empty-state stack-md"><h2 class="section-title">{% if state == 'unread' %}اعلان خوانده‌نشده‌ای ندارید{% else %}هنوز اعلانی ندارید{% endif %}</h2><p>درخواست‌ها، فاکتورها و یادآوری پیگیری‌ها در این بخش نمایش داده می‌شوند.</p>{% if state == 'unread' %}<a class="btn btn-secondary" href="{% url 'notifications:list' %}">مشاهدهٔ همه اعلان‌ها</a>{% else %}<a class="btn btn-secondary" href="{% url 'businesses:dashboard' %}">بازگشت به خانه</a>{% endif %}</div>
     {% endfor %}
   </div>
+  {% include "_pager.html" %}
 </section>
 {% endblock %}

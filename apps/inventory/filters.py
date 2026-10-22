@@ -160,14 +160,14 @@ class ItemFilterSpec:
 
     def _apply_sort(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
         if self.sort == "confirmed":
-            return qs.order_by("-stock_confirmed_at", "-updated_at")
+            return qs.order_by("-stock_confirmed_at", "-updated_at", "-pk")
         if self.sort in ("price_asc", "price_desc"):
             tier = self._price_tier(audience)
             qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
             if self.sort == "price_asc":
-                return qs.order_by(F("_effective_price").asc(nulls_last=True), "-updated_at")
-            return qs.order_by(F("_effective_price").desc(nulls_last=True), "-updated_at")
-        return qs.order_by("-updated_at")
+                return qs.order_by(F("_effective_price").asc(nulls_last=True), "-updated_at", "-pk")
+            return qs.order_by(F("_effective_price").desc(nulls_last=True), "-updated_at", "-pk")
+        return qs.order_by("-updated_at", "-pk")
 
     def _price_tier(self, audience: Audience) -> str:
         if audience == "owner" and self.price_tier in {"b2b", "b2c"}:

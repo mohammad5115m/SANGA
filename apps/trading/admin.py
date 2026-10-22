@@ -1,12 +1,12 @@
 from django.contrib import admin
 
-from apps.core.admin import HistoricalRecordAdmin
+from apps.core.admin import ReadOnlyAdmin, ReadOnlyTabularInline
 
 from .models import PurchaseRequest, Trade, TradeItem, TradeProposal, TradeProposalItem
 
 
 @admin.register(PurchaseRequest)
-class PurchaseRequestAdmin(admin.ModelAdmin):
+class PurchaseRequestAdmin(ReadOnlyAdmin):
     list_display = (
         "created_at",
         "buyer_business",
@@ -25,7 +25,7 @@ class PurchaseRequestAdmin(admin.ModelAdmin):
         return False
 
 
-class TradeItemInline(admin.TabularInline):
+class TradeItemInline(ReadOnlyTabularInline):
     """The sold lines, shown but never editable.
 
     A line is history in exactly the way its trade is: the ledger and the invoice
@@ -43,7 +43,7 @@ class TradeItemInline(admin.TabularInline):
         return False
 
 
-class TradeProposalItemInline(admin.TabularInline):
+class TradeProposalItemInline(ReadOnlyTabularInline):
     model = TradeProposalItem
     extra = 0
     can_delete = False
@@ -55,7 +55,7 @@ class TradeProposalItemInline(admin.TabularInline):
 
 
 @admin.register(TradeProposal)
-class TradeProposalAdmin(HistoricalRecordAdmin):
+class TradeProposalAdmin(ReadOnlyAdmin):
     list_display = (
         "created_at",
         "seller_business",
@@ -79,7 +79,7 @@ class TradeProposalAdmin(HistoricalRecordAdmin):
 
 
 @admin.register(Trade)
-class TradeAdmin(HistoricalRecordAdmin):
+class TradeAdmin(ReadOnlyAdmin):
     """A Trade is finalized the moment it exists, so it is read-only from the start.
 
     Every trade already moved both parties' ledgers. Editing the amount here

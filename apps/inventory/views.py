@@ -5,6 +5,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 from math import ceil
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -108,7 +109,9 @@ def _price_initial(lot, tier_code: str) -> dict:
         "valid_for_days": price.price_valid_for_days,
         "is_special": active_special,
         "special_amount": price.special_amount if active_special else None,
-        "special_valid_for_days": max(1, ceil((price.special_until - timezone.now()).total_seconds() / 86400)) if active_special else None,
+        "special_valid_for_days": (
+            max(1, ceil((price.special_until - timezone.now()).total_seconds() / 86400)) if active_special else None
+        ),
         "special_until": price.special_until if active_special else None,
     }
 
@@ -161,13 +164,16 @@ def _seller_processing_suggestions(business) -> list[str]:
 @require_capability(INVENTORY_VIEW)
 @require_GET
 def lot_list(request: HttpRequest) -> HttpResponse:
-    form = OwnerItemFilterForm(request.GET or None)
+    can_view_prices = request.membership.has_capability(PRICES_VIEW)
+    form = OwnerItemFilterForm(request.GET or None, can_view_prices=can_view_prices)
     spec = form.to_spec()
     base = lots_for_business(request.business)
-    qs = filter_owned_lots(base, spec=spec, state=form.state_value)
-    minimum, maximum = effective_price_bounds(base, spec=spec, audience="owner")
+    state_base = filter_owned_lots(base, state=form.state_value)
+    qs = filter_owned_lots(state_base, spec=spec)
+    minimum, maximum = (
+        effective_price_bounds(state_base, spec=spec, audience="owner") if can_view_prices else (None, None)
+    )
     page = paginate(request, qs)
-    can_view_prices = request.membership.has_capability(PRICES_VIEW)
     rows = []
     for lot in page.object_list:
         prices = resolve_visible_prices(lot, "owner_staff", can_view_prices=can_view_prices)
@@ -185,6 +191,21 @@ def lot_list(request: HttpRequest) -> HttpResponse:
         except (DjangoValidationError, TypeError, ValueError):
             selected_catalog = None
 
+    quick_filters = []
+    for state, label in (("", "همه وضعیت‌ها"), ("needs_stock", "تأیید موجودی"),
+                         ("needs_price", "بررسی قیمت"), ("draft", "پیش‌نویس‌ها")):
+        if state == "needs_price" and not can_view_prices:
+            continue
+        params = request.GET.copy()
+        params.pop("page", None)
+        params.pop("state", None)
+        if state:
+            params["state"] = state
+        quick_filters.append({"label": label, "url": "?" + params.urlencode(), "active": form.state_value == state})
+    reset_url = request.path
+    if selected_catalog:
+        reset_url += "?" + urlencode({"catalog": selected_catalog.pk})
+
     return render(
         request,
         "inventory/lot_list.html",
@@ -196,6 +217,8 @@ def lot_list(request: HttpRequest) -> HttpResponse:
             "price_bounds": {"minimum": minimum, "maximum": maximum},
             "catalogs": catalogs_for_business(request.business),
             "selected_catalog": selected_catalog,
+            "quick_filters": quick_filters,
+            "filter_reset_url": reset_url,
         },
     )
 
@@ -536,7 +559,7 @@ def lot_media(request: HttpRequest, lot_id) -> HttpResponse:
 def catalog_selection_start(request: HttpRequest) -> HttpResponse:
     query = QueryDict(request.POST.get("filter_query", ""))
     # Keep an empty query bound: it means the valid filter "all inventory".
-    filter_form = OwnerItemFilterForm(query)
+    filter_form = OwnerItemFilterForm(query, can_view_prices=request.membership.has_capability(PRICES_VIEW))
     scope = "filter" if request.POST.get("selection_scope") == "filter" else "selected"
     if scope == "filter" and not filter_form.is_valid():
         messages.error(request, "فیلتر انتخاب محصولات معتبر نیست؛ دوباره تلاش کنید.")
@@ -588,7 +611,10 @@ def catalog_selection_start(request: HttpRequest) -> HttpResponse:
         from apps.catalog.models import CustomCatalog
         from apps.catalog.services import CatalogError, add_catalog_lots
 
-        catalog = CustomCatalog.objects.filter(pk=catalog_id, business=request.business).first()
+        try:
+            catalog = CustomCatalog.objects.filter(pk=catalog_id, business=request.business).first()
+        except (DjangoValidationError, TypeError, ValueError):
+            catalog = None
         if catalog is None:
             messages.error(request, "کاتالوگ یافت نشد.")
             return redirect("inventory:lot_list")

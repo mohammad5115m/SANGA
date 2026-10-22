@@ -420,6 +420,41 @@
     });
   }
 
+  function initInventorySelection(root) {
+    elementsWithin(root, "[data-inventory-selection]:not([data-ui-ready])").forEach(function (form) {
+      form.dataset.uiReady = "true";
+      var boxes = Array.from(form.querySelectorAll('input[name="lot_ids"]'));
+      var all = form.querySelector("[data-select-all]");
+      var label = form.querySelector("[data-select-all-label]");
+      var count = form.querySelector("[data-selection-count]");
+      var submit = form.querySelector("[data-selection-submit]");
+      var details = form.querySelector("[data-selection-details]");
+      var destination = form.querySelector('select[name="catalog_id"]');
+      if (!boxes.length || !count || !submit) return;
+      if (label) label.hidden = false;
+      function update() {
+        var selected = boxes.filter(function (box) { return box.checked; }).length;
+        // HTMX restores serialized HTML; reflect checkbox state in that HTML.
+        boxes.forEach(function (box) { box.toggleAttribute("checked", box.checked); });
+        count.textContent = selected ? selected.toLocaleString("fa-IR") + " محصول در این صفحه انتخاب شده" : "محصولی انتخاب نشده؛ دایرهٔ کنار محصول را بزنید.";
+        submit.disabled = selected === 0;
+        if (all) { all.checked = selected === boxes.length; all.indeterminate = selected > 0 && selected < boxes.length; }
+      }
+      boxes.forEach(function (box) {
+        box.addEventListener("change", function () { if (box.checked && details) details.open = true; update(); });
+      });
+      if (all) all.addEventListener("change", function () {
+        boxes.forEach(function (box) { box.checked = all.checked; });
+        if (all.checked && details) details.open = true;
+        update();
+      });
+      if (destination) destination.addEventListener("change", function () {
+        Array.from(destination.options).forEach(function (option) { option.toggleAttribute("selected", option.selected); });
+      });
+      update();
+    });
+  }
+
   function initUnsavedForms(root) {
     elementsWithin(root, "form[data-unsaved-warning]:not([data-ui-ready])").forEach(function (form) {
       form.dataset.uiReady = "true";
@@ -481,6 +516,7 @@
     initMediaUpload(root);
     initProductPickers(root);
     initCollectionPickers(root);
+    initInventorySelection(root);
     initUnsavedForms(root);
     focusFirstError(root);
   }

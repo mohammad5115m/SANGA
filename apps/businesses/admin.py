@@ -1,10 +1,13 @@
+from django import forms
 from django.contrib import admin
+from django.db import transaction
 from django.urls import reverse
 
 from apps.core.admin import NoDeleteAdmin
 from apps.core.calendar import format_jalali
 
 from .models import Business, BusinessMembership
+from .services import BusinessServiceError, set_membership_status, validate_membership_status_change
 
 # Warehouse is deliberately not registered. The user-facing warehouse workflow
 # was removed in V2 and the model survives only to keep the migration graph
@@ -145,13 +148,42 @@ class BusinessAdmin(NoDeleteAdmin):
     )
 
 
+class MembershipStatusForm(forms.ModelForm):
+    class Meta:
+        model = BusinessMembership
+        fields = ("status",)
+
+    def clean_status(self):
+        status = self.cleaned_data["status"]
+        try:
+            validate_membership_status_change(membership=self.instance, status=status)
+        except BusinessServiceError as exc:
+            raise forms.ValidationError(exc.message) from exc
+        return status
+
+
 @admin.register(BusinessMembership)
 class BusinessMembershipAdmin(admin.ModelAdmin):
+    form = MembershipStatusForm
     list_display = ("member_user", "member_business", "member_role", "member_status", "member_joined_at")
     list_filter = (("role", MembershipRoleFilter), ("status", MembershipStatusFilter))
     search_fields = ("user__phone", "user__full_name", "business__name")
     autocomplete_fields = ("user", "business")
     change_list_template = "admin/provision_changelist.html"
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if request.method == "POST" and object_id:
+            # Hold the same tenant lock as provisioning across validation AND
+            # saving, so a lost seat becomes a bound form error, never a 500.
+            with transaction.atomic():
+                member = self.get_object(request, object_id)
+                if member is not None:
+                    Business.objects.select_for_update().get(pk=member.business_id)
+                return super().changeform_view(request, object_id, form_url, extra_context)
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+    def save_model(self, request, obj, form, change):
+        set_membership_status(membership=obj, status=form.cleaned_data["status"], actor=request.user)
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("user", "business")

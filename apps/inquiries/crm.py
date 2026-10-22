@@ -14,6 +14,8 @@ from django.db.models import Exists, OuterRef, Prefetch
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.businesses.eligibility import NotOperationalError, require_operational
+from apps.businesses.permissions import LEADS_MANAGE
 from apps.core.calendar import format_jalali, persian_digits
 from apps.core.persian import normalize_persian_text
 
@@ -534,7 +536,21 @@ class CRMRepository:
         )
         return item
 
+    def _require_manage(self) -> None:
+        membership = getattr(self.request, "membership", None)
+        if (
+            membership is None or not self.user.is_active
+            or self.business is None or membership.business_id != self.business.pk
+            or membership.user_id != self.user.pk or not membership.has_capability(LEADS_MANAGE)
+        ):
+            raise ValueError("دسترسی لازم برای مدیریت مشتریان را ندارید.")
+        try:
+            require_operational(self.business)
+        except NotOperationalError as exc:
+            raise ValueError(exc.message) from exc
+
     def _get_lead(self, customer_id) -> CustomerLead:
+        self._require_manage()
         customer = CustomerLead.objects.filter(
             business=self.business, pk=customer_id
         ).first()
@@ -543,6 +559,7 @@ class CRMRepository:
         return customer
 
     def _locked_followup(self, followup_id) -> CustomerFollowUp:
+        self._require_manage()
         followup = (
             CustomerFollowUp.objects.select_for_update()
             .filter(business=self.business, pk=followup_id)

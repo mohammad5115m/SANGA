@@ -36,9 +36,9 @@
   {% if not is_seller and invoice.status == 'awaiting_confirmation' and can_confirm %}
   <section class="panel stack-md" id="personal-signature">
     <h2 class="section-title">تصمیم خریدار</h2>
-    <div class="alert alert-info">با تأیید، امضای رسمی کسب‌وکار و امضای شخصی شما روی همین نسخه ثابت می‌شود و فروش نهایی اثر مالی می‌گذارد.</div>
-    <form method="post" action="{% url 'invoicing:confirm' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="این نسخه فاکتور تأیید شود؟">تأیید فاکتور</button></form>
-    <form class="stack-sm" method="post" action="{% url 'invoicing:reject' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">{{ decision_form.reason.label }}</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="این نسخه رد و برای اصلاح به فروشنده بازگردانده شود؟">رد و بازگرداندن برای اصلاح</button></form>
+    <div class="alert alert-info">نسخهٔ {{ invoice.current_revision_number }}: با تأیید، امضای رسمی کسب‌وکار و امضای شخصی شما روی همین نسخه ثابت می‌شود و فروش نهایی اثر مالی می‌گذارد.</div>
+    <form method="post" action="{% url 'invoicing:confirm' invoice.id %}">{% csrf_token %}<input type="hidden" name="revision_number" value="{{ invoice.current_revision_number }}"><button class="btn btn-primary" type="submit" data-confirm="این نسخه فاکتور تأیید شود؟">تأیید فاکتور</button></form>
+    <form class="stack-sm" method="post" action="{% url 'invoicing:reject' invoice.id %}">{% csrf_token %}{{ decision_form.revision_number }}<label class="field"><span class="field-label">{{ decision_form.reason.label }}</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="این نسخه رد و برای اصلاح به فروشنده بازگردانده شود؟">رد و بازگرداندن برای اصلاح</button></form>
   </section>
   {% endif %}
   <iframe class="invoice-document-frame" title="نسخه نهایی فاکتور" src="{% url 'invoicing:print' invoice.id %}?embedded=1"></iframe>
@@ -60,7 +60,7 @@
       {% endif %}
       {% if can_manage %}<form class="invoice-destructive-action" method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>{% endif %}
       {% elif invoice.status == 'awaiting_confirmation' %}
-      {% if can_send %}<form class="stack-sm invoice-destructive-action" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="فاکتور در انتظار لغو شود؟">لغو فاکتور در انتظار</button></form>{% endif %}
+      {% if can_send %}<form class="stack-sm invoice-destructive-action" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}{{ decision_form.revision_number }}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="فاکتور در انتظار لغو شود؟">لغو فاکتور در انتظار</button></form>{% endif %}
       {% elif invoice.status == 'issued' and can_cancel %}
       <form class="stack-sm invoice-destructive-action" method="post">
         {% csrf_token %}

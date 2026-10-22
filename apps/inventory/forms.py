@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django import forms
+
 from apps.core.forms import PersianNumericFormMixin
 from apps.core.persian import normalize_persian_text
 
@@ -286,7 +287,9 @@ class MultipleMediaField(forms.FileField):
 class ItemMediaForm(forms.Form):
     images = MultipleMediaField(
         label="عکس و ویدیو", required=True,
-        widget=MultipleMediaInput(attrs={"class": "media-upload-input", "accept": ".jpg,.jpeg,.png,.webp,.gif,.mp4,.mov,.webm", "multiple": True}),
+        widget=MultipleMediaInput(attrs={
+            "class": "media-upload-input", "accept": ".jpg,.jpeg,.png,.webp,.gif,.mp4,.mov,.webm", "multiple": True,
+        }),
     )
     is_primary = forms.BooleanField(
         label="تصویر اصلی", required=False, initial=True, widget=forms.CheckboxInput(attrs=_CHECK)
@@ -423,7 +426,7 @@ class ItemFilterForm(PersianNumericFormMixin, forms.Form):
         self.is_valid()
         data = self.cleaned_data
         count = sum(
-            bool(data.get(key))
+            data.get(key) is not None if key in {"price_min", "price_max", "min_qty_sqm"} else bool(data.get(key))
             for key in (
                 "q",
                 "stone",
@@ -488,9 +491,17 @@ class OwnerItemFilterForm(ItemFilterForm):
         required=False, label="وضعیت", choices=OWNER_STATE_CHOICES, widget=forms.Select(attrs=_TEXT)
     )
 
+    def __init__(self, *args, can_view_prices=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not can_view_prices:
+            for name in ("price_tier", "price_min", "price_max"):
+                self.fields.pop(name)
+            self.fields["sort"].choices = [choice for choice in SORT_CHOICES if not choice[0].startswith("price_")]
+
     @property
     def state_value(self) -> str:
-        return self.cleaned_data.get("state", "") if self.is_valid() else ""
+        self.is_valid()
+        return getattr(self, "cleaned_data", {}).get("state", "")
 
     @property
     def advanced_scalar_fields(self):
@@ -506,7 +517,7 @@ class OwnerItemFilterForm(ItemFilterForm):
             "sort",
             "application_match",
         ]
-        return [self[name] for name in names]
+        return [self[name] for name in names if name in self.fields]
 
 
 class MarketplaceItemFilterForm(ItemFilterForm):

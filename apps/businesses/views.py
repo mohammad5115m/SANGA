@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
@@ -262,7 +263,11 @@ def colleague_detail(request: HttpRequest, business_id) -> HttpResponse:
 @business_login_required
 @require_http_methods(["POST"])
 def switch_business(request: HttpRequest) -> HttpResponse:
-    business_id = request.POST.get("business_id")
+    try:
+        business_id = UUID(request.POST.get("business_id", ""))
+    except (ValueError, TypeError, AttributeError):
+        messages.error(request, "کسب‌وکار انتخاب‌شده معتبر نیست.")
+        return redirect("businesses:dashboard")
     membership = (
         BusinessMembership.objects.filter(
             user=request.user,

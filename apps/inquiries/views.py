@@ -5,9 +5,11 @@ import logging
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from apps.businesses.decorators import business_login_required, require_capability
+from apps.businesses.eligibility import business_can_use_app
 from apps.businesses.permissions import LEADS_MANAGE, LEADS_VIEW
 from apps.core.pagination import ROW_PAGE_SIZE, paginate
 
@@ -44,6 +46,10 @@ STATUS_FILTERS = (
 )
 
 
+def _can_manage(request):
+    return business_can_use_app(request.business) and request.membership.has_capability(LEADS_MANAGE)
+
+
 @business_login_required
 @require_capability(LEADS_VIEW)
 def inquiry_inbox(request: HttpRequest) -> HttpResponse:
@@ -60,7 +66,7 @@ def inquiry_inbox(request: HttpRequest) -> HttpResponse:
             "status": status,
             "q": q,
             "status_filters": STATUS_FILTERS,
-            "can_manage": request.membership.has_capability(LEADS_MANAGE),
+            "can_manage": _can_manage(request),
         },
     )
 
@@ -79,7 +85,7 @@ def inquiry_detail(request: HttpRequest, inquiry_id) -> HttpResponse:
         {
             "inquiry": inquiry,
             "status_choices": Inquiry.Status.choices,
-            "can_manage": request.membership.has_capability(LEADS_MANAGE),
+            "can_manage": _can_manage(request),
         },
     )
 
@@ -133,7 +139,7 @@ def lead_list(request: HttpRequest) -> HttpResponse:
             "category_choices": CATEGORY_CHOICES,
             "followup_filters": FOLLOWUP_FILTERS,
             "customer_status_choices": CUSTOMER_STATUS_CHOICES,
-            "can_manage": request.membership.has_capability(LEADS_MANAGE),
+            "can_manage": _can_manage(request),
         },
     )
 
@@ -141,20 +147,27 @@ def lead_list(request: HttpRequest) -> HttpResponse:
 @business_login_required
 @require_capability(LEADS_VIEW)
 def lead_detail(request: HttpRequest, lead_id) -> HttpResponse:
+    return _render_lead_detail(request, lead_id)
+
+
+def _render_lead_detail(request, lead_id, **bound_forms):
+    if not request.membership.has_capability(LEADS_VIEW):
+        return redirect("businesses:dashboard")
     repository = CRMRepository(request)
     lead = repository.get_customer(lead_id)
     if lead is None:
         messages.error(request, "مشتری یافت نشد.")
         return redirect("inquiries:leads")
     related_context = "، ".join(lead["requested_products"][:2])
-    return render(
+    response = render(
         request,
         "inquiries/lead_detail.html",
         {
             "lead": lead,
             "inquiries": lead["inquiries"],
-            "note_form": CustomerNoteForm(),
+            "note_form": CustomerNoteForm(auto_id="note_%s"),
             "profile_form": CustomerProfileForm(
+                auto_id="profile_%s",
                 initial={
                     "category": lead["category"],
                     "crm_status": lead["crm_status"],
@@ -162,11 +175,15 @@ def lead_detail(request: HttpRequest, lead_id) -> HttpResponse:
                     "current_needs": lead["current_needs"],
                 }
             ),
-            "followup_form": FollowUpForm(initial={"related_context": related_context}),
-            "complete_form": CompleteFollowUpForm(),
-            "can_manage": request.membership.has_capability(LEADS_MANAGE),
+            "followup_form": FollowUpForm(initial={"related_context": related_context}, auto_id="followup_%s"),
+            "complete_form": CompleteFollowUpForm(auto_id="complete_%s"),
+            "can_manage": _can_manage(request),
+            **bound_forms,
         },
     )
+    if bound_forms:
+        response["HX-Replace-Url"] = reverse("inquiries:lead_detail", args=[lead_id])
+    return response
 
 
 @business_login_required
@@ -188,7 +205,7 @@ def followup_list(request: HttpRequest) -> HttpResponse:
             "state": state,
             "followup_filters": FOLLOWUP_FILTERS,
             "counts": counts,
-            "can_manage": request.membership.has_capability(LEADS_MANAGE),
+            "can_manage": _can_manage(request),
         },
     )
 
@@ -197,24 +214,23 @@ def followup_list(request: HttpRequest) -> HttpResponse:
 @require_capability(LEADS_MANAGE)
 @require_POST
 def lead_add_note(request: HttpRequest, lead_id) -> HttpResponse:
-    form = CustomerNoteForm(request.POST)
+    form = CustomerNoteForm(request.POST, auto_id="note_%s")
     if form.is_valid():
         try:
             CRMRepository(request).add_note(lead_id, form.cleaned_data["text"])
         except ValueError as exc:
-            messages.error(request, str(exc))
+            form.add_error(None, str(exc))
         else:
             messages.success(request, "یادداشت به پرونده مشتری اضافه شد.")
-    else:
-        messages.error(request, "متن یادداشت را بررسی کنید.")
-    return redirect("inquiries:lead_detail", lead_id=lead_id)
+            return redirect("inquiries:lead_detail", lead_id=lead_id)
+    return _render_lead_detail(request, lead_id, note_form=form)
 
 
 @business_login_required
 @require_capability(LEADS_MANAGE)
 @require_POST
 def lead_update_profile(request: HttpRequest, lead_id) -> HttpResponse:
-    form = CustomerProfileForm(request.POST)
+    form = CustomerProfileForm(request.POST, auto_id="profile_%s")
     if form.is_valid():
         raw_tags = form.cleaned_data["tags"].replace("،", ",")
         try:
@@ -226,19 +242,18 @@ def lead_update_profile(request: HttpRequest, lead_id) -> HttpResponse:
                 current_needs=form.cleaned_data["current_needs"],
             )
         except ValueError as exc:
-            messages.error(request, str(exc))
+            form.add_error(None, str(exc))
         else:
             messages.success(request, "دسته‌بندی و نیاز مشتری به‌روزرسانی شد.")
-    else:
-        messages.error(request, "اطلاعات پرونده مشتری را بررسی کنید.")
-    return redirect("inquiries:lead_detail", lead_id=lead_id)
+            return redirect("inquiries:lead_detail", lead_id=lead_id)
+    return _render_lead_detail(request, lead_id, profile_form=form)
 
 
 @business_login_required
 @require_capability(LEADS_MANAGE)
 @require_POST
 def lead_schedule_followup(request: HttpRequest, lead_id) -> HttpResponse:
-    form = FollowUpForm(request.POST)
+    form = FollowUpForm(request.POST, auto_id="followup_%s")
     if form.is_valid():
         try:
             CRMRepository(request).schedule_followup(
@@ -251,29 +266,29 @@ def lead_schedule_followup(request: HttpRequest, lead_id) -> HttpResponse:
                 related_context=form.cleaned_data["related_context"],
             )
         except ValueError as exc:
-            messages.error(request, str(exc))
+            form.add_error(None, str(exc))
         else:
             messages.success(request, "پیگیری بعدی زمان‌بندی شد.")
-    else:
-        messages.error(request, "اطلاعات زمان‌بندی کامل یا معتبر نیست.")
-    return redirect("inquiries:lead_detail", lead_id=lead_id)
+            return redirect("inquiries:lead_detail", lead_id=lead_id)
+    return _render_lead_detail(request, lead_id, followup_form=form)
 
 
 @business_login_required
 @require_capability(LEADS_MANAGE)
 @require_POST
 def lead_record_followup(request: HttpRequest, lead_id) -> HttpResponse:
-    form = CompleteFollowUpForm(request.POST)
+    form = CompleteFollowUpForm(request.POST, auto_id="complete_%s")
     if form.is_valid():
         try:
             CRMRepository(request).complete_customer_followup(
                 lead_id, note=form.cleaned_data["note"]
             )
         except ValueError as exc:
-            messages.error(request, str(exc))
+            form.add_error(None, str(exc))
         else:
             messages.success(request, "پیگیری انجام‌شده در سابقه مشتری ثبت شد.")
-    return redirect("inquiries:lead_detail", lead_id=lead_id)
+            return redirect("inquiries:lead_detail", lead_id=lead_id)
+    return _render_lead_detail(request, lead_id, complete_form=form)
 
 
 @business_login_required

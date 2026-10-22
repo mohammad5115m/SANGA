@@ -4,6 +4,17 @@ from django import forms
 
 from apps.core.persian import normalize_digits, normalize_phone
 
+from .models import User
+
+
+class ProfileForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ("full_name",)
+        labels = {"full_name": "نام کامل"}
+        help_texts = {"full_name": "این نام در فعالیت‌ها و اسناد حساب شما نمایش داده می‌شود؛ حداکثر ۱۵۰ نویسه."}
+        widgets = {"full_name": forms.TextInput(attrs={"class": "field-input", "autocomplete": "name"})}
+
 
 class PhoneLoginForm(forms.Form):
     phone = forms.CharField(

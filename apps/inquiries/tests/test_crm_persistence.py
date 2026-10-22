@@ -79,6 +79,8 @@ def test_operational_crm_renders_persisted_customers_followups_and_reminders(cli
     notifications = client.get(reverse("notifications:list")).content.decode()
     assert "یادآوری پیگیری" in notifications
     assert "سارا احمدی" in notifications
+    assert not FollowUpReminderRead.objects.filter(followup=followup, user=user).exists()
+    client.post(reverse("notifications:read", args=["reminder", followup.pk]))
     assert FollowUpReminderRead.objects.filter(followup=followup, user=user).exists()
 
 
@@ -177,6 +179,7 @@ def test_rescheduling_a_read_reminder_resets_its_persistent_read_state(client):
     followup = _followup(business, customer)
     user = _login(client, business)
     client.get(reverse("notifications:list"))
+    client.post(reverse("notifications:read", args=["reminder", followup.pk]))
     assert FollowUpReminderRead.objects.filter(followup=followup, user=user).exists()
 
     scheduled_for = timezone.localtime() + timedelta(days=2)

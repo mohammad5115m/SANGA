@@ -5,6 +5,11 @@
 {% block content %}
 <section class="stack-lg crm-page crm-detail-page">
   {% include "inquiries/_crm_tabs.html" %}
+  {% if note_form.non_field_errors or profile_form.non_field_errors or followup_form.non_field_errors or complete_form.non_field_errors %}
+    <div class="alert alert-error" role="alert">
+      {{ note_form.non_field_errors }}{{ profile_form.non_field_errors }}{{ followup_form.non_field_errors }}{{ complete_form.non_field_errors }}
+    </div>
+  {% endif %}
   <a class="back-link" href="{% url 'inquiries:leads' %}"><span aria-hidden="true">→</span> بازگشت به مشتریان</a>
 
   <header class="panel crm-profile-header">
@@ -80,12 +85,12 @@
       </section>
 
       {% if can_manage %}
-        <details class="panel crm-record-followup crm-profile-editor">
+        <details class="panel crm-record-followup crm-profile-editor"{% if profile_form.errors %} open{% endif %}>
           <summary>ویرایش دسته‌بندی و نیاز مشتری</summary>
-          <form method="post" action="{% url 'inquiries:lead_update_profile' lead.id %}" class="stack-md">
+          <form method="post" action="{% url 'inquiries:lead_update_profile' lead.id %}" class="stack-md" data-unsaved-warning>
             {% csrf_token %}
             {% for field in profile_form %}
-              <label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.help_text %}<span class="field-help">{{ field.help_text }}</span>{% endif %}</label>
+              {% include "components/form_field.html" with field=field %}
             {% endfor %}
             <button class="btn btn-secondary btn-block" type="submit">ذخیره پرونده مشتری</button>
           </form>
@@ -98,8 +103,8 @@
           {% for note in lead.notes %}<article><p>{{ note.text }}</p><time class="muted">{{ note.created_at|jdatetime }}</time></article>{% empty %}<p class="muted">یادداشتی ثبت نشده است.</p>{% endfor %}
         </div>
         {% if can_manage %}
-          <form method="post" action="{% url 'inquiries:lead_add_note' lead.id %}" class="stack-sm">
-            {% csrf_token %}<label class="field"><span class="field-label">{{ note_form.text.label }}</span>{{ note_form.text }}</label>
+          <form method="post" action="{% url 'inquiries:lead_add_note' lead.id %}" class="stack-sm" data-unsaved-warning>
+            {% csrf_token %}{% include "components/form_field.html" with field=note_form.text %}
             <button class="btn btn-secondary btn-block" type="submit">افزودن یادداشت</button>
           </form>
         {% endif %}
@@ -108,17 +113,17 @@
       {% if can_manage %}
         <section class="panel stack-md" id="schedule-followup" aria-labelledby="schedule-heading">
           <div><span class="section-kicker">یادآوری داخل Sang Esf</span><h2 class="section-title" id="schedule-heading">زمان‌بندی پیگیری</h2></div>
-          <form method="post" action="{% url 'inquiries:lead_schedule_followup' lead.id %}" class="stack-md" novalidate>
+          <form method="post" action="{% url 'inquiries:lead_schedule_followup' lead.id %}" class="stack-md" novalidate data-unsaved-warning>
             {% csrf_token %}
-            {% for field in followup_form %}<label class="field"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors|striptags }}</span>{% endif %}</label>{% endfor %}
+            {% for field in followup_form %}{% include "components/form_field.html" with field=field %}{% endfor %}
             <button class="btn btn-primary btn-block" type="submit">ثبت پیگیری بعدی</button>
           </form>
         </section>
 
-        <details class="panel crm-record-followup">
+        <details class="panel crm-record-followup"{% if complete_form.errors %} open{% endif %}>
           <summary>پیگیری انجام‌شده را ثبت کنید</summary>
-          <form method="post" action="{% url 'inquiries:lead_record_followup' lead.id %}" class="stack-sm">
-            {% csrf_token %}<label class="field"><span class="field-label">{{ complete_form.note.label }}</span>{{ complete_form.note }}</label>
+          <form method="post" action="{% url 'inquiries:lead_record_followup' lead.id %}" class="stack-sm" data-unsaved-warning>
+            {% csrf_token %}{% include "components/form_field.html" with field=complete_form.note %}
             <button class="btn btn-secondary btn-block" type="submit">ثبت به‌عنوان انجام‌شده</button>
           </form>
         </details>

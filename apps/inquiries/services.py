@@ -14,6 +14,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.businesses.eligibility import NotOperationalError, require_operational
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import LEADS_MANAGE
 from apps.core.persian import normalize_phone
@@ -296,6 +297,10 @@ def set_inquiry_status(*, inquiry: Inquiry, status: str, membership: BusinessMem
         raise InquiryError("اجازه پاسخ به استعلام را ندارید.")
     if inquiry.business_id != membership.business_id:
         raise InquiryError("این استعلام متعلق به کسب‌وکار شما نیست.")
+    try:
+        require_operational(membership.business)
+    except NotOperationalError as exc:
+        raise InquiryError(exc.message) from exc
     if status not in Inquiry.Status.values:
         raise InquiryError("وضعیت نامعتبر است.")
 

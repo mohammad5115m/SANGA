@@ -561,14 +561,23 @@ def send_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembershi
     return invoice
 
 
+def _require_current_revision(invoice: SalesInvoice, expected_revision: int) -> None:
+    if (
+        type(expected_revision) is not int or expected_revision < 1
+        or expected_revision != invoice.current_revision_number
+    ):
+        raise InvoiceError("نسخه فاکتور تغییر کرده است. نسخه جدید را بررسی کنید و سپس تصمیم بگیرید.")
+
+
 @transaction.atomic
 def cancel_pending_partner_invoice(
-    *, invoice: SalesInvoice, membership: BusinessMembership, reason: str
+    *, invoice: SalesInvoice, membership: BusinessMembership, reason: str, expected_revision: int,
 ) -> SalesInvoice:
     invoice = SalesInvoice.objects.select_for_update().get(pk=invoice.pk)
     _require(membership, INVOICE_SEND, "اجازه لغو فاکتور ارسالی را ندارید.")
     if membership.business_id != invoice.seller_business_id:
         raise InvoiceError("فقط فرستنده می‌تواند فاکتور در انتظار را لغو کند.")
+    _require_current_revision(invoice, expected_revision)
     if invoice.status == SalesInvoice.Status.CANCELLED_BY_SENDER:
         return invoice
     if invoice.status != SalesInvoice.Status.AWAITING_CONFIRMATION:
@@ -603,11 +612,14 @@ def cancel_pending_partner_invoice(
 
 
 @transaction.atomic
-def reject_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembership, reason: str) -> SalesInvoice:
+def reject_partner_invoice(
+    *, invoice: SalesInvoice, membership: BusinessMembership, reason: str, expected_revision: int,
+) -> SalesInvoice:
     invoice = SalesInvoice.objects.select_for_update().get(pk=invoice.pk)
     _require(membership, INVOICE_CONFIRM, "اجازه رد یا تأیید فاکتور دریافتی را ندارید.")
     if membership.business_id != invoice.buyer_business_id:
         raise InvoiceError("فقط کسب‌وکار خریدار می‌تواند فاکتور را رد کند.")
+    _require_current_revision(invoice, expected_revision)
     reason = str(reason or "").strip()
     if not reason:
         raise InvoiceError("علت رد فاکتور الزامی است.")
@@ -638,7 +650,9 @@ def reject_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembers
 
 
 @transaction.atomic
-def confirm_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+def confirm_partner_invoice(
+    *, invoice: SalesInvoice, membership: BusinessMembership, expected_revision: int,
+) -> SalesInvoice:
     invoice = (
         SalesInvoice.objects.select_for_update(of=("self",))
         .select_related("seller_business", "buyer_business")
@@ -648,6 +662,9 @@ def confirm_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMember
     _require(membership, INVOICE_CONFIRM, "اجازه تأیید فاکتور دریافتی را ندارید.")
     if membership.business_id != invoice.buyer_business_id:
         raise InvoiceError("فقط خریدار ثبت‌شده می‌تواند این فاکتور را تأیید کند.")
+    # Check under the existing invoice lock and before the idempotent return:
+    # an old tab must never sign a newer revision, even if it is already final.
+    _require_current_revision(invoice, expected_revision)
     if invoice.status == SalesInvoice.Status.CONFIRMED:
         return invoice
     if invoice.status != SalesInvoice.Status.AWAITING_CONFIRMATION:
