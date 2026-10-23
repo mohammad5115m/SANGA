@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from django import forms
 
 from apps.core.persian import normalize_digits
@@ -34,7 +36,15 @@ class PersianNumericFormMixin:
             for field_name in self.numeric_fields:
                 key = f"{prefix}-{field_name}" if prefix else field_name
                 if key in normalized:
-                    normalized[key] = normalize_digits(normalized.get(key, ""))
+                    raw = normalized.get(key, "")
+                    value = "" if raw is None else str(raw)
+                    # Strip only correctly grouped thousands. A typo such as
+                    # 1,2 must be rejected, rather than silently becoming 12.
+                    grouped = value.replace("٬", ",")
+                    if "," not in grouped or re.fullmatch(
+                        r"\s*[+-]?\d{1,3}(?:,\d{3})+(?:[.٫]\d+)?\s*", grouped
+                    ):
+                        normalized[key] = normalize_digits(value)
             if args:
                 args = (normalized, *args[1:])
             else:

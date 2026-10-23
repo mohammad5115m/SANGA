@@ -19,10 +19,10 @@
       {% url 'businesses:dashboard' as home_url %}
       <a class="topbar-link {% if request.path == home_url %}is-active{% endif %}" href="{{ home_url }}"
          {% if request.path == home_url %}aria-current="page"{% endif %}>خانه</a>
-      {% if 'inventory.view' in capabilities %}<a class="topbar-link {% if request.resolver_match.app_name == 'inventory' %}is-active{% endif %}"
+      {% if 'inventory.view' in capabilities %}<a class="topbar-link {% if request.resolver_match.app_name == 'inventory' and not is_product_creation %}is-active{% endif %}"
          href="{% url 'inventory:lot_list' %}"
-         {% if request.resolver_match.app_name == 'inventory' %}aria-current="page"{% endif %}>موجودی من</a>{% endif %}
-      {% if can_add_products %}<a class="topbar-link" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>{% endif %}
+         {% if request.resolver_match.app_name == 'inventory' and not is_product_creation %}aria-current="page"{% endif %}>موجودی من</a>{% endif %}
+      {% if can_add_products %}<a class="topbar-link{% if is_product_creation %} is-active{% endif %}" href="{% url 'inventory:quick_add_start' %}"{% if is_product_creation %} aria-current="page"{% endif %}>افزودن محصول</a>{% endif %}
       <a class="topbar-link {% if request.resolver_match.app_name == 'marketplace' %}is-active{% endif %}"
          href="{% url 'marketplace:home' %}"
          {% if request.resolver_match.app_name == 'marketplace' %}aria-current="page"{% endif %}>بازار</a>
@@ -72,9 +72,9 @@
       <svg class="nav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
       <span class="nav-label">خانه</span>
     </a>
-    {% if 'inventory.view' in capabilities %}<a class="nav-item {% if request.resolver_match.app_name == 'inventory' and 'quick_add' not in request.resolver_match.url_name %}is-active{% endif %}"
+    {% if 'inventory.view' in capabilities %}<a class="nav-item {% if request.resolver_match.app_name == 'inventory' and not is_product_creation %}is-active{% endif %}"
        href="{% url 'inventory:lot_list' %}"
-       {% if request.resolver_match.app_name == 'inventory' and 'quick_add' not in request.resolver_match.url_name %}aria-current="page"{% endif %}>
+       {% if request.resolver_match.app_name == 'inventory' and not is_product_creation %}aria-current="page"{% endif %}>
       <svg class="nav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
       <span class="nav-label">موجودی من</span>
     </a>{% endif %}
@@ -84,9 +84,9 @@
     most prominent control on the screen pointing at a create flow that cannot finish.
     {% endcomment %}
     {% if can_add_products %}
-      <a class="nav-item nav-item-primary {% if 'quick_add' in request.resolver_match.url_name|default:'' %}is-active{% endif %}"
+      <a class="nav-item nav-item-primary {% if is_product_creation %}is-active{% endif %}"
          href="{% url 'inventory:quick_add_start' %}"
-         {% if 'quick_add' in request.resolver_match.url_name|default:'' %}aria-current="page"{% endif %}>
+         {% if is_product_creation %}aria-current="page"{% endif %}>
         <svg class="nav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         <span class="nav-label">افزودن</span>
       </a>

@@ -8,7 +8,7 @@ from apps.core.forms import PersianNumericFormMixin
 from apps.core.persian import normalize_persian_text
 
 from .filters import SORT_CHOICES, ItemFilterSpec
-from .models import Application, InventoryLot, VocabularyTerm
+from .models import Application, InventoryLot, Product, VocabularyTerm
 from .selectors import OWNER_STATE_CHOICES
 
 _TEXT = {"class": "field-input"}
@@ -24,6 +24,17 @@ def active_stones():
         kind=VocabularyTerm.Kind.STONE_TYPE,
         is_active=True,
     ).order_by("sort_order", "name")
+
+
+def _mobile_numeric_widgets(form):
+    # NumberInput discards Persian digits and malformed values in browsers,
+    # making it impossible to correct the original input after an error.
+    for name in form.numeric_fields:
+        field = form.fields[name]
+        attrs = {key: value for key, value in field.widget.attrs.items() if key != "step"}
+        integer = getattr(field, "decimal_places", 0) == 0
+        attrs.update(dir="ltr", inputmode="numeric" if integer else "decimal")
+        field.widget = forms.TextInput(attrs=attrs)
 
 
 class StoneChoiceField(forms.ModelChoiceField):
@@ -45,7 +56,7 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
         "min_sale_qty",
     )
 
-    submission_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
+    submission_id = forms.UUIDField(label="شناسه ثبت", required=False, widget=forms.HiddenInput)
 
     stone = StoneChoiceField(
         label="نوع سنگ",
@@ -169,11 +180,14 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
 
     def __init__(self, *args, include_private: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
+        _mobile_numeric_widgets(self)
         self.fields["stone"].queryset = active_stones()
         self.fields["applications"].queryset = active_applications()
         if not include_private:
             self.fields.pop("description_private", None)
             self.fields.pop("private_address", None)
+        self.fields["available_sqm"].help_text = "خالی = استعلام موجودی؛ صفر فقط برای محصول ناموجود."
+        self.fields["min_sale_qty"].help_text = "اختیاری؛ نباید بیشتر از متراژ موجود باشد."
 
     def clean_name_suffix(self):
         return normalize_persian_text(self.cleaned_data["name_suffix"] or "")
@@ -186,6 +200,11 @@ class ProductItemForm(PersianNumericFormMixin, forms.Form):
         quantity = cleaned.get("available_sqm")
         minimum = cleaned.get("min_sale_qty") or Decimal("0")
         availability = cleaned.get("availability_status")
+        stone = cleaned.get("stone")
+        if stone:
+            name = " ".join(part for part in ("سنگ", stone.name, cleaned.get("name_suffix", "")) if part)
+            if len(name) > Product._meta.get_field("commercial_name").max_length:
+                self.add_error("name_suffix", "نام کامل محصول طولانی است؛ نام تکمیلی را کوتاه‌تر کنید.")
 
         if quantity == 0 and availability == InventoryLot.Availability.AVAILABLE:
             self.add_error("available_sqm", "محصول با موجودی صفر باید «ناموجود» باشد.")
@@ -243,6 +262,16 @@ class TierPriceForm(PersianNumericFormMixin, forms.Form):
     def __init__(self, *args, tier_label: str = "", **kwargs):
         super().__init__(*args, **kwargs)
         self.tier_label = tier_label
+        _mobile_numeric_widgets(self)
+        if self.is_bound and not self.fields["is_special"].widget.value_from_datadict(
+            self.data, self.files, self.add_prefix("is_special")
+        ):
+            # Ignore stale promotion input before field validation, including
+            # malformed values submitted by an older tab with the toggle off.
+            data = self.data.copy()
+            data[self.add_prefix("special_amount")] = ""
+            data[self.add_prefix("special_valid_for_days")] = ""
+            self.data = data
 
     def clean(self):
         cleaned = super().clean()

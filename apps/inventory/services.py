@@ -86,6 +86,11 @@ def _require_owner(lot: InventoryLot, membership: BusinessMembership) -> None:
         raise InventoryError("دسترسی به این محصول وجود ندارد.")
 
 
+def _require_business(business: Business, membership: BusinessMembership) -> None:
+    if membership.business_id != business.id:
+        raise InventoryError("دسترسی به این کسب‌وکار وجود ندارد.")
+
+
 def _is_business_owner(membership: BusinessMembership) -> bool:
     return membership.role == BusinessMembership.Role.OWNER
 
@@ -108,6 +113,17 @@ def _next_lot_code(stone: VocabularyTerm) -> str:
     raise InventoryError("ساخت کد یکتا ممکن نشد؛ دوباره تلاش کنید.")
 
 
+def _validated_name_suffix(stone: VocabularyTerm, value: str) -> str:
+    suffix = normalize_searchable(value)
+    name = " ".join(part for part in ("سنگ", stone.name, suffix) if part)
+    if (
+        len(suffix) > Product._meta.get_field("name_suffix").max_length
+        or len(name) > Product._meta.get_field("commercial_name").max_length
+    ):
+        raise InventoryError("نام کامل محصول طولانی است؛ نام تکمیلی را کوتاه‌تر کنید.")
+    return suffix
+
+
 @transaction.atomic
 def create_product(
     *,
@@ -120,16 +136,31 @@ def create_product(
     applications: list[Application] | None = None,
 ) -> Product:
     _require(membership, INVENTORY_CREATE)
+    _require_business(business, membership)
     _require_plan(business, CREATE_PRODUCTS)
     if stone.kind != VocabularyTerm.Kind.STONE_TYPE or not stone.is_active:
         raise InventoryError("نوع سنگ انتخاب‌شده معتبر نیست.")
-    product = Product.objects.create(
-        business=business,
-        stone=stone,
-        name_suffix=normalize_searchable(name_suffix),
-        description_public=(description_public or "").strip(),
-        description_colleague=(description_colleague or "").strip(),
-    )
+    suffix = _validated_name_suffix(stone, name_suffix)
+    for _attempt in range(20):
+        product = Product(
+            business=business,
+            stone=stone,
+            name_suffix=suffix,
+            description_public=(description_public or "").strip(),
+            description_colleague=(description_colleague or "").strip(),
+        )
+        try:
+            with transaction.atomic():
+                product.save(force_insert=True)
+        except IntegrityError:
+            # Two intentionally distinct products may have the same name.
+            # Retry a colliding slug after the savepoint rolls back.
+            if Product.objects.filter(business=business, slug=product.slug).exists():
+                continue
+            raise
+        break
+    else:
+        raise InventoryError("ساخت شناسه محصول ممکن نشد؛ دوباره تلاش کنید.")
     if applications:
         product.applications.set(applications)
     return product
@@ -168,6 +199,7 @@ def create_draft_item(
     action, which here is "add this product".
     """
     _require(membership, INVENTORY_CREATE)
+    _require_business(business, membership)
     _require_plan(business, CREATE_PRODUCTS)
     if product.business_id != business.id:
         raise InventoryError("محصول متعلق به این کسب‌وکار نیست.")
@@ -256,6 +288,10 @@ def create_product_item(
 ) -> InventoryLot:
     """Create one product idempotently, including prices, in a single transaction."""
 
+    # Replays must pass the same tenant, membership and subscription checks.
+    _require(membership, INVENTORY_CREATE)
+    _require_business(business, membership)
+    _require_plan(business, CREATE_PRODUCTS)
     if submission_id is not None:
         existing = InventoryLot.objects.filter(business=business, creation_token=submission_id).first()
         if existing is not None:
@@ -307,11 +343,12 @@ def update_product_item(
     stone = product_fields.get("stone", product.stone)
     if stone.kind != VocabularyTerm.Kind.STONE_TYPE or not stone.is_active:
         raise InventoryError("نوع سنگ انتخاب‌شده معتبر نیست.")
+    suffix = _validated_name_suffix(stone, product_fields.get("name_suffix", product.name_suffix))
     for key in ("stone", "name_suffix", "description_public", "description_colleague"):
         if key in product_fields:
             value = product_fields[key]
             if key == "name_suffix":
-                value = normalize_searchable(value)
+                value = suffix
             elif key in {"description_public", "description_colleague"}:
                 value = (value or "").strip()
             setattr(product, key, value)
