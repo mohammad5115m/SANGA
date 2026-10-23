@@ -10,10 +10,9 @@ celery>=5.4,<5.5
 # Widened for Django 5.2: 2.7 pins Django<5.2 and would have held the whole
 # project on an end-of-life branch.
 django-celery-beat>=2.8,<3
-# Pillow decodes untrusted uploads, so it is the dependency where a stale pin
-# costs the most. 12.2 is the first release clear of CVE-2026-42308/42309/42310/
-# 42311, CVE-2026-40192 and CVE-2026-25990, all of which affect 11.3.
-Pillow>=12.2,<13
+# Updated after the October 2026 dependency audit; regression coverage includes
+# upload validation and preserving original image bytes.
+Pillow>=13,<14
 whitenoise>=6.6,<7
 django-storages>=1.14,<1.15
 boto3>=1.34,<2
@@ -23,5 +22,5 @@ arabic-reshaper>=3.0,<4
 python-bidi>=0.4,<0.7
 # The canonical HTML invoice is rendered server-side so PDF text stays
 # searchable/selectable; PyMuPDF rasterizes those same PDF pages for PNG export.
-WeasyPrint>=69,<70
+WeasyPrint>=70,<71
 PyMuPDF>=1.28,<1.29

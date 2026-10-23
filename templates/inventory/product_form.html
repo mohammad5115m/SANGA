@@ -12,21 +12,34 @@
     </p>
   </div>
 
-  <form method="post" class="stack-lg" novalidate data-unsaved-warning>
+  <form method="post" class="stack-lg" novalidate data-unsaved-warning{% if form.is_bound %} data-dirty="true"{% endif %}>
     {% csrf_token %}
     {{ form.submission_id }}
-    {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    {% if form_errors %}
+      <div class="alert alert-error form-error-summary" id="product-errors" role="alert" tabindex="-1">
+        <h2 class="section-title">محصول ذخیره نشد؛ موارد زیر را اصلاح کنید</h2>
+        <ul>
+          {% for error in form_errors %}
+            <li><a href="#{{ error.target }}">{% if error.label %}{{ error.label }}: {% endif %}{{ error.message }}</a></li>
+          {% endfor %}
+        </ul>
+        <p>اطلاعات واردشده در فرم باقی مانده است.</p>
+      </div>
+    {% endif %}
+    {% if configuration_missing %}
+      <div class="alert alert-error" role="alert">برای ثبت محصول، مدیر پلتفرم باید حداقل یک نوع سنگ و یک کاربرد فعال تعریف کند.</div>
+    {% endif %}
 
     <section class="panel form-section stack-md" aria-labelledby="product-identity-title">
       <h2 class="section-title" id="product-identity-title">هویت محصول</h2>
       <p class="muted">نام با ساختار «سنگ + نوع سنگ + نام تکمیلی» ساخته می‌شود. فروشنده فقط نام تکمیلی را تغییر می‌دهد.</p>
-      <div class="form-grid">
+      <div class="form-grid form-grid-2">
         {% with field=form.stone %}{% include "components/form_field.html" %}{% endwith %}
         {% with field=form.name_suffix %}{% include "components/form_field.html" %}{% endwith %}
 
-        <fieldset class="field application-picker form-span-full">
+        <fieldset class="field application-picker form-span-full" id="{{ form.applications.auto_id }}" tabindex="-1" aria-describedby="applications-help{% if form.applications.errors %} applications-error{% endif %}">
             <legend class="field-label">کاربرد محصول <span class="field-requirement">ضروری</span></legend>
-            <p class="field-help">حداقل یک کاربرد را انتخاب کنید تا محصول در جست‌وجو و ویترین بهتر پیدا شود.</p>
+            <p class="field-help" id="applications-help">حداقل یک کاربرد را انتخاب کنید تا محصول در جست‌وجو و ویترین بهتر پیدا شود.</p>
             <div class="application-options">
               {% for choice in form.applications %}
                 <label class="application-option">
@@ -37,7 +50,7 @@
                 <p class="muted">کاربرد فعالی تعریف نشده است.</p>
               {% endfor %}
             </div>
-            {% if form.applications.errors %}<div class="field-error">{{ form.applications.errors|striptags }}</div>{% endif %}
+            {% if form.applications.errors %}<div class="field-error" id="applications-error">{{ form.applications.errors|striptags }}</div>{% endif %}
         </fieldset>
       </div>
     </section>
@@ -53,8 +66,8 @@
         <legend class="field-label">ابعاد محصول</legend>
         <p class="field-help">عرض را وارد کنید؛ خالی‌بودن طول به‌معنای طول آزاد است.</p>
         <div class="form-grid form-grid-3">
-          {% with field=form.length_cm %}{% include "components/form_field.html" %}{% endwith %}
           {% with field=form.width_cm %}{% include "components/form_field.html" %}{% endwith %}
+          {% with field=form.length_cm %}{% include "components/form_field.html" %}{% endwith %}
           {% with field=form.thickness_cm %}{% include "components/form_field.html" %}{% endwith %}
         </div>
       </fieldset>
@@ -129,7 +142,7 @@
         <summary>
           <span>
             <strong>قیمت همکار و مشتری</strong>
-            <small>مبلغ اختیاری است؛ بدون آن «استعلام قیمت» نمایش داده می‌شود.</small>
+            <small>همه مبالغ به ریال هستند (هر تومان = ۱۰ ریال). خالی = استعلام قیمت.</small>
           </span>
         </summary>
         <div class="form-disclosure-body stack-lg">
@@ -149,7 +162,7 @@
 
     {% if mode == 'create' %}<p class="muted">پس از ثبت محصول، می‌توانید عکس و ویدیوهای آن را بارگذاری کنید.</p>{% endif %}
     <div class="btn-row form-actions">
-      <button class="btn btn-primary" type="submit">{% if mode == 'create' %}ثبت محصول{% else %}ذخیره تغییرات{% endif %}</button>
+      <button class="btn btn-primary" type="submit"{% if configuration_missing %} disabled{% endif %}>{% if mode == 'create' %}ثبت محصول{% else %}ذخیره تغییرات{% endif %}</button>
       <a class="btn btn-ghost" href="{% if lot %}{% url 'inventory:lot_detail' lot.id %}{% else %}{% url 'inventory:lot_list' %}{% endif %}">انصراف</a>
     </div>
   </form>

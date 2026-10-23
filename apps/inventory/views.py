@@ -25,6 +25,7 @@ from apps.businesses.permissions import (
     INVENTORY_EDIT,
     INVENTORY_MEDIA,
     INVENTORY_PUBLISH,
+    INVENTORY_QUANTITY,
     INVENTORY_VIEW,
     INVOICE_CREATE,
     INVOICE_MANAGE,
@@ -292,16 +293,36 @@ def _product_initial(lot, *, include_private: bool) -> dict:
 
 
 def _product_form_context(request, *, form, b2b_form, b2c_form, lot=None):
+    can_price = request.membership.has_capability(PRICES_EDIT)
+    forms = [form, *([b2b_form, b2c_form] if can_price else [])]
+    errors = []
+    for current in forms:
+        if not current.is_bound:
+            continue
+        for field in current:
+            for error in field.errors:
+                errors.append({
+                    "target": (field.id_for_label or field.auto_id) if not field.is_hidden else "product-errors",
+                    "label": f"{current.tier_label} · {field.label}" if current is not form else field.label,
+                    "message": error,
+                })
+        for error in current.non_field_errors():
+            errors.append({"target": "product-errors", "message": error})
     return {
         "form": form,
         "b2b_form": b2b_form,
         "b2c_form": b2c_form,
         "lot": lot,
         "mode": "edit" if lot else "create",
-        "can_edit_prices": request.membership.has_capability(PRICES_EDIT),
+        "is_product_creation": lot is None,
+        "can_edit_prices": can_price,
         "can_publish": request.membership.has_capability(INVENTORY_PUBLISH),
         "is_owner": request.membership.role == BusinessMembership.Role.OWNER,
         "processing_suggestions": _seller_processing_suggestions(request.business),
+        "form_errors": errors,
+        "configuration_missing": not form.fields["stone"].queryset.exists() or not form.fields[
+            "applications"
+        ].queryset.exists(),
     }
 
 
@@ -311,14 +332,17 @@ def _product_form_context(request, *, form, b2b_form, b2c_form, lot=None):
 def product_create(request: HttpRequest) -> HttpResponse:
     can_price = request.membership.has_capability(PRICES_EDIT)
     is_owner = request.membership.role == BusinessMembership.Role.OWNER
+    data = request.POST if request.method == "POST" else None
     form = ProductItemForm(
-        request.POST or None,
+        data,
         initial={"is_visible": True, "submission_id": uuid.uuid4()},
         include_private=is_owner,
     )
-    b2b_form = TierPriceForm(request.POST or None, prefix="b2b", tier_label="قیمت همکار")
-    b2c_form = TierPriceForm(request.POST or None, prefix="b2c", tier_label="قیمت مشتری")
-    prices_ok = not can_price or (b2b_form.is_valid() and b2c_form.is_valid())
+    b2b_form = TierPriceForm(data, prefix="b2b", tier_label="قیمت همکار")
+    b2c_form = TierPriceForm(data, prefix="b2c", tier_label="قیمت مشتری")
+    prices_ok = True
+    if request.method == "POST" and can_price:
+        prices_ok = all([b2b_form.is_valid(), b2c_form.is_valid()])
     if request.method == "POST" and form.is_valid() and prices_ok:
         try:
             lot = create_product_item(
@@ -338,7 +362,10 @@ def product_create(request: HttpRequest) -> HttpResponse:
         except InventoryError as exc:
             form.add_error(None, exc.message)
         else:
-            messages.success(request, f"محصول با کد {lot.lot_code} ساخته شد.")
+            messages.success(
+                request,
+                f"محصول با کد {lot.lot_code} ذخیره شد؛ وضعیت انتشار و افزودن عکس و ویدیو در صفحه محصول است.",
+            )
             return redirect("inventory:lot_detail", lot_id=lot.id)
     return render(
         request,
@@ -357,18 +384,29 @@ def lot_edit(request: HttpRequest, lot_id) -> HttpResponse:
         return redirect("inventory:lot_list")
     can_price = request.membership.has_capability(PRICES_EDIT)
     is_owner = request.membership.role == BusinessMembership.Role.OWNER
+    data = request.POST if request.method == "POST" else None
     form = ProductItemForm(
-        request.POST or None,
+        data,
         initial=_product_initial(lot, include_private=is_owner),
         include_private=is_owner,
     )
+    for capability, names in (
+        (INVENTORY_PUBLISH, ("is_visible", "availability_status")),
+        (INVENTORY_QUANTITY, ("available_sqm", "stock_valid_for_days")),
+    ):
+        if not request.membership.has_capability(capability):
+            for name in names:
+                form.fields[name].disabled = True
+                form.fields[name].help_text = "مجوز تغییر این مقدار را ندارید؛ مقدار فعلی حفظ می‌شود."
     b2b_form = TierPriceForm(
-        request.POST or None, prefix="b2b", tier_label="قیمت همکار", initial=_price_initial(lot, "b2b")
+        data, prefix="b2b", tier_label="قیمت همکار", initial=_price_initial(lot, "b2b") if can_price else {}
     )
     b2c_form = TierPriceForm(
-        request.POST or None, prefix="b2c", tier_label="قیمت مشتری", initial=_price_initial(lot, "b2c")
+        data, prefix="b2c", tier_label="قیمت مشتری", initial=_price_initial(lot, "b2c") if can_price else {}
     )
-    prices_ok = not can_price or (b2b_form.is_valid() and b2c_form.is_valid())
+    prices_ok = True
+    if request.method == "POST" and can_price:
+        prices_ok = all([b2b_form.is_valid(), b2c_form.is_valid()])
     if request.method == "POST" and form.is_valid() and prices_ok:
         try:
             update_product_item(

@@ -467,7 +467,17 @@
 
   function focusFirstError(root) {
     var invalid = root.querySelector && root.querySelector('[aria-invalid="true"]');
-    if (invalid && invalid.getBoundingClientRect().width) invalid.focus();
+    var target = invalid || (root.querySelector && root.querySelector(".form-error-summary"));
+    if (target) {
+      for (var parent = target.parentElement; parent; parent = parent.parentElement) {
+        if (parent.matches("details")) parent.open = true;
+      }
+      if (target.getBoundingClientRect().width) {
+        target.focus();
+        return true;
+      }
+    }
+    return false;
   }
 
   function initFormAccessibility(root) {
@@ -543,6 +553,18 @@
 
   document.addEventListener("click", function (event) {
     if (!(event.target instanceof Element)) return;
+    var errorLink = event.target.closest(".form-error-summary a");
+    if (errorLink) {
+      var target = document.getElementById(errorLink.hash.slice(1));
+      if (target) {
+        event.preventDefault();
+        for (var parent = target.parentElement; parent; parent = parent.parentElement) {
+          if (parent.matches("details")) parent.open = true;
+        }
+        target.focus();
+        target.scrollIntoView({block: "center"});
+      }
+    }
     var printButton = event.target.closest("[data-print-action]");
     if (printButton) {
       event.preventDefault();
@@ -629,7 +651,8 @@
   });
   document.addEventListener("htmx:afterSettle", function (event) {
     if (event.detail.target !== document.body) return;
-    var focus = document.querySelector('[aria-invalid="true"], #main-content');
+    if (focusFirstError(document)) return;
+    var focus = document.querySelector("#main-content");
     if (focus) focus.focus();
   });
   document.addEventListener("pointerdown", function (event) {

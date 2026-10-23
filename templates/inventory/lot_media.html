@@ -25,7 +25,10 @@
           <span>حداکثر ۱۰ فایل در هر بار</span>
         </label>
         {{ form.images }}
-        {% if form.images.errors %}<div class="field-error" role="alert">{{ form.images.errors|striptags }}</div>{% endif %}
+        {% if form.images.errors %}
+          <div class="field-error" role="alert">{{ form.images.errors|striptags }}</div>
+          <p class="field-help">فایل‌های موفق در گالری پایین صفحه هستند؛ فقط فایل‌های ناموفق را دوباره انتخاب کنید.</p>
+        {% endif %}
       </div>
       <div data-media-preview class="media-upload-preview" aria-live="polite" hidden></div>
       {% with field=form.is_primary %}{% include "components/form_field.html" %}{% endwith %}

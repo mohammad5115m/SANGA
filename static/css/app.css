@@ -1449,7 +1449,13 @@ input[type="number"], input[type="tel"], input[type="date"] {
   gap: var(--space-4);
 }
 .form-span-full { grid-column: 1 / -1; }
+.form-error-summary { overflow-wrap: anywhere; }
+.form-error-summary ul { margin-block: var(--space-3); padding-inline-start: var(--space-5); }
+.form-error-summary a { display: inline-block; padding-block: .4rem; text-decoration: underline; }
+.field-input, .application-picker { scroll-margin-block: 6rem; }
+.field-input:disabled { opacity: .75; cursor: not-allowed; }
 .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid .field:has(textarea), .form-grid .checkbox-field { grid-column: 1 / -1; }
 .form-subsection {
   min-width: 0;
@@ -1479,6 +1485,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
   align-items: center;
   gap: var(--space-2);
   min-height: 46px;
+  min-width: 0;
   padding: .7rem .8rem;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
@@ -1486,7 +1493,8 @@ input[type="number"], input[type="tel"], input[type="date"] {
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
 }
-.application-option input { width: 1.1rem; height: 1.1rem; accent-color: var(--color-brand); }
+.application-option input { flex: none; width: 1.1rem; height: 1.1rem; accent-color: var(--color-brand); }
+.application-option span { overflow-wrap: anywhere; }
 .application-option:has(input:checked) {
   border-color: var(--color-brand);
   background: var(--color-accent-soft);
@@ -1559,6 +1567,7 @@ input[type="number"], input[type="tel"], input[type="date"] {
   box-shadow: var(--shadow-sm);
 }
 @media (max-width: 899px) {
+  .form-actions .btn { flex: 1 1 0; min-width: 0; }
   .form-actions {
     position: sticky;
     bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-2));
@@ -1571,11 +1580,11 @@ input[type="number"], input[type="tel"], input[type="date"] {
   body.has-mobile-input-focus .form-actions { position: static; }
 }
 @media (max-width: 720px) {
-  .form-grid-3, .description-grid { grid-template-columns: 1fr; }
+  .form-grid-2, .form-grid-3, .description-grid { grid-template-columns: 1fr; }
   .form-disclosure-body { padding: var(--space-4); }
   .application-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 420px) {
+@media (max-width: 359px) {
   .application-options { grid-template-columns: 1fr; }
 }
 
