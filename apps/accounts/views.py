@@ -4,19 +4,26 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import logout
+from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
+from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.views.decorators.cache import never_cache
+from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods, require_POST
 
-from .forms import OTPVerifyForm, PhoneLoginForm, ProfileForm
+from .forms import OTPVerifyForm, PasswordLoginForm, PhoneLoginForm, ProfileForm, RegistrationForm
+from .password_auth import password_login, register_owner
 from .services import OTPError, request_login_otp, verify_login_otp
 
 logger = logging.getLogger(__name__)
 
 
+@sensitive_post_parameters("password")
+@never_cache
 @require_http_methods(["GET", "POST"])
 def login_view(request: HttpRequest) -> HttpResponse:
     if request.user.is_authenticated:
@@ -24,8 +31,19 @@ def login_view(request: HttpRequest) -> HttpResponse:
             return redirect("admin:index")
         return redirect("businesses:dashboard")
 
-    form = PhoneLoginForm(request.POST or None)
+    data = request.POST if request.method == "POST" else None
+    form = PasswordLoginForm(data) if settings.AUTH_LOGIN_METHOD == "password" else PhoneLoginForm(data)
     if request.method == "POST" and form.is_valid():
+        if settings.AUTH_LOGIN_METHOD == "password":
+            try:
+                user = password_login(
+                    phone=form.cleaned_data["phone"], password=form.cleaned_data["password"], request=request,
+                )
+            except OTPError as exc:
+                form.add_error(None, exc.message)
+            else:
+                return redirect("admin:index" if user.is_superuser else "businesses:post_login")
+            return render(request, "accounts/login.html", {"form": form})
         try:
             result = request_login_otp(form.cleaned_data["phone"], request=request)
         except OTPError as exc:
@@ -46,6 +64,10 @@ def login_view(request: HttpRequest) -> HttpResponse:
 
 @require_http_methods(["GET", "POST"])
 def verify_view(request: HttpRequest) -> HttpResponse:
+    if settings.AUTH_LOGIN_METHOD != "otp":
+        request.session.pop("otp_phone", None)
+        request.session.pop("otp_dev_code", None)
+        return redirect("accounts:login")
     if request.user.is_authenticated:
         if request.user.is_active and request.user.is_superuser:
             return redirect("admin:index")
@@ -116,3 +138,49 @@ def profile_view(request: HttpRequest) -> HttpResponse:
         messages.success(request, "پروفایل به‌روزرسانی شد.")
         return redirect("accounts:profile")
     return render(request, "accounts/profile.html", {"form": form})
+
+
+@sensitive_post_parameters("password1", "password2")
+@never_cache
+@require_http_methods(["GET", "POST"])
+def register_view(request):
+    if not settings.PUBLIC_REGISTRATION_ENABLED:
+        return redirect("accounts:login")
+    if request.user.is_authenticated:
+        return redirect("businesses:post_login")
+    form = RegistrationForm(request.POST if request.method == "POST" else None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            register_owner(
+                phone=form.cleaned_data["phone"], password=form.cleaned_data["password1"],
+                full_name=form.cleaned_data["full_name"], business_name=form.cleaned_data["business_name"],
+                city=form.cleaned_data["city"], request=request,
+            )
+        except OTPError as exc:
+            form.add_error(None, exc.message)
+        except ValidationError as exc:
+            form.add_error("password1", exc)
+        else:
+            return redirect("accounts:registration_submitted")
+    return render(request, "accounts/register.html", {"form": form})
+
+
+@require_http_methods(["GET"])
+def registration_submitted(request):
+    return render(request, "accounts/registration_submitted.html")
+
+
+@login_required
+@sensitive_post_parameters("old_password", "new_password1", "new_password2")
+@never_cache
+@require_http_methods(["GET", "POST"])
+def password_change(request):
+    form = PasswordChangeForm(request.user, request.POST if request.method == "POST" else None)
+    for field in form.fields.values():
+        field.widget.attrs.update({"class": "field-input", "dir": "ltr"})
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)
+        messages.success(request, "رمز عبور تغییر کرد.")
+        return redirect("accounts:profile")
+    return render(request, "accounts/password_change.html", {"form": form})

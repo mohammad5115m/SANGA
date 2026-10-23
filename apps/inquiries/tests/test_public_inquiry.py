@@ -22,6 +22,12 @@ from apps.pricing.services import ensure_default_tiers
 User = get_user_model()
 
 
+@pytest.fixture(autouse=True)
+def _enable_optional_otp_phase(settings):
+    settings.AUTH_LOGIN_METHOD = "otp"
+    settings.CUSTOMER_OTP_ENABLED = True
+
+
 @pytest.fixture
 def market(db):
     ensure_default_tiers()

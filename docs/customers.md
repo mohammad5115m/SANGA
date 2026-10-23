@@ -54,7 +54,7 @@ asked another.
 ### One submission, one set of inquiries
 
 `submit_public_inquiry()` writes them all in **one transaction**, keyed by a
-`submission_id` minted before the OTP is sent and carried in the session.
+`submission_id` minted on the contact form and carried in the session.
 `uniq_inquiry_per_submission_and_seller` makes the token unique per seller.
 
 Both properties matter, and neither is available to the per-seller service:
@@ -93,6 +93,13 @@ Scoped per business, so one seller's customer list is not another's, and two
 sellers can hold different names for the same number without conflict.
 
 ## 4. Customer OTP
+
+In the default phase, `CUSTOMER_OTP_ENABLED=false`: name and a valid mobile
+number remain mandatory, the inquiry is saved immediately, and a new lead's
+`phone_verified_at` remains null. Customers receive no SMS and gain no account
+or login session. Source-phone and IP rate limits still apply.
+
+For the later opt-in phase (`CUSTOMER_OTP_ENABLED=true`):
 
 Verification at submission uses `OTPChallenge` with its own
 `Purpose.CUSTOMER`, and a separate pair of service functions
@@ -164,7 +171,5 @@ as a normal inquiry so it lands in the same inbox, and the seller answers by
 either confirming stock or marking the product ناموجود.
 
 It runs through the same pipeline as every other public inquiry — the button
-selects the product and seeds the question, then identity and OTP follow — so the
-phone behind it is verified like every other. Keeping a low-friction exception
-here would have meant one class of inquiry whose phone number nobody had checked,
-and no way for a seller to tell which kind they were looking at.
+selects the product and seeds the question, then identity follows. OTP is only
+required when explicitly enabled, just like the other public entry points.

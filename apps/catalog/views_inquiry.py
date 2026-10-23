@@ -1,6 +1,6 @@
 """The public customer inquiry flow — the only one there is.
 
-    seller storefront → select → quantity → identity → OTP → one seller inquiry
+    seller storefront → select → quantity → identity → optional OTP → seller inquiry
 
 Every public entry point funnels through here. The product detail page and the
 shared catalog used to carry their own name/phone forms that called
@@ -17,12 +17,14 @@ from __future__ import annotations
 import logging
 import uuid
 
+from django.conf import settings
 from django.contrib import messages
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
+from apps.accounts.password_auth import claim_attempt
 from apps.accounts.services import OTPError, request_customer_otp, verify_customer_otp
 from apps.businesses.eligibility import public_business_by_storefront_token_or_none
 from apps.inquiries.models import Inquiry
@@ -131,8 +133,8 @@ def inquiry_start(request: HttpRequest, storefront_token: str, item_id) -> HttpR
 def stock_inquiry(request: HttpRequest, storefront_token: str, item_id) -> HttpResponse:
     """«استعلام موجودی» — ask whether a stale quantity still holds.
 
-    The same pipeline as any other inquiry, seeded with the question, so the
-    phone behind it is verified like every other. It lands in the same inbox; the
+    The same pipeline as any other inquiry, seeded with the question, so contact
+    handling follows the configured customer phase. It lands in the same inbox; the
     seller's reply is either confirming the stock or marking the product ناموجود.
     """
     business = _business_or_404(storefront_token)
@@ -175,29 +177,38 @@ def selection_review(request: HttpRequest, storefront_token: str) -> HttpRespons
 
 @require_http_methods(["GET", "POST"])
 def inquiry_identify(request: HttpRequest, storefront_token: str) -> HttpResponse:
-    """Ask who they are, and send a verification code."""
+    """Capture contact details; verify only when the later OTP phase is enabled."""
     business = _business_or_404(storefront_token)
     rows = cart.resolve(request, business)
     if not rows:
         messages.info(request, "هنوز محصولی انتخاب نکرده‌اید.")
         return redirect("catalog:storefront", storefront_token=storefront_token)
 
-    form = CustomerIdentityForm(
-        request.POST or None,
-        initial={"message": cart.message_seed(request)},
-    )
+    previous = request.session.get(PENDING_KEY) or {}
+    if previous.get("business_id") != str(business.pk):
+        previous = {}
+    form = CustomerIdentityForm(request.POST if request.method == "POST" else None, initial={
+        "submission_id": previous.get("submission_id") or uuid.uuid4(),
+        "name": previous.get("name", ""), "phone": previous.get("phone", ""),
+        "message": previous.get("message") or cart.message_seed(request),
+    })
     if request.method == "POST" and form.is_valid():
         try:
             phone = validate_phone(form.cleaned_data["phone"])
-            result = request_customer_otp(phone, request=request)
+            if settings.CUSTOMER_OTP_ENABLED:
+                result = request_customer_otp(phone, request=request)
+            else:
+                claim_attempt(phone=phone, request=request, purpose="customer-inquiry")
+                result = None
         except (InquiryError, OTPError) as exc:
             form.add_error(None, exc.message)
         else:
-            # Minted here, before the code is sent, so every later attempt at
+            # Retain the form's token so every later attempt at
             # this submission — a refresh, a double-click, a retry after a
             # failure — carries the same token and resolves to the same rows.
             request.session[PENDING_KEY] = {
-                "submission_id": str(uuid.uuid4()),
+                "submission_id": str(form.cleaned_data.get("submission_id") or uuid.uuid4()),
+                "business_id": str(business.pk),
                 "name": form.cleaned_data["name"],
                 "phone": phone,
                 "message": form.cleaned_data.get("message", "") or cart.message_seed(request),
@@ -205,6 +216,8 @@ def inquiry_identify(request: HttpRequest, storefront_token: str) -> HttpRespons
                 "catalog_id": cart.active_catalog_id(request, business),
             }
             request.session.modified = True
+            if result is None:
+                return _submit(request, business, storefront_token, request.session[PENDING_KEY], rows, verified=False)
             if result.dev_code:
                 messages.info(request, f"کد توسعه (فقط DEBUG): {result.dev_code}")
             return redirect("catalog:inquiry_verify", storefront_token=storefront_token)
@@ -224,9 +237,11 @@ def inquiry_verify(request: HttpRequest, storefront_token: str) -> HttpResponse:
     was reachable, on the CustomerLead.
     """
     business = _business_or_404(storefront_token)
+    if not settings.CUSTOMER_OTP_ENABLED:
+        return redirect("catalog:inquiry_identify", storefront_token=storefront_token)
     pending = request.session.get(PENDING_KEY)
     rows = cart.resolve(request, business)
-    if not pending or not rows:
+    if not pending or pending.get("business_id") != str(business.pk) or not rows:
         return redirect("catalog:storefront", storefront_token=storefront_token)
 
     form = OTPCodeForm(request.POST or None)
@@ -247,7 +262,7 @@ def inquiry_verify(request: HttpRequest, storefront_token: str) -> HttpResponse:
             except OTPError as exc:
                 form.add_error("code", exc.message)
             else:
-                return _submit(request, business, storefront_token, pending, rows)
+                return _submit(request, business, storefront_token, pending, rows, verified=True)
 
     return render(
         request,
@@ -256,15 +271,17 @@ def inquiry_verify(request: HttpRequest, storefront_token: str) -> HttpResponse:
     )
 
 
-def _submit(request: HttpRequest, business, storefront_token: str, pending: dict, rows: list[dict]) -> HttpResponse:
+def _submit(
+    request: HttpRequest, business, storefront_token: str, pending: dict, rows: list[dict], *, verified: bool,
+) -> HttpResponse:
     """Persist one inquiry for the current storefront seller, then show the thank-you page.
 
     Saving happens here and share buttons appear on the next page — never the
     other way round. A seller must not depend on a WhatsApp message the customer
     may never send.
 
-    The whole submission is one transaction keyed by the token minted before the
-    OTP was sent, so a failure part-way through leaves nothing behind and the
+    The whole submission is one transaction keyed by the contact form's token,
+    so a failure part-way through leaves nothing behind and the
     retry that follows is handed the same inquiries rather than a second set.
     """
     custom_catalog = None
@@ -287,7 +304,7 @@ def _submit(request: HttpRequest, business, storefront_token: str, pending: dict
             message=pending.get("message", ""),
             source=pending.get("source") or Inquiry.Source.STOREFRONT,
             requester=request.user,
-            verified=True,
+            verified=verified,
         )
     except InquiryError as exc:
         messages.error(request, exc.message)

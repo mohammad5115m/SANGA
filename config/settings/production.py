@@ -87,7 +87,8 @@ def _check_sms_provider() -> None:
         validate()
 
 
-_check_sms_provider()
+if AUTH_LOGIN_METHOD == "otp" or CUSTOMER_OTP_ENABLED:  # noqa: F405
+    _check_sms_provider()
 
 # --- uploaded media must survive a deploy -------------------------------------
 #

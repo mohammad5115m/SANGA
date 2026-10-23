@@ -26,10 +26,15 @@ Key points not obvious from the README:
   `http://localhost:8000/`, health check at `/health/`.
 - **Migrations are NOT part of the update script.** After pulling changes, run
   `.venv/bin/python manage.py migrate` yourself when models changed.
-- **Login is OTP-only (no passwords).** In DEBUG the OTP code is shown on the
-  verify page as an info flash (`SMS_PROVIDER=console` also logs it). Seed demo
-  accounts with `.venv/bin/python manage.py seed_demo`; the supplier login phone
-  is `09121111111` and the partner is `09122222222`.
+- **Login defaults to phone + password.** Public owner registrations wait for
+  platform-admin approval before creating a User/Business. Retail inquiries
+  require a phone but no account or OTP, and do not mark new phones verified.
+  Old accounts need a password assigned via admin or `manage.py changepassword`.
+  Seed demo accounts with `.venv/bin/python manage.py seed_demo`; supplier phone
+  is `09121111111`, partner is `09122222222`. No shared default password is set.
+  Future OTP is opt-in: `AUTH_LOGIN_METHOD=otp`, `CUSTOMER_OTP_ENABLED=true`.
+  Legacy OTP tests explicitly enable those switches; test the default password
+  and customer-contact flow separately.
 - **Checks:** `.venv/bin/pytest` (251 tests, SQLite), plus
   `.venv/bin/python manage.py check`. `ruff` is installed but the repo ships no
   ruff config, so `ruff check .` reports many findings against ruff defaults;

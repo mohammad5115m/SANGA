@@ -6,7 +6,7 @@
 {% block content %}
 <section class="stack-lg">
   <div>
-    <span class="section-kicker">مرحله ۱ از ۳</span>
+    <span class="section-kicker">مرحله ۱ از {% if customer_otp_enabled %}۳{% else %}۲{% endif %}</span>
     <h1 class="page-title">مرور درخواست خرید</h1>
     <p class="page-lead">محصولات را بررسی کنید و متراژ تقریبی هر مورد را بنویسید؛ عدد دقیق می‌تواند بعداً با فروشنده نهایی شود.</p>
   </div>

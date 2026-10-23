@@ -32,6 +32,12 @@ from apps.accounts.services import (
 pytestmark = [pytest.mark.concurrency, pytest.mark.django_db(transaction=True)]
 
 
+@pytest.fixture(autouse=True)
+def _enable_optional_otp_phase(settings):
+    settings.AUTH_LOGIN_METHOD = "otp"
+    settings.CUSTOMER_OTP_ENABLED = True
+
+
 def _race(target, count: int = 2) -> tuple[list, list]:
     barrier = threading.Barrier(count, timeout=15)
     results: list = []

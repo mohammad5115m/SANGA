@@ -9,7 +9,11 @@ docker compose up --build
 
 - App: http://localhost:8000/
 - Health: http://localhost:8000/health/
-- OTP codes appear on the verification page and in the `web` container log
+- Default login uses phone + password; public registration waits for admin approval.
+  Assign passwords to old/demo accounts with `manage.py changepassword PHONE`.
+  Customer inquiries require contact numbers but no OTP. No SMS credentials are
+  needed with `AUTH_LOGIN_METHOD=password` and `CUSTOMER_OTP_ENABLED=false`.
+- In the optional OTP phase, codes appear on the verification page and in the `web` container log
   whenever `SMS_PROVIDER=console`. This explicit no-gateway mode works even with
   `DEBUG=false`; production refuses it unless `SMS_ALLOW_UNDELIVERED=true` was
   deliberately configured.
@@ -60,8 +64,8 @@ anything serves a request — for each of these:
 | `DJANGO_SECRET_KEY` is the development default | Session and signature forgery |
 | `DJANGO_ALLOWED_HOSTS` names only loopback | The development `.env` is still in place |
 | `DJANGO_ALLOWED_HOSTS` is `*` | Host header poisoning into share and reset links |
-| `SMS_PROVIDER` is not a known provider | A typo used to fall back to the console provider |
-| `SMS_PROVIDER` cannot deliver | Nobody can log in, and every OTP is in the log |
+| An OTP flow is enabled and `SMS_PROVIDER` is unknown | A typo used to fall back to the console provider |
+| An OTP flow is enabled and `SMS_PROVIDER` cannot deliver | Codes would not reach users |
 | `USE_S3=false` without `SANGA_ALLOW_LOCAL_MEDIA` | Uploads are written into the container and discarded on the next deploy |
 | `SANGA_ALLOW_LOCAL_MEDIA` without `SANGA_MEDIA_ROOT` | The volume mount and the setting can drift apart unnoticed |
 | `USE_S3=true` without a bucket, credentials or region/endpoint | Every upload fails at the moment a user makes one |
@@ -175,8 +179,11 @@ any caller choose their own rate-limit key, or somebody else's.
 | `DJANGO_DATABASE` | `postgres` |
 | `POSTGRES_*` | Managed database credentials |
 | `REDIS_URL`, `CELERY_BROKER_URL` | Managed Redis |
-| `SMS_PROVIDER` | `kavenegar` in production. `console` and `null` do not deliver and are refused. |
-| `KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE` | Required with `SMS_PROVIDER=kavenegar`, checked at boot |
+| `AUTH_LOGIN_METHOD` | `password` by default; `otp` enables the later SMS login phase. |
+| `CUSTOMER_OTP_ENABLED` | `false` by default; phone is required without claiming verification. |
+| `PUBLIC_REGISTRATION_ENABLED` | `true` by default; applications require platform-admin approval. |
+| `SMS_PROVIDER` | Only needed for enabled OTP flows: `kavenegar` in production. |
+| `KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE` | Required with enabled OTP and `SMS_PROVIDER=kavenegar`, checked at boot |
 | `SMS_TIMEOUT_SECONDS` | Ten seconds by default |
 | `USE_S3`, `AWS_*` | Object storage for product media. Required unless the local-media mode is declared. |
 | `CSP_IMG_SRC`, `CSP_MEDIA_SRC` | The storage/CDN origin, so images are not blocked. Required with `USE_S3`. |

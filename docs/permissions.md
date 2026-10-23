@@ -7,24 +7,39 @@
 3. Make staff permissions **configurable** without hard-coding checks everywhere.  
 4. Keep the matrix understandable for non-technical owners.
 
-## 1.1 Account provisioning is admin-only
+## 1.1 Account activation requires platform-admin approval
 
 Before any capability question arises, there is a harder boundary: **only a
 Platform Admin creates platform Users and Businesses.**
 
-- Authentication never creates an account. `verify_login_otp` looks the User up
-  and refuses when it is missing or inactive.
-- Requesting an OTP for an unprovisioned phone still writes a challenge row (so
-  the rate limiter cannot be used to enumerate numbers) but sends no SMS.
+- Public `/auth/register/` accepts an owner's application and hashed password.
+  It creates neither a User nor a Business until a superuser approves it.
+  Pending applications cannot log in. Repeated applications cannot overwrite
+  pending credentials or an existing account; rejected applications can be corrected.
+- Authentication never creates an account. The default method is phone and
+  password; unknown, inactive, pending and incorrect credentials share a refusal.
+- Admin approval atomically creates one User, Business and owner membership.
+  Concurrent approvals serialize on the application; reviewed requests cannot
+  be approved twice or rewritten through a crafted admin POST.
+- Password changes require the old password. Forgotten or never-assigned
+  passwords are assigned by the platform admin, never by supplying a phone alone.
 - Refusal for "no such account" and "account deactivated" uses one shared
   message, so an anonymous caller cannot tell the two apart.
-- There is no route that creates a Business. Provisioning happens through
-  `./manage.py provision_business`, `./manage.py provision_user`, or Django admin.
+- Direct provisioning remains available through `./manage.py provision_business`,
+  `./manage.py provision_user`, or Django admin. Existing team accounts remain supported;
+  public registration only requests an owner account.
 - A User with no membership is redirected to `/app/no-business/`, a page with no
   form on it.
 
 Public retail customers are never platform Users. Submitting an inquiry must
-never create one.
+never create one. Their phone is mandatory for follow-up, but OTP is disabled by
+default and new contact numbers are not marked verified. Password login,
+registration and public inquiries have separate phone/IP request budgets.
+
+OTP remains opt-in for a later phase: `AUTH_LOGIN_METHOD=otp` and/or
+`CUSTOMER_OTP_ENABLED=true`. Disabled OTP endpoints and services cannot send
+messages or authenticate stale challenges. Production validates SMS setup only
+when an OTP flow is enabled.
 
 ## 2. Audiences (Resolved at Request Time)
 

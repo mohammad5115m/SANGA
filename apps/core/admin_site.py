@@ -115,8 +115,7 @@ class SangaAdminSite(admin.AdminSite):
         return persian_view
 
     def login(self, request, extra_context=None):
-        # All accounts, including the platform owner, use the existing OTP
-        # flow. The stock Django admin password form would contradict that.
+        # All accounts use the configured application login method.
         if self.has_permission(request):
             return redirect("admin:index")
         if request.user.is_authenticated:

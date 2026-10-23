@@ -1,0 +1,18 @@
+{% extends "layouts/auth_shell.html" %}
+{% block title %}ثبت‌نام کسب‌وکار | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div><h1 class="page-title">ثبت‌نام صاحب کسب‌وکار</h1>
+    <p class="page-lead">درخواست شما را مدیر پلتفرم بررسی می‌کند. پس از تأیید می‌توانید وارد حساب شوید.</p>
+  </div>
+  <form method="post" class="stack-md" novalidate hx-boost="false" data-unsaved-warning>
+    {% csrf_token %}
+    {% if form.errors %}<div class="alert alert-error" role="alert">درخواست ثبت نشد؛ موارد مشخص‌شده را اصلاح کنید.{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}{% include "components/form_field.html" with field=field %}{% endfor %}
+    <p class="field-help">شماره موبایل، شناسه ورود و راه تماس مدیر برای پیگیری درخواست است؛ در این مرحله کد پیامکی ارسال نمی‌شود.</p>
+    <button class="btn btn-primary btn-block" type="submit">ارسال درخواست ثبت‌نام</button>
+    <a class="btn btn-ghost btn-block" href="{% url 'accounts:login' %}">بازگشت به ورود</a>
+  </form>
+  <p class="muted">مشتری نهایی برای ثبت استعلام محصول به حساب کاربری نیاز ندارد.</p>
+</section>
+{% endblock %}

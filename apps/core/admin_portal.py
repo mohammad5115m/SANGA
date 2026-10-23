@@ -17,7 +17,7 @@ from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts.models import User
+from apps.accounts.models import RegistrationRequest, User
 from apps.businesses.entitlements import EntitlementError, require_seat_available
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import defaults_for_role
@@ -227,6 +227,7 @@ _DASHBOARD_SECTIONS = (
             ("کسب‌وکارها", "businesses", "Business"),
             ("عضویت‌ها", "businesses", "BusinessMembership"),
             ("کاربران", "accounts", "User"),
+            ("درخواست‌های ثبت‌نام", "accounts", "RegistrationRequest"),
         ),
     ),
     (
@@ -406,6 +407,12 @@ def dashboard_context(request: HttpRequest) -> dict:
             {"label": "فروش نهایی", "value": Trade.objects.count(), "url": reverse("admin:trading_trade_changelist")},
         ],
         "admin_queue": [
+            {
+                "label": "درخواست ثبت‌نام در انتظار بررسی",
+                "count": RegistrationRequest.objects.filter(status=RegistrationRequest.Status.PENDING).count(),
+                "url": reverse("admin:accounts_registrationrequest_changelist") + "?status__exact=pending",
+                "tone": "amber",
+            },
             {
                 "label": "کسب‌وکار در انتظار تأیید",
                 "count": pending_businesses.count(),

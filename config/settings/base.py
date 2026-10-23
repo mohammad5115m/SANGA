@@ -89,6 +89,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.businesses.context_processors.business_context",
+                "apps.accounts.context_processors.authentication_context",
             ],
         },
     },
@@ -122,7 +123,10 @@ else:
 AUTH_USER_MODEL = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+        "OPTIONS": {"user_attributes": ("phone", "full_name", "email")},
+    },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
@@ -171,6 +175,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "businesses:dashboard"
 LOGOUT_REDIRECT_URL = "accounts:login"
+
+# Phase one uses passwords and unverified customer contact numbers. OTP stays
+# available behind explicit settings for a later rollout.
+AUTH_LOGIN_METHOD = env("AUTH_LOGIN_METHOD", default="password")
+if AUTH_LOGIN_METHOD not in {"password", "otp"}:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured("AUTH_LOGIN_METHOD must be password or otp")
+CUSTOMER_OTP_ENABLED = env.bool("CUSTOMER_OTP_ENABLED", default=False)
+PUBLIC_REGISTRATION_ENABLED = env.bool("PUBLIC_REGISTRATION_ENABLED", default=True)
+AUTH_MAX_ATTEMPTS_PER_HOUR = env.int("AUTH_MAX_ATTEMPTS_PER_HOUR", default=10)
+AUTH_MAX_ATTEMPTS_PER_IP_PER_HOUR = env.int("AUTH_MAX_ATTEMPTS_PER_IP_PER_HOUR", default=50)
 
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)

@@ -14,6 +14,12 @@ from apps.businesses.models import Business, BusinessMembership
 User = get_user_model()
 
 
+@pytest.fixture(autouse=True)
+def _enable_optional_otp_phase(settings):
+    settings.AUTH_LOGIN_METHOD = "otp"
+    settings.CUSTOMER_OTP_ENABLED = True
+
+
 def _provision(phone: str, **extra) -> User:
     """Stand in for Platform Admin provisioning.
 

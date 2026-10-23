@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django import forms
+from django.conf import settings
 from django.utils import timezone
 
 from apps.core.widgets import JalaliDateTimeWidget
@@ -12,8 +13,11 @@ from .models import CustomCatalog, StorefrontCollection
 class CustomerIdentityForm(forms.Form):
     """Asked once, at submission. Never before browsing."""
 
+    submission_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
+
     name = forms.CharField(
         label="نام شما",
+        min_length=2,
         max_length=150,
         widget=forms.TextInput(attrs={"class": "field-input", "autocomplete": "name"}),
     )
@@ -36,6 +40,13 @@ class CustomerIdentityForm(forms.Form):
             }
         ),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["phone"].help_text = (
+            "کد تأیید به این شماره پیامک می‌شود." if settings.CUSTOMER_OTP_ENABLED
+            else "شماره موبایل برای تماس و پیگیری فروشنده ضروری است؛ کد پیامکی ارسال نمی‌شود."
+        )
 
 
 class OTPCodeForm(forms.Form):

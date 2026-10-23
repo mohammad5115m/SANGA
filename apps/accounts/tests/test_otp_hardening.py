@@ -31,6 +31,12 @@ def console_sms(settings):
     settings.SMS_PROVIDER = "console"
 
 
+@pytest.fixture(autouse=True)
+def _enable_optional_otp_phase(settings):
+    settings.AUTH_LOGIN_METHOD = "otp"
+    settings.CUSTOMER_OTP_ENABLED = True
+
+
 def _code(phone: str) -> str:
     """Recover the plaintext of the latest challenge, as the console flow does."""
     from apps.accounts.services import _hash_code

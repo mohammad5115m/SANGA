@@ -56,14 +56,12 @@ def create_business_for_owner(
     province: str = "",
     phone: str = "",
     verified: bool = True,
+    slug: str = "",
 ) -> Business:
     """Provision a Business and make ``owner`` its Owner.
 
-    Platform-admin only. There is no public route into this function: Sang Esf has
-    no self-service signup, so a Business exists only because an operator ran
-    the ``provision_business`` command or used Django admin. Callers are
-    responsible for having established that authority — the function itself
-    cannot see a request.
+    Called by platform provisioning and by the admin approval of a public
+    registration. Callers establish that authority before reaching this helper.
 
     Provisioning marks the Business VERIFIED, because in a platform with no
     self-service signup that is what provisioning *means*: an operator has
@@ -78,6 +76,7 @@ def create_business_for_owner(
 
     business = Business.objects.create(
         name=name,
+        slug=slug,
         city=city.strip(),
         province=province.strip(),
         phone=phone.strip() or owner.phone,

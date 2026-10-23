@@ -26,21 +26,23 @@ a link is never offered that ends in «دسترسی ندارید».
 
 ## 2. Account provisioning and first login
 
-There is **no self-service signup**.
+Owners can request an account publicly. Approval is required before any account
+or Business is created; retail customers never register.
 
 ```text
-Platform Admin provisions Business + Owner User
-  (./manage.py provision_business, or Django admin)
-  → Admin provisions additional Users (./manage.py provision_user)
-  → User logs in with OTP
+Owner submits name + mobile + Business name + city + password
+  → pending registration in platform admin
+  → Admin approves: Business + Owner User created atomically
+  → User logs in with mobile + password
   → Business profile
   → Dashboard
 ```
 
-Authentication never creates an account. Requesting an OTP for an unknown phone
-produces a normal-looking response but sends no SMS; verifying it fails with a
-message that deliberately cannot distinguish "no such account" from "account
-deactivated".
+Authentication never creates an account. Unknown/inactive/pending accounts and
+incorrect credentials get the same refusal. Direct admin provisioning remains
+available. Password recovery for existing accounts goes through the platform
+admin; authenticated users can change their own password from their profile.
+The later OTP mode remains behind explicit configuration switches.
 
 A User belonging to no Business lands on `/app/no-business/`, which explains the
 situation and links to support. It contains no form.
@@ -103,12 +105,13 @@ Sending a proposal is **not** selling. See [trading.md](./trading.md).
 /store/<storefront_token>/  →  filter  →  select several products
           →  /inquiry/  →  quantity per product
           →  identity (name + mobile)
-          →  OTP verification
           →  saved
           →  optional WhatsApp / Telegram share
 ```
 
-No login wall, and identity is asked for once, at the end. See
+No login wall, and identity is asked for once, at the end. A contact phone is
+mandatory but is not marked verified; no code is sent in the default phase.
+`CUSTOMER_OTP_ENABLED=true` restores the optional OTP step. See
 [customers.md](./customers.md).
 
 The storefront begins with a plain-language application choice and a simple

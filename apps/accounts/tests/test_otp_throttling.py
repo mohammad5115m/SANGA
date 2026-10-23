@@ -36,6 +36,12 @@ def console_provider(settings):
     settings.SMS_PROVIDER = "console"
 
 
+@pytest.fixture(autouse=True)
+def _enable_optional_otp_phase(settings):
+    settings.AUTH_LOGIN_METHOD = "otp"
+    settings.CUSTOMER_OTP_ENABLED = True
+
+
 def _request(*, remote: str = "203.0.113.9", forwarded: str | None = None):
     factory = RequestFactory()
     headers = {"REMOTE_ADDR": remote}
