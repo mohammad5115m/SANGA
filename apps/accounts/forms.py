@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from django import forms
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 
 from apps.core.persian import normalize_digits, normalize_phone
 
@@ -64,3 +66,57 @@ class OTPVerifyForm(forms.Form):
         if not code.isdigit():
             raise forms.ValidationError("کد باید عددی باشد.")
         return code
+
+
+class PasswordLoginForm(PhoneLoginForm):
+    password = forms.CharField(
+        label="رمز عبور",
+        strip=False,
+        widget=forms.PasswordInput(attrs={"class": "field-input", "autocomplete": "current-password"}),
+    )
+
+
+class RegistrationForm(PhoneLoginForm):
+    full_name = forms.CharField(
+        label="نام و نام خانوادگی مالک",
+        min_length=2,
+        max_length=150,
+        widget=forms.TextInput(attrs={"class": "field-input", "autocomplete": "name"}),
+    )
+    business_name = forms.CharField(
+        label="نام کسب‌وکار", min_length=2, max_length=200, widget=forms.TextInput(attrs={"class": "field-input"})
+    )
+    city = forms.CharField(
+        label="شهر",
+        min_length=2,
+        max_length=100,
+        widget=forms.TextInput(attrs={"class": "field-input", "autocomplete": "address-level2"}),
+    )
+    password1 = forms.CharField(
+        label="رمز عبور",
+        strip=False,
+        max_length=128,
+        min_length=8,
+        widget=forms.PasswordInput(attrs={"class": "field-input", "autocomplete": "new-password"}),
+        help_text="حداقل ۸ نویسه؛ از رمز رایج یا صرفاً عددی استفاده نکنید.",
+    )
+    password2 = forms.CharField(
+        label="تکرار رمز عبور",
+        strip=False,
+        max_length=128,
+        widget=forms.PasswordInput(attrs={"class": "field-input", "autocomplete": "new-password"}),
+    )
+    field_order = ["full_name", "phone", "business_name", "city", "password1", "password2"]
+
+    def clean(self):
+        data = super().clean()
+        password = data.get("password1")
+        if password and data.get("password2") and password != data["password2"]:
+            self.add_error("password2", "دو رمز عبور یکسان نیستند.")
+        if password:
+            user = User(phone=data.get("phone", ""), full_name=data.get("full_name", ""))
+            try:
+                validate_password(password, user=user)
+            except ValidationError as exc:
+                self.add_error("password1", exc)
+        return data

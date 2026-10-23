@@ -82,6 +82,7 @@ def test_authentication_never_creates_a_user(rf, settings):
     )
 
     settings.DEBUG = True
+    settings.AUTH_LOGIN_METHOD = "otp"
     settings.SMS_PROVIDER = "console"
 
     request_login_otp("09260000001")

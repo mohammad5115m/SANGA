@@ -348,6 +348,8 @@ def _claim_challenge(*, phone: str, purpose: str, code: str) -> OTPChallenge:
 
 
 def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPRequestResult:
+    if settings.AUTH_LOGIN_METHOD != "otp":
+        raise OTPValidationError("ورود پیامکی فعلاً غیرفعال است.")
     phone = normalize_phone(phone)
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
@@ -419,6 +421,8 @@ def request_login_otp(phone: str, *, request: HttpRequest | None = None) -> OTPR
 
 def request_customer_otp(phone: str, *, request: HttpRequest | None = None) -> OTPRequestResult:
     """Send a verification code to a retail customer."""
+    if not settings.CUSTOMER_OTP_ENABLED:
+        raise OTPValidationError("تأیید پیامکی مشتری فعلاً غیرفعال است.")
     phone = normalize_phone(phone)
     if not (phone.startswith("09") and len(phone) == 11):
         raise OTPValidationError("شماره موبایل معتبر نیست. مثال: ۰۹۱۲۳۴۵۶۷۸۹")
@@ -458,6 +462,8 @@ def verify_customer_otp(phone: str, code: str) -> bool:
     Creates nothing and logs nobody in. The caller records the outcome on a
     ``CustomerLead``, which is not an account.
     """
+    if not settings.CUSTOMER_OTP_ENABLED:
+        raise OTPValidationError("تأیید پیامکی مشتری فعلاً غیرفعال است.")
     phone = normalize_phone(phone)
     code = normalize_digits((code or "").strip())
     if not code.isdigit():
@@ -468,6 +474,8 @@ def verify_customer_otp(phone: str, code: str) -> bool:
 
 
 def verify_login_otp(phone: str, code: str, *, request: HttpRequest) -> User:
+    if settings.AUTH_LOGIN_METHOD != "otp":
+        raise OTPValidationError("ورود پیامکی فعلاً غیرفعال است.")
     phone = normalize_phone(phone)
     code = normalize_digits((code or "").strip())
     if not code.isdigit():

@@ -37,6 +37,39 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.full_name or self.phone
 
 
+class RegistrationRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "در انتظار بررسی"
+        APPROVED = "approved", "تأییدشده"
+        REJECTED = "rejected", "ردشده"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    phone = models.CharField("موبایل مالک", max_length=20, unique=True)
+    full_name = models.CharField("نام مالک", max_length=150)
+    business_name = models.CharField("نام کسب‌وکار", max_length=200)
+    city = models.CharField("شهر", max_length=100)
+    password_hash = models.CharField(max_length=128, editable=False)
+    status = models.CharField("وضعیت", max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField("زمان درخواست", auto_now_add=True)
+    reviewed_at = models.DateTimeField("زمان بررسی", null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_registrations",
+        verbose_name="بررسی‌کننده",
+    )
+    business = models.OneToOneField(
+        "businesses.Business", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="registration_request", verbose_name="کسب‌وکار ایجادشده",
+    )
+
+    class Meta:
+        verbose_name = "درخواست ثبت‌نام"
+        verbose_name_plural = "درخواست‌های ثبت‌نام"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.business_name} — {self.phone}"
+
+
 class OTPChallenge(models.Model):
     class Purpose(models.TextChoices):
         #: Staff logging into a provisioned platform account.

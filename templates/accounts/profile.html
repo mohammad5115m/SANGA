@@ -17,7 +17,7 @@
     <div class="field">
       <label class="field-label" for="profile-phone">شماره موبایل برای ورود</label>
       <input class="field-input account-phone" id="profile-phone" type="tel" value="{{ request.user.phone }}" dir="ltr" readonly aria-describedby="profile-phone-help" autocomplete="tel">
-      <p class="field-help" id="profile-phone-help">ورود با کد یک‌بارمصرف این شماره انجام می‌شود. برای تغییر شماره با مدیر پلتفرم هماهنگ کنید.</p>
+      <p class="field-help" id="profile-phone-help">{% if password_login_enabled %}ورود با این شماره و رمز عبور انجام می‌شود.{% else %}ورود با کد یک‌بارمصرف این شماره انجام می‌شود.{% endif %} برای تغییر شماره با مدیر پلتفرم هماهنگ کنید.</p>
     </div>
     <button class="btn btn-primary account-save" type="submit">ذخیرهٔ تغییرات</button>
   </form>
@@ -41,7 +41,7 @@
   </aside>
   </div>
   <section class="panel account-session" aria-labelledby="account-session-heading">
-    <div><h2 class="section-title" id="account-session-heading">نشست فعلی</h2><p class="muted">پس از خروج، برای ورود دوباره به کد پیامکی نیاز دارید.</p></div>
+    <div><h2 class="section-title" id="account-session-heading">نشست فعلی</h2><p class="muted">{% if password_login_enabled %}پس از خروج، برای ورود دوباره به رمز عبور نیاز دارید.{% else %}پس از خروج، برای ورود دوباره به کد پیامکی نیاز دارید.{% endif %}</p>{% if password_login_enabled %}<a href="{% url 'accounts:password_change' %}">تغییر رمز عبور</a>{% endif %}</div>
     <form method="post" action="{% url 'accounts:logout' %}">
     {% csrf_token %}
       <button class="btn btn-danger" type="submit">خروج از حساب</button>

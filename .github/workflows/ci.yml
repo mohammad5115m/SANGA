@@ -177,11 +177,12 @@ jobs:
           DJANGO_SECRET_KEY: ci-only-secret-never-used-to-serve-a-request-0123456789abcdef
           DJANGO_ALLOWED_HOSTS: sanga.example.com
           DJANGO_DATABASE: sqlite
-          # No real gateway exists in CI, so the escape hatch is set explicitly.
-          # That it has to be set at all is the property under test: production
-          # refuses to start on a provider that cannot deliver.
+          # The default password/contact phase boots without a gateway.
+          # Tests separately verify that enabling OTP restores SMS validation.
+          AUTH_LOGIN_METHOD: password
+          CUSTOMER_OTP_ENABLED: "false"
           SMS_PROVIDER: console
-          SMS_ALLOW_UNDELIVERED: "true"
+          SMS_ALLOW_UNDELIVERED: "false"
           # Likewise for media: production refuses to start with neither object
           # storage nor a named persistent volume, because the old default wrote
           # uploads into the container and discarded them on the next deploy.

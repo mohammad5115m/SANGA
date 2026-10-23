@@ -74,6 +74,7 @@ def test_admin_cannot_bypass_owner_and_seat_provisioning(client, platform_owner)
 @pytest.mark.django_db
 @pytest.mark.parametrize("boosted", [False, True])
 def test_platform_owner_otp_login_opens_admin(client, settings, platform_owner, boosted):
+    settings.AUTH_LOGIN_METHOD = "otp"
     settings.SMS_PROVIDER = "console"
     challenge = request_login_otp(platform_owner.phone)
     session = client.session

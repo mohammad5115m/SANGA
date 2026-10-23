@@ -1,0 +1,10 @@
+{% extends "layouts/auth_shell.html" %}
+{% block title %}پیگیری ثبت‌نام | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <h1 class="page-title">درخواست ثبت‌نام</h1>
+  <p>درخواست جدید شما برای بررسی مدیر ثبت می‌شود. اگر این شماره حساب یا درخواست در انتظار بررسی داشته باشد، اطلاعات قبلی حفظ می‌شود. ورود پس از تأیید مدیر امکان‌پذیر است.</p>
+  <p class="muted">مدیر برای پیگیری با شماره‌ای که وارد کرده‌اید تماس می‌گیرد. درخواست تکراری، اطلاعات یا رمز قبلی را تغییر نمی‌دهد.</p>
+  <a class="btn btn-primary btn-block" href="{% url 'accounts:login' %}">بازگشت به ورود</a>
+</section>
+{% endblock %}

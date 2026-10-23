@@ -15,6 +15,7 @@ DEMO_PHONE = "09121111111"
 
 @pytest.mark.django_db
 def test_seed_demo_creates_provisioned_demo_login(client, settings):
+    settings.AUTH_LOGIN_METHOD = "otp"
     settings.SMS_PROVIDER = "console"
     assert not User.objects.filter(phone=DEMO_PHONE).exists()
 
