@@ -65,6 +65,14 @@ jobs:
     name: Tests and concurrency (PostgreSQL)
     runs-on: ubuntu-latest
     services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       postgres:
         image: postgres:16
         env:
@@ -93,6 +101,7 @@ jobs:
         run: ./scripts/run_pg_tests.sh
         env:
           POSTGRES_HOST: 127.0.0.1
+          SANGA_TEST_REDIS_URL: redis://127.0.0.1:6379/15
       - name: The concurrency tests must actually have run
         # A skipped test is a green tick that proves nothing, and this job exists
         # for exactly those tests.
@@ -176,7 +185,7 @@ jobs:
           DJANGO_SETTINGS_MODULE: config.settings.production
           DJANGO_SECRET_KEY: ci-only-secret-never-used-to-serve-a-request-0123456789abcdef
           DJANGO_ALLOWED_HOSTS: sanga.example.com
-          DJANGO_DATABASE: sqlite
+          DJANGO_DATABASE: postgres
           # No real gateway exists in CI, so the escape hatch is set explicitly.
           # That it has to be set at all is the property under test: production
           # refuses to start on a provider that cannot deliver.
@@ -188,6 +197,75 @@ jobs:
           # CI has no bucket, so it declares the local-media mode by name.
           SANGA_ALLOW_LOCAL_MEDIA: "true"
           SANGA_MEDIA_ROOT: /tmp/sanga-media
+
+  container:
+    name: Production container smoke test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: sanga
+          POSTGRES_USER: sanga
+          POSTGRES_PASSWORD: sanga
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Production Compose overrides development defaults
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.prod.yml --profile background config --format json > /tmp/sanga-compose.json
+          python - <<'PY'
+          import json
+          with open('/tmp/sanga-compose.json') as source:
+              services = json.load(source)['services']
+          for role in ('web', 'migrate', 'worker', 'beat'):
+              env = services[role]['environment']
+              assert env['DJANGO_SETTINGS_MODULE'] == 'config.settings.production', role
+              assert env['DJANGO_DATABASE'] == 'postgres', role
+          PY
+      - name: Build the real runtime image
+        run: docker build -t sanga-ci .
+      - name: Configure isolated production smoke environment
+        run: |
+          cat > /tmp/sanga-ci.env <<'EOF'
+          DJANGO_SETTINGS_MODULE=config.settings.production
+          DJANGO_DATABASE=postgres
+          DJANGO_SECRET_KEY=ci-only-container-secret-not-a-production-credential-0123456789
+          DJANGO_ALLOWED_HOSTS=sanga.example.com
+          POSTGRES_HOST=127.0.0.1
+          POSTGRES_DB=sanga
+          POSTGRES_USER=sanga
+          POSTGRES_PASSWORD=sanga
+          SMS_PROVIDER=kavenegar
+          KAVENEGAR_API_KEY=ci-placeholder-no-delivery
+          KAVENEGAR_OTP_TEMPLATE=ci-placeholder
+          SANGA_ALLOW_LOCAL_MEDIA=true
+          SANGA_MEDIA_ROOT=/tmp/sanga-media
+          EOF
+      - name: Check settings, migrations and process health
+        run: |
+          set -euo pipefail
+          test "$(docker run --rm sanga-ci id -u)" = 10001
+          docker run --rm --network host --env-file /tmp/sanga-ci.env sanga-ci check --fail-level WARNING
+          docker run --rm --network host --env-file /tmp/sanga-ci.env sanga-ci migrate
+          docker run -d --name sanga-smoke --network host --env-file /tmp/sanga-ci.env sanga-ci
+          for attempt in $(seq 1 30); do
+            if docker exec sanga-smoke python /app/scripts/healthcheck.py; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs sanga-smoke
+          exit 1
+      - name: Cleanup isolated smoke container
+        if: always()
+        run: docker rm -f sanga-smoke || true
 
   dependency_audit:
     name: Dependency vulnerabilities
