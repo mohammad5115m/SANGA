@@ -64,3 +64,13 @@ PostgreSQL و Docker در این دستگاه در دسترس نبودند؛ ا�
   `static/css/app.css`، `static/js/app.js`.
 - آزمون‌ها: `apps/inventory/tests/test_add_product_review.py` و
   `apps/inventory/tests/test_product_creation_concurrency.py`.
+
+## آماده‌سازی ادغام با تأیید کاربر
+
+در PR شمارهٔ ۷، CI علاوه بر lint قبلی، به‌دلیل نبود مجوز اجرای دو اسکریپت
+و هشدارهای وابستگی‌ها متوقف شد. با تأیید کاربر، مجوز اجرا برای
+`scripts/run_pg_tests.sh` و `scripts/check_fresh_migrate.sh` اصلاح شد؛
+قالب‌بندی `scripts/build_brand_logo.py` با حفظ خروجی SVG اصلاح شد و Ruff کل
+مخزن موفق است. نسخه‌های Pillow، WeasyPrint، PyJWT و urllib3 در فایل‌های
+requirements به‌ترتیب به ۱۳، ۷۰، ۲٫۱۵ و ۲٫۸ ارتقا یافتند. نتیجهٔ نهایی CI
+در خود PR ثبت می‌شود؛ نتایج بالا مربوط به بررسی پیش از این ارتقا هستند.
