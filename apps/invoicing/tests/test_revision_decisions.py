@@ -1,4 +1,5 @@
 import threading
+import time
 from decimal import Decimal
 
 import pytest
@@ -18,6 +19,59 @@ from apps.invoicing.partner_services import (
 )
 from apps.invoicing.services import InvoiceError
 from apps.invoicing.tests.test_invoice_first_lifecycle import install_signatures, lines
+
+
+@pytest.mark.concurrency
+@pytest.mark.django_db(transaction=True)
+def test_reciprocal_invoice_confirmations_use_the_same_business_lock_order(sent_invoice):
+    forward, seller, buyer = sent_invoice
+    reverse_invoice = create_partner_draft(
+        business=buyer.business, membership=buyer, buyer_business=seller.business, lines=lines(),
+        settlement_method=SalesInvoice.SettlementMethod.CREDIT, credit_amount=Decimal("100"),
+    )
+    reverse_invoice = send_partner_invoice(invoice=reverse_invoice, membership=buyer)
+    start = threading.Barrier(2, timeout=15)
+    errors = []
+
+    def confirm(invoice, member):
+        first_business_lock = True
+
+        def synchronize_first_lock(execute, sql, params, many, context):
+            nonlocal first_business_lock
+            if first_business_lock and 'FROM "businesses_business"' in sql and "FOR UPDATE" in sql:
+                first_business_lock = False
+                start.wait()
+                result = execute(sql, params, many, context)
+                # Both old seller-first locks can be held before either ledger
+                # takes the other business. Correct ordering serializes here.
+                time.sleep(0.1)
+                return result
+            return execute(sql, params, many, context)
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SET lock_timeout = '5s'")
+            with connection.execute_wrapper(synchronize_first_lock):
+                confirm_partner_invoice(invoice=invoice, membership=member, expected_revision=1)
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    threads = [
+        threading.Thread(target=confirm, args=(forward, buyer), daemon=True),
+        threading.Thread(target=confirm, args=(reverse_invoice, seller), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert not any(thread.is_alive() for thread in threads), "reciprocal confirmations blocked"
+    assert errors == []
+    for invoice in (forward, reverse_invoice):
+        invoice.refresh_from_db()
+        assert invoice.status == SalesInvoice.Status.CONFIRMED
+        assert LedgerEntry.objects.filter(related_invoice=invoice).count() == 2
 
 
 @pytest.fixture
