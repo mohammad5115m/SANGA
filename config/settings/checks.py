@@ -15,6 +15,27 @@ from __future__ import annotations
 from django.core.exceptions import ImproperlyConfigured
 
 
+def check_production_database(*, engine: str) -> None:
+    if engine != "django.db.backends.postgresql":
+        raise ImproperlyConfigured(
+            "Production requires PostgreSQL; SQLite cannot enforce the financial row locks."
+        )
+
+
+def check_production_auth(*, secret_key: str, login_allowlist: list[str]) -> None:
+    if (
+        len(secret_key) < 50
+        or len(set(secret_key)) < 5
+        or secret_key.startswith("django-insecure-")
+    ):
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be a strong, random production secret.")
+    if login_allowlist:
+        raise ImproperlyConfigured(
+            "SANGA_LOGIN_PHONE_ALLOWLIST must be empty in production; "
+            "demo provisioning can reactivate suspended users and businesses."
+        )
+
+
 def check_media_storage(
     *,
     use_s3: bool,

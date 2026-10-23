@@ -91,6 +91,7 @@ CI is only a gate if it blocks. `master` requires:
 | Tests and concurrency (PostgreSQL) | `postgres` |
 | Fresh migrate from zero | `migrations` |
 | Production settings fail closed | `deploy_check` |
+| Production container smoke test | `container` |
 | Dependency vulnerabilities | `dependency_audit` |
 
 The dependency audit became blocking once the pins were clean. It was advisory
@@ -99,7 +100,10 @@ and therefore told nobody anything.
 
 To apply, in **Settings → Branches → Add branch ruleset** for `master`: require a
 pull request, require status checks to pass, select the six jobs above, and
-require branches to be up to date. This is documented rather than applied because
+require branches to be up to date. The PostgreSQL lane also supplies isolated
+Redis for the cross-process export-budget test. The container lane verifies
+Compose overrides, a real image build, migrations and health with production
+settings. This is documented rather than applied because
 it needs repository-admin rights that the tooling here does not have.
 
 ## Conventions

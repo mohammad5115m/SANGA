@@ -4,6 +4,9 @@ __pycache__/
 *.py[cod]
 *.sqlite3
 .env
+.env.*
+!.env.example
+!.env.production.example
 .media/
 media/
 staticfiles/

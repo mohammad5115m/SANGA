@@ -1,5 +1,10 @@
 # Deployment
 
+For the first managed-hosting release and the owner's selected domain, see
+[the Persian production guide](production-plan-fa.md) and
+[the current audit](production-audit-2026-10-23.md). Redis now backs the shared
+export limit; idle worker/beat services are opt-in via the `background` profile.
+
 ## 1. Local development
 
 ```bash
@@ -58,6 +63,9 @@ anything serves a request — for each of these:
 | Condition | Why it is fatal |
 |-----------|-----------------|
 | `DJANGO_SECRET_KEY` is the development default | Session and signature forgery |
+| `DJANGO_SECRET_KEY` is short or trivially repetitive | Predictable session signatures |
+| Production uses SQLite | Financial row locks would not be enforced |
+| `SANGA_LOGIN_PHONE_ALLOWLIST` is nonempty | Demo repair could reactivate suspended accounts |
 | `DJANGO_ALLOWED_HOSTS` names only loopback | The development `.env` is still in place |
 | `DJANGO_ALLOWED_HOSTS` is `*` | Host header poisoning into share and reset links |
 | `SMS_PROVIDER` is not a known provider | A typo used to fall back to the console provider |
@@ -119,6 +127,7 @@ location:
 
 ```nginx
 location ^~ /media/invoice-assets/ { return 404; }
+location ^~ /media/invoice-signatures/ { return 404; }
 location /media/ { alias /app/media/; }
 ```
 
@@ -175,6 +184,7 @@ any caller choose their own rate-limit key, or somebody else's.
 | `DJANGO_DATABASE` | `postgres` |
 | `POSTGRES_*` | Managed database credentials |
 | `REDIS_URL`, `CELERY_BROKER_URL` | Managed Redis |
+| `CACHE_URL` | Shared Redis cache for export limits; defaults to `REDIS_URL` when omitted |
 | `SMS_PROVIDER` | `kavenegar` in production. `console` and `null` do not deliver and are refused. |
 | `KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE` | Required with `SMS_PROVIDER=kavenegar`, checked at boot |
 | `SMS_TIMEOUT_SECONDS` | Ten seconds by default |
