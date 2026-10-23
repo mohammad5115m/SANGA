@@ -97,6 +97,14 @@ jobs:
       - name: Invoice renderer system libraries
         run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
       - run: pip install -r requirements/development.txt -c requirements/constraints.txt
+      - name: Reciprocal invoice and shared export cache regression
+        run: >-
+          ./scripts/run_pg_tests.sh
+          apps/invoicing/tests/test_revision_decisions.py::test_reciprocal_invoice_confirmations_use_the_same_business_lock_order
+          config/tests/test_shared_export_cache.py
+        env:
+          POSTGRES_HOST: 127.0.0.1
+          SANGA_TEST_REDIS_URL: redis://127.0.0.1:6379/15
       - name: Full suite, including the concurrency lane
         run: ./scripts/run_pg_tests.sh
         env:
