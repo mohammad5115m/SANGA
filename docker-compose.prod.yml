@@ -41,6 +41,9 @@ services:
     build: .
     command: ["migrate"]
     env_file: [.env]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_DATABASE: postgres
     restart: "no"
     depends_on:
       db:
@@ -50,6 +53,9 @@ services:
     build: .
     command: ["web"]
     env_file: [.env]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_DATABASE: postgres
     ports:
       - "127.0.0.1:8000:8000"
     # Only used by the deliberate SANGA_ALLOW_LOCAL_MEDIA=true deployment mode,
@@ -66,9 +72,13 @@ services:
         condition: service_healthy
 
   worker:
+    profiles: [background]
     build: .
     command: ["worker"]
     env_file: [.env]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_DATABASE: postgres
     restart: unless-stopped
     depends_on:
       migrate:
@@ -77,9 +87,13 @@ services:
         condition: service_healthy
 
   beat:
+    profiles: [background]
     build: .
     command: ["beat"]
     env_file: [.env]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_DATABASE: postgres
     restart: unless-stopped
     depends_on:
       migrate:

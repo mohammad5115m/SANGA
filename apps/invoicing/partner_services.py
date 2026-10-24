@@ -679,6 +679,10 @@ def confirm_partner_invoice(
         raise InvoiceError("امضای رسمی کسب‌وکار خریدار ثبت نشده است؛ ابتدا تنظیمات فاکتور را کامل کنید.")
     if personal is None or not personal.image:
         raise InvoiceError("امضای شخصی شما ثبت نشده است؛ ابتدا تنظیمات امضای شخصی را کامل کنید.")
+    # Lock before saving decided_business: that FK write can itself take a
+    # key-share lock. All reciprocal invoices must acquire both parents first.
+    for business_id in sorted({invoice.seller_business_id, invoice.buyer_business_id}, key=str):
+        Business.objects.select_for_update().get(pk=business_id)
     _copy_asset(revision, "buyer_business_signature", buyer_settings.signature, "buyer-business.png")
     _copy_asset(revision, "buyer_user_signature", personal.image, "buyer-user.png")
     revision.state = InvoiceRevision.State.CONFIRMED
@@ -686,7 +690,6 @@ def confirm_partner_invoice(
     revision.decided_business = membership.business
     revision.decided_at = timezone.now()
     revision.save()
-    Business.objects.select_for_update().get(pk=invoice.seller_business_id)
     invoice.number = invoice.number or allocate_number(invoice.seller_business)
     invoice.status = SalesInvoice.Status.CONFIRMED
     invoice.confirmed_at = revision.decided_at

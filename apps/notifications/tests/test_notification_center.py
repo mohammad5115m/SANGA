@@ -52,6 +52,9 @@ def test_list_and_badge_share_the_current_business_scope(client, center):
 
 def test_older_notifications_remain_reachable_and_unread_filter_is_paged(client, center):
     business, _, user, own, _, _, _ = center
+    # Fast inserts can share a timestamp (especially on Windows). Make the
+    # target genuinely older rather than relying on creation order among UUIDs.
+    Notification.objects.filter(pk=own.pk).update(created_at=timezone.now() - timedelta(days=1))
     Notification.objects.bulk_create([
         Notification(user=user, business=business, title=f"اعلان قدیمی {index}") for index in range(55)
     ])
