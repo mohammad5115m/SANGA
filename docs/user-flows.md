@@ -124,13 +124,17 @@ overdue/today queue → in-app reminder.
 Operational, not analytical. There are no charts.
 
 Top of the page is what needs doing: products needing a stock check, prices
-needing review, trade agreements waiting for this Business's confirmation, and
+needing review, received invoices awaiting this Business's confirmation, and
 unanswered inquiries. Below that: the financial summary and the
 largest debtors and creditors (only with `ledger.view`), recent sales and
 invoices, and the newest colleague products.
 
 Empty sections are hidden rather than rendered as empty frames; the counters at
 the top still say zero.
+
+Every section is capability-gated before its data is queried; stock and price
+attention are separate permissions. The invoice count links to the received,
+awaiting-confirmation filter. Legacy proposal queues are not dashboard tasks.
 
 Every list is bounded and every total is a database aggregate. A test pins the
 query count so an N+1 anywhere on the page fails immediately.

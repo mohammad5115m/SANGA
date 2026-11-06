@@ -20,12 +20,21 @@ from apps.accounting.selectors import (
 )
 from apps.inquiries.models import Inquiry
 from apps.inventory.models import InventoryLot
+from apps.invoicing.models import SalesInvoice
+from apps.invoicing.selectors import invoices_for
 from apps.marketplace.selectors import marketplace_lots_for
 from apps.pricing.models import LotPrice
-from apps.trading.models import TradeProposal
 
 from .models import Business, BusinessMembership
-from .permissions import LEDGER_VIEW
+from .permissions import (
+    INVENTORY_VIEW,
+    INVOICE_VIEW,
+    LEADS_VIEW,
+    LEDGER_VIEW,
+    PRICES_VIEW,
+    TRADE_CONFIRM,
+    TRADE_PROPOSE,
+)
 
 # Row limits. The dashboard is a starting point, not a report: every section
 # links to the full screen.
@@ -52,35 +61,55 @@ def dashboard_data(*, business: Business, membership: BusinessMembership | None)
     without them instead of an empty frame. A caller can therefore not leak a
     balance by forgetting an ``{% if %}``.
     """
-    can_view_ledger = membership is not None and membership.has_capability(LEDGER_VIEW)
+    valid_member = (
+        membership is not None and membership.business_id == business.pk
+        and membership.status == BusinessMembership.Status.ACTIVE
+    )
+
+    def can(capability):
+        return valid_member and membership.has_capability(capability)
+
+    can_view_ledger = can(LEDGER_VIEW)
+    can_view_inventory = can(INVENTORY_VIEW)
+    can_view_prices = can_view_inventory and can(PRICES_VIEW)
+    can_view_leads = can(LEADS_VIEW)
+    can_view_invoices = can(INVOICE_VIEW)
+    can_view_trades = can(TRADE_PROPOSE) or can(TRADE_CONFIRM)
     return {
         "can_view_ledger": can_view_ledger,
+        "can_view_inventory": can_view_inventory,
+        "can_view_prices": can_view_prices,
+        "can_view_leads": can_view_leads,
+        "can_view_invoices": can_view_invoices,
+        "can_view_trades": can_view_trades,
         "finance": business_financial_summary(business) if can_view_ledger else None,
         "top_debtors": _top_balances(business, "debtor") if can_view_ledger else [],
         "top_creditors": _top_balances(business, "creditor") if can_view_ledger else [],
-        **_lots_needing_attention(business),
-        "colleague_lots": _colleague_lots(business),
-        **_pending_work(business),
-        **_recent_activity(business),
+        **(_lots_needing_attention(business, prices=can_view_prices) if can_view_inventory else {
+            "lot_totals": {"active": 0, "needs_confirmation": 0, "stale_price": 0, "no_price": 0},
+            "attention_lots": [],
+        }),
+        "colleague_lots": _colleague_lots(business) if valid_member else [],
+        **_pending_work(business, leads=can_view_leads, invoices=can_view_invoices),
+        **_recent_activity(business, trades=can_view_trades, invoices=can_view_invoices),
     }
 
 
-def _recent_activity(business: Business) -> dict:
+def _recent_activity(business: Business, *, trades: bool, invoices: bool) -> dict:
     """The last few sales and invoices, so the home screen shows movement.
 
     Operational, not analytical: a seller opening Sang Esf wants to see what needs
     doing and what just happened, not a chart.
     """
-    from apps.invoicing.selectors import invoices_for
     from apps.trading.selectors import trades_for_business
 
     return {
         "recent_trades": list(
             trades_for_business(business).order_by("-finalized_at")[:PENDING_ROWS]
-        ),
+        ) if trades else [],
         "recent_invoices": list(
             invoices_for(business).order_by("-issue_date", "-created_at")[:PENDING_ROWS]
-        ),
+        ) if invoices else [],
     }
 
 
@@ -94,7 +123,7 @@ def _top_balances(business: Business, state: str) -> list[dict]:
     return [{"colleague": row, "balance": describe_balance(row.balance)} for row in rows]
 
 
-def _lots_needing_attention(business: Business) -> dict:
+def _lots_needing_attention(business: Business, *, prices: bool) -> dict:
     """Own lots the owner has to act on, as **one** list with a reason per row.
 
     Two separate lists would split one errand — «کدام محصولات ایراد دارند؟» —
@@ -107,8 +136,6 @@ def _lots_needing_attention(business: Business) -> dict:
     lot, and the totals are one aggregate over the same queryset.
     """
     needs_stock = InventoryLot.needs_stock_confirmation_q()
-    stale_price = Exists(LotPrice.objects.filter(lot=OuterRef("pk")).filter(LotPrice.needs_confirmation_q()))
-
     sellable = (
         InventoryLot.objects.filter(
             business=business,
@@ -116,37 +143,44 @@ def _lots_needing_attention(business: Business) -> dict:
             status=InventoryLot.Status.ACTIVE,
             availability_status=InventoryLot.Availability.AVAILABLE,
         )
-        .annotate(
-            has_price=Exists(LotPrice.objects.filter(lot=OuterRef("pk"))),
-            has_stale_price=stale_price,
-        )
         .annotate(stock_stale=Q(needs_stock))
     )
-    totals = sellable.aggregate(
-        active=Count("pk"),
-        needs_confirmation=Count("pk", filter=needs_stock),
-        stale_price=Count("pk", filter=Q(has_stale_price=True)),
-        no_price=Count("pk", filter=Q(has_price=False)),
-    )
+    attention = needs_stock
+    price_totals = {}
+    if prices:
+        sellable = sellable.annotate(
+            has_price=Exists(LotPrice.objects.filter(lot=OuterRef("pk"))),
+            has_stale_price=Exists(
+                LotPrice.objects.filter(lot=OuterRef("pk")).filter(LotPrice.needs_confirmation_q())
+            ),
+        )
+        attention |= Q(has_price=False) | Q(has_stale_price=True)
+        price_totals = {
+            "stale_price": Count("pk", filter=Q(has_stale_price=True)),
+            "no_price": Count("pk", filter=Q(has_price=False)),
+        }
+    totals = {"stale_price": 0, "no_price": 0, **sellable.aggregate(
+        active=Count("pk"), needs_confirmation=Count("pk", filter=needs_stock), **price_totals,
+    )}
     lots = (
-        sellable.filter(needs_stock | Q(has_price=False) | Q(has_stale_price=True))
+        sellable.filter(attention)
         .select_related("product")
         .order_by("-updated_at")[:ATTENTION_ROWS]
     )
     return {
         "lot_totals": totals,
-        "attention_lots": [{"lot": lot, "reasons": _attention_reasons(lot)} for lot in lots],
+        "attention_lots": [{"lot": lot, "reasons": _attention_reasons(lot, prices=prices)} for lot in lots],
     }
 
 
-def _attention_reasons(lot: InventoryLot) -> list[str]:
+def _attention_reasons(lot: InventoryLot, *, prices: bool) -> list[str]:
     """Why this item is on the list. Reads only annotated/loaded fields."""
     reasons: list[str] = []
     if lot.stock_stale:
         reasons.append(ATTENTION_NEEDS_CONFIRMATION)
-    if not lot.has_price:
+    if prices and not lot.has_price:
         reasons.append(ATTENTION_NO_PRICE)
-    elif lot.has_stale_price:
+    elif prices and lot.has_stale_price:
         reasons.append(ATTENTION_PRICE_EXPIRED)
     return reasons
 
@@ -168,31 +202,27 @@ def _colleague_lots(business: Business):
     )
 
 
-def _pending_work(business: Business) -> dict:
+def _pending_work(business: Business, *, leads: bool, invoices: bool) -> dict:
     """Work waiting on **this** business.
 
     Two queues, both of which are somebody else waiting for an answer from us:
-    customer inquiries nobody has replied to, and bilateral trade agreements
-    initiated by the counterparty.
+    customer inquiries nobody has replied to, and received invoices waiting for
+    this business to review the seller's version.
     """
     inquiries = (
         Inquiry.objects.filter(business=business, status__in=UNANSWERED_INQUIRY_STATUSES)
         .select_related("lot", "lot__product")
         .order_by("-created_at")
     )
-    proposals = (
-        TradeProposal.objects.filter(
-            Q(seller_business=business) | Q(buyer_business=business),
-            status=TradeProposal.Status.PENDING,
+    pending = (
+        invoices_for(business).filter(
+            buyer_business=business, status=SalesInvoice.Status.AWAITING_CONFIRMATION,
         )
-        .exclude(initiated_by_business=business)
-        .select_related("seller_business", "buyer_business", "initiated_by_business")
-        .prefetch_related("items")
         .order_by("-created_at")
     )
     return {
-        "unanswered_inquiry_count": inquiries.count(),
-        "unanswered_inquiries": list(inquiries[:PENDING_ROWS]),
-        "pending_confirmation_count": proposals.count(),
-        "pending_confirmations": list(proposals[:PENDING_ROWS]),
+        "unanswered_inquiry_count": inquiries.count() if leads else 0,
+        "unanswered_inquiries": list(inquiries[:PENDING_ROWS]) if leads else [],
+        "pending_confirmation_count": pending.count() if invoices else 0,
+        "pending_confirmations": list(pending[:PENDING_ROWS]) if invoices else [],
     }

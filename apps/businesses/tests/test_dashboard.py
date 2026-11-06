@@ -14,9 +14,14 @@ from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.services import create_business_for_owner
 from apps.core.testing import expire_stock, make_business, make_item, make_product
 from apps.inquiries.models import Inquiry
+from apps.invoicing.partner_services import (
+    confirm_partner_invoice,
+    create_partner_draft,
+    reject_partner_invoice,
+    send_partner_invoice,
+)
+from apps.invoicing.tests.test_invoice_first_lifecycle import install_signatures, lines
 from apps.pricing.services import ensure_default_tiers
-from apps.trading.models import TradeProposal
-from apps.trading.services import confirm_trade_proposal, save_trade_proposal
 
 User = get_user_model()
 
@@ -24,9 +29,10 @@ DASHBOARD = "/app/"
 
 
 @pytest.fixture
-def shop(db):
+def shop(db, settings, tmp_path):
     """One business with books, lots and pending work, plus a colleague."""
     ensure_default_tiers()
+    settings.MEDIA_ROOT = tmp_path
     owner = User.objects.create_user(phone="09127770001", full_name="مالک اصلی")
     colleague_owner = User.objects.create_user(phone="09127770002", full_name="مالک همکار")
 
@@ -79,14 +85,13 @@ def shop(db):
         phone="09121110001",
         status=Inquiry.Status.CONTACTED,
     )
-    # A colleague recorded an offline purchase from us: our task until we
-    # confirm or reject the bilateral agreement.
-    incoming = save_trade_proposal(
-        seller_business=business,
-        buyer_business=colleague,
-        membership=colleague_m,
-        lines=[{"item": priced, "quantity": Decimal("100"), "unit_price": Decimal("1200000")}],
+    install_signatures(business, membership)
+    install_signatures(colleague, colleague_m)
+    incoming = create_partner_draft(
+        business=colleague, buyer_business=business, membership=colleague_m,
+        lines=lines(), credit_amount=Decimal("100"),
     )
+    incoming = send_partner_invoice(invoice=incoming, membership=colleague_m)
 
     return {
         "owner": owner,
@@ -101,7 +106,7 @@ def shop(db):
         "unpriced": unpriced,
         "stale": stale,
         "priced": priced,
-        "incoming_proposal": incoming,
+        "incoming_invoice": incoming,
     }
 
 
@@ -262,21 +267,20 @@ def test_pending_work_counts_only_unanswered_items(client, shop):
     assert context["unanswered_inquiry_count"] == 1
     assert [i.name for i in context["unanswered_inquiries"]] == ["مشتری تازه"]
     assert context["pending_confirmation_count"] == 1
-    assert [p.id for p in context["pending_confirmations"]] == [shop["incoming_proposal"].id]
+    assert [p.id for p in context["pending_confirmations"]] == [shop["incoming_invoice"].id]
 
 
-def test_a_confirmed_agreement_leaves_the_pending_list(client, shop):
-    proposal = shop["incoming_proposal"]
-    confirm_trade_proposal(proposal=proposal, membership=shop["membership"])
+def test_a_confirmed_invoice_leaves_the_pending_list(client, shop):
+    confirm_partner_invoice(invoice=shop["incoming_invoice"], membership=shop["membership"], expected_revision=1)
 
     context = _dashboard(client, shop).context
     assert context["pending_confirmation_count"] == 0
 
 
-def test_a_rejected_agreement_leaves_the_pending_list(client, shop):
-    proposal = shop["incoming_proposal"]
-    proposal.status = TradeProposal.Status.REJECTED
-    proposal.save(update_fields=["status"])
+def test_a_rejected_invoice_leaves_the_pending_list(client, shop):
+    reject_partner_invoice(
+        invoice=shop["incoming_invoice"], membership=shop["membership"], expected_revision=1, reason="اصلاح",
+    )
 
     assert _dashboard(client, shop).context["pending_confirmation_count"] == 0
 
@@ -286,7 +290,7 @@ def test_pending_work_is_tenant_scoped(client, shop):
     context = client.get(DASHBOARD).context
 
     assert context["unanswered_inquiry_count"] == 0
-    # The agreement the colleague initiated is somebody else's decision, not its own task.
+    # An invoice sent to the other business is not this sender's task.
     assert context["pending_confirmation_count"] == 0
 
 
@@ -326,3 +330,77 @@ def test_the_dashboard_query_count_stays_bounded(client, shop, django_assert_max
     # immediately.
     with django_assert_max_num_queries(20):
         assert client.get(DASHBOARD).status_code == 200
+
+
+@pytest.mark.parametrize("permissions", [
+    [], ["inventory.view"], ["inventory.view", "prices.view"], ["leads.view"],
+    ["invoice.view"], ["trade.propose"], ["ledger.view"],
+])
+@override_settings(SANGA_MVP_NAVIGATION=False)
+def test_dashboard_custom_permissions_guard_context_and_html(client, shop, permissions):
+    confirm_partner_invoice(invoice=shop["incoming_invoice"], membership=shop["membership"], expected_revision=1)
+    viewer = User.objects.create_user(phone="09127770003")
+    BusinessMembership.objects.create(
+        user=viewer, business=shop["business"], role="viewer", permissions=permissions,
+    )
+    _login(client, viewer, shop["business"])
+    response = client.get(DASHBOARD)
+    context, body = response.context, response.content.decode()
+    assert bool(context["attention_lots"]) == ("inventory.view" in permissions)
+    assert bool(context["recent_trades"]) == ("trade.propose" in permissions)
+    assert bool(context["recent_invoices"]) == ("invoice.view" in permissions)
+    assert bool(context["unanswered_inquiries"]) == ("leads.view" in permissions)
+    assert (context["finance"] is not None) == ("ledger.view" in permissions)
+    assert ("09121110000" in body) == ("leads.view" in permissions)
+    assert ("آخرین معاملات" in body) == ("trade.propose" in permissions)
+    assert ("آخرین فاکتورها" in body) == ("invoice.view" in permissions)
+    assert ("قیمت نیازمند بررسی" in body) == ("prices.view" in permissions)
+    if "prices.view" not in permissions:
+        assert context["lot_totals"]["no_price"] == context["lot_totals"]["stale_price"] == 0
+        assert all("قیمت" not in reason for row in context["attention_lots"] for reason in row["reasons"])
+
+
+def test_dashboard_denied_sections_do_not_query_records(shop, django_assert_num_queries):
+    from apps.businesses.dashboard import dashboard_data
+
+    member = shop["membership"]
+    member.role, member.permissions = "viewer", []
+    with django_assert_num_queries(0):
+        context = dashboard_data(business=shop["business"], membership=member)
+    assert context["attention_lots"] == context["recent_trades"] == context["recent_invoices"] == []
+    assert context["unanswered_inquiries"] == context["pending_confirmations"] == []
+
+
+def test_dashboard_rejects_wrong_tenant_and_inactive_memberships(shop, django_assert_num_queries):
+    from apps.businesses.dashboard import dashboard_data
+
+    for member in (None, shop["colleague_m"], shop["membership"]):
+        if member == shop["membership"]:
+            member.status = BusinessMembership.Status.SUSPENDED
+        with django_assert_num_queries(0):
+            context = dashboard_data(business=shop["business"], membership=member)
+        assert not any(value for key, value in context.items() if key.startswith("can_view_"))
+        assert context["colleague_lots"] == []
+
+
+def test_dashboard_reloads_permissions_after_revocation_and_tenant_switch(client, shop):
+    member = shop["membership"]
+    member.role = "viewer"
+    member.permissions = ["leads.view"]
+    member.save(update_fields=["role", "permissions"])
+    _login(client, member.user, shop["business"])
+    assert "09121110000" in client.get(DASHBOARD).content.decode()
+    BusinessMembership.objects.filter(pk=member.pk).update(permissions=[])
+    assert "09121110000" not in client.get(DASHBOARD).content.decode()
+    BusinessMembership.objects.create(user=member.user, business=shop["colleague"], role="viewer")
+    client.post(reverse("businesses:switch_business"), {"business_id": shop["colleague"].pk})
+    assert client.get(DASHBOARD).context["unanswered_inquiries"] == []
+
+
+@override_settings(SANGA_MVP_NAVIGATION=False)
+def test_pending_invoice_tile_matches_its_filtered_list(client, shop):
+    response = _dashboard(client, shop)
+    assert response.context["pending_confirmation_count"] == 1
+    assert "status=awaiting_confirmation&amp;direction=received" in response.content.decode()
+    page = client.get(reverse("invoicing:list"), {"status": "awaiting_confirmation", "direction": "received"})
+    assert [row.pk for row in page.context["invoices"]] == [shop["incoming_invoice"].pk]

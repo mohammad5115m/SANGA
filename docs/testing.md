@@ -99,7 +99,7 @@ while they carried known vulnerabilities, which meant the job was permanently re
 and therefore told nobody anything.
 
 To apply, in **Settings → Branches → Add branch ruleset** for `master`: require a
-pull request, require status checks to pass, select the six jobs above, and
+pull request, require status checks to pass, select the seven jobs above, and
 require branches to be up to date. The PostgreSQL lane also supplies isolated
 Redis for the cross-process export-budget test. The container lane verifies
 Compose overrides, a real image build, migrations and health with production

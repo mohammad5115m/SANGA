@@ -9,20 +9,20 @@ removed, and what is genuinely left.
 
 | Area | State |
 |------|-------|
-| Platform provisioning | Admin-only. No self-service signup; authentication never creates an account. |
+| Platform provisioning | Password login and public owner registration requests; admin approval atomically creates the account and Business. OTP login is opt-in. |
 | Products | One-page create/edit, controlled stone taxonomy, immutable codes, nullable fresh quantity |
 | Pricing | Two independent channels, per-tier validity windows, special sale, expiry degrading to «استعلام قیمت» |
 | Discovery | One eligibility policy and one filter schema behind «موجودی من», the marketplace, public search and catalog rules |
 | Colleague directory | Every eligible Business, automatically |
 | Subscription | `plan`, `seat_limit`, `active_until`, enforced in services |
-| Buying and selling | Product-bound requests, accept separated from finalize, snapshot-bearing trades |
+| Buying and selling | Invoice-first customer, registered-partner and local-partner workflows; old requests remain read-only history |
 | Money | Business-counterparty ledger, exactly-once posting, four manual entry types, FIFO aging |
-| Invoicing | Snapshot invoices, locked per-seller numbering, print view |
-| Public customers | Login-free guided browsing, multi-product inquiries, stock inquiries, customer-purpose OTP, seller inbox |
-| Customer follow-up | Categorized customer view, needs and notes, activity history, follow-up queue and in-app reminders; persistence remains deferred |
+| Invoicing | Immutable signed revisions, locked numbering, exactly-once settlement, cheque history, PDF/PNG and print views |
+| Public customers | Account-free browsing and inquiries; name/mobile required on submission, unverified by default, customer OTP opt-in |
+| Customer follow-up | Persistent customer profiles, needs, notes, activity history, follow-up queue and in-app reminders |
 | Catalogs | Inventory-first explicit selection, with values resolved live against eligibility |
 | Reports | Ten operational reports with date ranges and print views |
-| UI | Six-destination navigation, operational dashboard, 4-step product creation, media management |
+| UI | Capability-scoped dashboard, received-invoice review queue, one-page product creation and media management; optional MVP navigation |
 
 ### Removed, and not coming back
 
@@ -34,7 +34,7 @@ business creation.
 
 ### Explicitly deferred
 
-Online payment · escrow · cheque management · tax-authority integration ·
+Online payment · escrow · tax-authority integration ·
 logistics · automatic stock synchronisation · reverse auctions · chat · ratings ·
 AI recommendations · image similarity search · native apps · advanced BI · PDF
 catalogs · complex subscription billing · per-colleague custom prices · advanced
@@ -50,7 +50,7 @@ no user-visible benefit, and the part that mattered — removing «محموله�
 interface — is done. Worth doing during a quiet week, in its own commit, as a
 single `RenameModel` plus mechanical `RenameField` operations.
 
-**Four retired apps stay in `INSTALLED_APPS`.** `contacts`, `purchase_requests`,
+**Five retired apps stay in `INSTALLED_APPS`.** `contacts`, `purchase_requests`,
 `partners`, `matching` and `reservations` are migration-history stubs, and
 `contacts` still owns a table. Squashing the migration history would let them go,
 which is a deliberate, separately-planned operation — removing them now breaks
