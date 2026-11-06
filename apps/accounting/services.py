@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from apps.businesses.entitlements import MANAGE_LEDGER, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
-from apps.businesses.permissions import INVOICE_CONFIRM, LEDGER_MANAGE, SALE_FINALIZE
+from apps.businesses.permissions import INVOICE_CONFIRM, INVOICE_OFFLINE_APPROVE, LEDGER_MANAGE, SALE_FINALIZE
 
 from .models import TRADE_ENTRY_TYPES, LedgerEntry
 
@@ -507,14 +507,17 @@ def post_invoice_entries(*, invoice, membership: BusinessMembership) -> list[Led
         raise LedgerError("فقط فاکتور نهایی اثر مالی دارد.")
     if invoice.trade_id is None:
         raise LedgerError("فاکتور نهایی باید به فروش ثبت‌شده متصل باشد.")
-    if membership is None or not (
-        membership.has_capability(SALE_FINALIZE) or membership.has_capability(INVOICE_CONFIRM)
-    ):
-        raise LedgerError("اجازه نهایی کردن فروش را ندارید.")
-
     posted: list[LedgerEntry] = []
     if invoice.counterparty_type == SalesInvoice.Counterparty.CUSTOMER:
         return posted
+    is_local = invoice.counterparty_type == SalesInvoice.Counterparty.LOCAL
+    capability = INVOICE_OFFLINE_APPROVE if is_local else INVOICE_CONFIRM
+    actor_business_id = invoice.seller_business_id if is_local else invoice.buyer_business_id
+    if (
+        membership is None or membership.business_id != actor_business_id
+        or not membership.has_capability(capability)
+    ):
+        raise LedgerError("اجازه نهایی کردن فروش را ندارید.")
 
     if invoice.counterparty_type == SalesInvoice.Counterparty.LOCAL:
         local = invoice.local_counterparty.__class__.objects.select_for_update().get(

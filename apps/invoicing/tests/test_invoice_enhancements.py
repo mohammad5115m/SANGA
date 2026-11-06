@@ -101,7 +101,7 @@ def test_stale_draft_update_is_rejected_and_draft_can_be_deleted(seller):
 
 
 @pytest.mark.django_db
-def test_browse_plan_cannot_open_settings_or_create_settings_row(client, seller):
+def test_browse_buyer_can_open_signature_settings_without_creating_a_row(client, seller):
     seller[0].plan = seller[0].Plan.BROWSE
     seller[0].save(update_fields=["plan"])
     client.force_login(seller[1].user)
@@ -111,7 +111,8 @@ def test_browse_plan_cannot_open_settings_or_create_settings_row(client, seller)
 
     response = client.get(reverse("invoicing:settings"))
 
-    assert response.status_code == 302
+    assert response.status_code == 200
+    assert response.context["can_manage_templates"] is False
     assert not BusinessInvoiceSettings.objects.filter(business=seller[0]).exists()
 
 

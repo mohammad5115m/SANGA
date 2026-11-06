@@ -19,6 +19,12 @@ from apps.businesses.decorators import (
     require_capability,
 )
 from apps.businesses.directory import colleague_businesses
+from apps.businesses.eligibility import (
+    NotOperationalError,
+    business_can_use_app,
+    business_is_network_eligible,
+    require_operational,
+)
 from apps.businesses.entitlements import ISSUE_INVOICES, has_entitlement
 from apps.businesses.permissions import (
     BUSINESS_SIGNATURE_MANAGE,
@@ -101,6 +107,30 @@ logger = logging.getLogger(__name__)
 
 def _can_manage_invoices(request: HttpRequest) -> bool:
     return request.membership.has_capability(INVOICE_CREATE) and has_entitlement(request.business, ISSUE_INVOICES)
+
+
+def _invoice_actions(request: HttpRequest, invoice: SalesInvoice) -> dict:
+    member = request.membership
+    operational = business_can_use_app(request.business)
+    seller = invoice.seller_business_id == request.business.pk
+    may_issue = has_entitlement(invoice.seller_business, ISSUE_INVOICES)
+    commercial = may_issue and all(
+        business_is_network_eligible(business) for business in (invoice.seller_business, invoice.buyer_business)
+    )
+    may_send = operational and seller and member.has_capability(INVOICE_SEND)
+    may_decide = operational and not seller and member.has_capability(INVOICE_CONFIRM)
+    return {
+        "can_cancel": operational and seller and may_issue and member.has_capability(INVOICE_MANAGE),
+        "can_issue_customer": operational and seller and may_issue and (
+            member.has_capability(INVOICE_CREATE) or member.has_capability(INVOICE_MANAGE)
+        ),
+        "can_confirm": may_decide and commercial,
+        "can_reject": may_decide,
+        "can_send": may_send and commercial,
+        "can_cancel_pending": may_send,
+        "can_offline_approve": operational and seller and may_issue and member.has_capability(INVOICE_OFFLINE_APPROVE),
+        "can_manage_cheques": operational and seller and member.has_capability(CHEQUE_MANAGE),
+    }
 
 
 def _invoice_or_redirect(request, invoice_id):
@@ -284,11 +314,7 @@ def invoice_detail(request: HttpRequest, invoice_id) -> HttpResponse:
             "document": build_invoice_document(invoice),
             "is_seller": invoice.seller_business_id == request.business.id,
             "can_manage": _can_manage_invoices(request),
-            "can_cancel": request.membership.has_capability(INVOICE_MANAGE),
-            "can_confirm": request.membership.has_capability(INVOICE_CONFIRM),
-            "can_send": request.membership.has_capability(INVOICE_SEND),
-            "can_offline_approve": request.membership.has_capability(INVOICE_OFFLINE_APPROVE),
-            "can_manage_cheques": request.membership.has_capability(CHEQUE_MANAGE),
+            **_invoice_actions(request, invoice),
             "has_business_signature": bool(current_settings and current_settings.signature),
             "has_personal_signature": UserInvoiceSignature.objects.filter(user=request.user).exists(),
             "decision_form": PartnerDecisionForm(initial={"revision_number": invoice.current_revision_number}),
@@ -687,7 +713,6 @@ def invoice_preview(request: HttpRequest) -> HttpResponse:
 
 
 @business_login_required
-@require_capability(INVOICE_CREATE)
 @require_business_entitlement(ISSUE_INVOICES)
 @require_POST
 def invoice_issue(request: HttpRequest, invoice_id) -> HttpResponse:
@@ -1005,11 +1030,12 @@ def invoice_save_template(request: HttpRequest, invoice_id) -> HttpResponse:
 
 @business_login_required
 @require_capability(INVOICE_VIEW)
-@require_business_entitlement(ISSUE_INVOICES)
 @require_http_methods(["GET", "POST"])
 def invoice_settings(request: HttpRequest) -> HttpResponse:
-    can_manage_business_signature = request.membership.has_capability(BUSINESS_SIGNATURE_MANAGE)
-    can_manage_templates = request.membership.has_capability(INVOICE_CREATE)
+    can_manage_business_signature = (
+        business_can_use_app(request.business) and request.membership.has_capability(BUSINESS_SIGNATURE_MANAGE)
+    )
+    can_manage_templates = _can_manage_invoices(request)
     can_manage_counterparty_links = request.membership.has_capability(
         COUNTERPARTY_LINK_PROPOSE
     ) or request.membership.has_capability(COUNTERPARTY_LINK_APPROVE)
@@ -1075,8 +1101,8 @@ def counterparty_links(request: HttpRequest) -> HttpResponse:
             "targets": targets,
             "outgoing_proposals": outgoing,
             "incoming_proposals": incoming,
-            "can_propose": can_propose,
-            "can_approve": can_approve,
+            "can_propose": can_propose and business_can_use_app(request.business),
+            "can_approve": can_approve and business_can_use_app(request.business),
         },
     )
 
@@ -1148,6 +1174,11 @@ def counterparty_link_cancel(request: HttpRequest, proposal_id) -> HttpResponse:
 @require_capability(INVOICE_VIEW)
 @require_POST
 def personal_signature_update(request: HttpRequest) -> HttpResponse:
+    try:
+        require_operational(request.business)
+    except NotOperationalError as exc:
+        messages.error(request, exc.message)
+        return redirect("invoicing:settings")
     instance = UserInvoiceSignature.objects.filter(user=request.user).first()
     form = PersonalSignatureForm(request.POST, request.FILES, instance=instance, prefix="personal")
     if not form.is_valid():
