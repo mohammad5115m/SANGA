@@ -3,12 +3,12 @@ from __future__ import annotations
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
-from .checks import check_media_storage
+from .checks import check_media_storage, check_production_auth, check_production_database
 
 DEBUG = False
 
-if SECRET_KEY == "unsafe-dev-only-change-me":  # noqa: F405
-    raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set to a strong value in production.")
+check_production_auth(secret_key=SECRET_KEY, login_allowlist=SANGA_LOGIN_PHONE_ALLOWLIST)
+check_production_database(engine=DATABASES["default"]["ENGINE"])
 
 # A deployment serving on loopback names is one that was started with the
 # development .env still in place — a mistake worth catching at boot rather than
@@ -31,6 +31,8 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)  # noqa: F405
+# Internal container probes use HTTP; all other endpoints still require HTTPS.
+SECURE_REDIRECT_EXEMPT = [r"^health/$"]
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)  # noqa: F405
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
@@ -48,6 +50,16 @@ CSRF_TRUSTED_ORIGINS = env.list(  # noqa: F405
 )
 
 CELERY_TASK_ALWAYS_EAGER = False
+
+# Export limits must be shared by every Gunicorn worker and replica.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_URL", default=REDIS_URL),
+        "KEY_PREFIX": "sanga",
+        "OPTIONS": {"socket_connect_timeout": 3, "socket_timeout": 3},
+    }
+}
 
 # --- OTP delivery must actually deliver ---------------------------------------
 #

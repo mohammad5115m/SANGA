@@ -31,6 +31,10 @@ if settings.DEBUG:
         path(
             "media/invoice-assets/<path:asset_path>",
             lambda request, asset_path: HttpResponseNotFound(),
-        )
+        ),
+        path(
+            "media/invoice-signatures/<path:asset_path>",
+            lambda request, asset_path: HttpResponseNotFound(),
+        ),
     ]
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

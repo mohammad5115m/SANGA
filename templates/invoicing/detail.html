@@ -33,22 +33,22 @@
     {% if not has_business_signature %}<div class="alert alert-warning">امضای رسمی کسب‌وکار خریدار ثبت نشده است. <a href="{% url 'invoicing:settings' %}">تنظیمات امضای رسمی</a></div>{% endif %}
     {% if not has_personal_signature %}<div class="alert alert-warning">امضای شخصی تأییدکننده ثبت نشده است. <a href="{% url 'invoicing:settings' %}#personal-signature">ثبت امضای شخصی</a></div>{% endif %}
   {% endif %}
-  {% if not is_seller and invoice.status == 'awaiting_confirmation' and can_confirm %}
+  {% if not is_seller and invoice.status == 'awaiting_confirmation' and can_reject %}
   <section class="panel stack-md" id="personal-signature">
     <h2 class="section-title">تصمیم خریدار</h2>
-    <div class="alert alert-info">نسخهٔ {{ invoice.current_revision_number }}: با تأیید، امضای رسمی کسب‌وکار و امضای شخصی شما روی همین نسخه ثابت می‌شود و فروش نهایی اثر مالی می‌گذارد.</div>
-    <form method="post" action="{% url 'invoicing:confirm' invoice.id %}">{% csrf_token %}<input type="hidden" name="revision_number" value="{{ invoice.current_revision_number }}"><button class="btn btn-primary" type="submit" data-confirm="این نسخه فاکتور تأیید شود؟">تأیید فاکتور</button></form>
+    {% if can_confirm %}<div class="alert alert-info">نسخهٔ {{ invoice.current_revision_number }}: با تأیید، امضای رسمی کسب‌وکار و امضای شخصی شما روی همین نسخه ثابت می‌شود و فروش نهایی اثر مالی می‌گذارد.</div>
+    <form method="post" action="{% url 'invoicing:confirm' invoice.id %}">{% csrf_token %}<input type="hidden" name="revision_number" value="{{ invoice.current_revision_number }}"><button class="btn btn-primary" type="submit" data-confirm="این نسخه فاکتور تأیید شود؟">تأیید فاکتور</button></form>{% else %}<p class="alert alert-warning">تأیید نهایی تا بازگشت شرایط فعالیت فروشنده و خریدار در دسترس نیست. می‌توانید نسخه را برای اصلاح بازگردانید.</p>{% endif %}
     <form class="stack-sm" method="post" action="{% url 'invoicing:reject' invoice.id %}">{% csrf_token %}{{ decision_form.revision_number }}<label class="field"><span class="field-label">{{ decision_form.reason.label }}</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="این نسخه رد و برای اصلاح به فروشنده بازگردانده شود؟">رد و بازگرداندن برای اصلاح</button></form>
   </section>
   {% endif %}
   <iframe class="invoice-document-frame" title="نسخه نهایی فاکتور" src="{% url 'invoicing:print' invoice.id %}?embedded=1"></iframe>
 
-  {% if is_seller and can_manage or is_seller and can_cancel or is_seller and can_send or is_seller and can_offline_approve %}
+  {% if is_seller and can_manage or is_seller and can_cancel or is_seller and can_send or is_seller and can_offline_approve or is_seller and can_cancel_pending or is_seller and can_issue_customer %}
   <section class="panel stack-md">
     <h2 class="section-title">اقدامات فاکتور</h2>
     <div class="invoice-action-grid">
       {% if invoice.status == 'draft' %}
-      {% if invoice.counterparty_type == 'customer' and can_manage or invoice.counterparty_type == 'business' and can_send %}<form method="post" action="{% url 'invoicing:issue' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="پس از صدور یا ارسال، نسخه ثبت‌شده تغییرناپذیر می‌شود. ادامه می‌دهید؟">{% if invoice.counterparty_type == 'business' %}ارسال برای تأیید{% else %}صدور نهایی{% endif %}</button></form>{% endif %}
+      {% if invoice.counterparty_type == 'customer' and can_issue_customer or invoice.counterparty_type == 'business' and can_send %}<form method="post" action="{% url 'invoicing:issue' invoice.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit" data-confirm="پس از صدور یا ارسال، نسخه ثبت‌شده تغییرناپذیر می‌شود. ادامه می‌دهید؟">{% if invoice.counterparty_type == 'business' %}ارسال برای تأیید{% else %}صدور نهایی{% endif %}</button></form>{% endif %}
       {% if invoice.counterparty_type == 'local' and can_offline_approve %}
       <form class="stack-sm" method="post" enctype="multipart/form-data" action="{% url 'invoicing:offline_confirm' invoice.id %}">
         {% csrf_token %}
@@ -60,7 +60,7 @@
       {% endif %}
       {% if can_manage %}<form class="invoice-destructive-action" method="post" action="{% url 'invoicing:delete_draft' invoice.id %}">{% csrf_token %}<button class="btn btn-danger" type="submit" data-confirm="این پیش‌نویس برای همیشه حذف شود؟">حذف پیش‌نویس</button></form>{% endif %}
       {% elif invoice.status == 'awaiting_confirmation' %}
-      {% if can_send %}<form class="stack-sm invoice-destructive-action" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}{{ decision_form.revision_number }}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="فاکتور در انتظار لغو شود؟">لغو فاکتور در انتظار</button></form>{% endif %}
+      {% if can_cancel_pending %}<form class="stack-sm invoice-destructive-action" method="post" action="{% url 'invoicing:cancel_pending' invoice.id %}">{% csrf_token %}{{ decision_form.revision_number }}<label class="field"><span class="field-label">علت لغو</span>{{ decision_form.reason }}</label><button class="btn btn-danger" type="submit" data-confirm="فاکتور در انتظار لغو شود؟">لغو فاکتور در انتظار</button></form>{% endif %}
       {% elif invoice.status == 'issued' and can_cancel %}
       <form class="stack-sm invoice-destructive-action" method="post">
         {% csrf_token %}
@@ -73,7 +73,7 @@
       {% endif %}
       {% if invoice.counterparty_type == 'customer' %}<form method="post" action="{% url 'invoicing:duplicate' invoice.id %}">{% csrf_token %}<button class="btn btn-secondary" type="submit">تکثیر به پیش‌نویس جدید</button></form>{% endif %}
     </div>
-    {% if invoice.counterparty_type == 'customer' %}
+    {% if invoice.counterparty_type == 'customer' and can_manage %}
     <form class="invoice-template-form" method="post" action="{% url 'invoicing:save_template' invoice.id %}">
       {% csrf_token %}<label class="field"><span class="field-label">ذخیره به‌عنوان قالب پرکاربرد</span>{{ template_form.name }}</label><button class="btn btn-secondary" type="submit">ذخیره قالب</button>
     </form>

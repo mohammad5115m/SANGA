@@ -287,7 +287,8 @@ def test_rotating_phone_numbers_does_not_bypass_address_budget(client, settings)
 def test_production_needs_sms_configuration_only_when_otp_is_enabled(tmp_path, enabled):
     env = dict(
         os.environ,
-        DJANGO_DATABASE="sqlite",
+        DJANGO_DATABASE="postgres",
+        SANGA_LOGIN_PHONE_ALLOWLIST="",
         DJANGO_SECRET_KEY="test-only-" * 8,
         DJANGO_ALLOWED_HOSTS="example.test",
         USE_S3="false",

@@ -25,19 +25,20 @@ numbers and history come after. No charts.{% endcomment %}
   </div>
 
   {# --- things waiting on this business --- #}
+  {% if can_view_inventory or can_view_leads or can_view_invoices and not mvp_navigation %}
   <section class="stack-md">
     <h2 class="section-title">کارهای امروز</h2>
     <div class="metric-row">
-      <a class="metric metric-link" href="{% url 'inventory:lot_list' %}?state=needs_stock">
+      {% if can_view_inventory %}<a class="metric metric-link" href="{% url 'inventory:lot_list' %}?state=needs_stock">
         <div class="metric-label">نیازمند تأیید موجودی</div>
         <div class="metric-value">{{ lot_totals.needs_confirmation }}</div>
-      </a>
-      <a class="metric metric-link" href="{% url 'inventory:lot_list' %}?state=needs_price">
+      </a>{% endif %}
+      {% if can_view_prices %}<a class="metric metric-link" href="{% url 'inventory:lot_list' %}?state=needs_price">
         <div class="metric-label">قیمت نیازمند بررسی</div>
         <div class="metric-value">{{ lot_totals.stale_price|add:lot_totals.no_price }}</div>
-      </a>
-      {% if not mvp_navigation and 'invoice.view' in capabilities %}<a class="metric metric-link" href="{% url 'invoicing:list' %}?status=awaiting_confirmation"><div class="metric-label">فاکتورهای در انتظار تأیید</div><div class="metric-value">مشاهده</div></a>{% endif %}
-      {% if 'leads.view' in capabilities %}
+      </a>{% endif %}
+      {% if not mvp_navigation and can_view_invoices %}<a class="metric metric-link" href="{% url 'invoicing:list' %}?status=awaiting_confirmation&amp;direction=received"><div class="metric-label">فاکتورهای دریافتی در انتظار تأیید</div><div class="metric-value">{{ pending_confirmation_count }}</div></a>{% endif %}
+      {% if can_view_leads %}
         <a class="metric metric-link" href="{% url 'inquiries:inbox' %}?status=open">
           <div class="metric-label">درخواست خرید جدید</div>
           <div class="metric-value">{{ unanswered_inquiry_count }}</div>
@@ -46,6 +47,7 @@ numbers and history come after. No charts.{% endcomment %}
     </div>
 
   </section>
+  {% endif %}
 
   {# --- products needing action --- #}
   {% if attention_lots %}
@@ -70,21 +72,21 @@ numbers and history come after. No charts.{% endcomment %}
     </section>
   {% endif %}
 
-  {# --- agreements waiting for this business --- #}
-  {% if False and pending_confirmations %}
+  {# --- received invoices waiting for this business --- #}
+  {% if not mvp_navigation and can_view_invoices and pending_confirmations %}
     <section class="stack-md">
       <div class="toolbar">
-        <h2 class="section-title">توافق‌های نیازمند تأیید</h2>
-        <a class="btn btn-ghost btn-sm" href="{% url 'trading:proposal_list' %}?tab=action">همه</a>
+        <h2 class="section-title">فاکتورهای دریافتی در انتظار تأیید</h2>
+        <a class="btn btn-ghost btn-sm" href="{% url 'invoicing:list' %}?status=awaiting_confirmation&amp;direction=received">همه</a>
       </div>
       <div class="list-stack">
-        {% for proposal in pending_confirmations %}
-          <a class="list-item" href="{% url 'trading:proposal_detail' proposal.id %}">
+        {% for invoice in pending_confirmations %}
+          <a class="list-item" href="{% url 'invoicing:detail' invoice.id %}">
             <div>
-              <div class="list-title">{{ proposal.seller_business.name }} ← {{ proposal.buyer_business.name }}</div>
-              <div class="muted">{{ proposal.items.all|length }} قلم · {{ proposal.initiated_by_business.name }}</div>
+              <div class="list-title">{{ invoice.seller_business.name }}</div>
+              <div class="muted">{{ invoice.get_status_display }} · نسخهٔ {{ invoice.current_revision_number }}</div>
             </div>
-            <strong dir="ltr">{{ proposal.total_amount|rial }}</strong>
+            <strong dir="ltr">{{ invoice.display_total_amount|rial }} {{ invoice.get_display_unit_display }}</strong>
           </a>
         {% endfor %}
       </div>
@@ -92,7 +94,7 @@ numbers and history come after. No charts.{% endcomment %}
   {% endif %}
 
   {# --- customer inquiries --- #}
-  {% if unanswered_inquiries %}
+  {% if can_view_leads and unanswered_inquiries %}
     <section class="stack-md">
       <div class="toolbar">
         <h2 class="section-title">درخواست‌های خرید مشتریان</h2>
@@ -173,7 +175,7 @@ numbers and history come after. No charts.{% endcomment %}
     <section class="stack-md">
       <h2 class="section-title">فعالیت اخیر</h2>
       <div class="two-col">
-        <div class="stack-sm">
+        {% if can_view_trades %}<div class="stack-sm">
           <h3 class="section-subtitle">آخرین معاملات</h3>
           <div class="list-stack">
             {% for trade in recent_trades %}
@@ -188,8 +190,8 @@ numbers and history come after. No charts.{% endcomment %}
               <div class="empty-state">هنوز معامله‌ای ثبت نشده است.</div>
             {% endfor %}
           </div>
-        </div>
-        {% if 'invoice.view' in capabilities %}
+        </div>{% endif %}
+        {% if can_view_invoices %}
           <div class="stack-sm">
             <h3 class="section-subtitle">آخرین فاکتورها</h3>
             <div class="list-stack">
@@ -235,12 +237,12 @@ numbers and history come after. No charts.{% endcomment %}
     </section>
   {% endif %}
 
-  {% if lot_totals.active == 0 and can_add_products %}
+  {% if can_view_inventory and lot_totals.active == 0 and can_add_products %}
     <div class="empty-state stack-md">
       <p>هنوز محصولی ثبت نکرده‌اید. با «افزودن محصول» شروع کنید.</p>
       <a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">افزودن محصول</a>
     </div>
-  {% elif lot_totals.active == 0 %}
+  {% elif can_view_inventory and lot_totals.active == 0 %}
     <div class="empty-state">
       هنوز محصول فعالی ثبت نشده است. برای ثبت محصول با مدیر کسب‌وکار هماهنگ کنید.
     </div>

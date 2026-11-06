@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.conf import settings
 from django.core.cache import cache
 from django.template.loader import render_to_string
+from redis.exceptions import RedisError
 
 from .documents import build_invoice_document
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentRenderError(RuntimeError):
@@ -17,17 +21,22 @@ class DocumentRenderError(RuntimeError):
 
 
 def export_allowed(*, user_id, invoice_id, kind: str) -> bool:
-    """A small per-user burst limit; cache backends make this shared in production."""
-    key = f"invoice-export:{user_id}:{invoice_id}:{kind}"
+    """Bound all document rendering by one user's shared minute budget."""
+    key = f"invoice-export:{user_id}"
     limit = getattr(settings, "INVOICE_EXPORTS_PER_MINUTE", 6)
     if limit < 1:
         return False
-    if cache.add(key, 1, 60):
-        return True
     try:
-        return cache.incr(key) <= limit
-    except ValueError:
-        return cache.add(key, 1, 60)
+        if cache.add(key, 1, 60):
+            return True
+        try:
+            return cache.incr(key) <= limit
+        except ValueError:
+            return cache.add(key, 1, 60)
+    except (RedisError, OSError):
+        # No credential-bearing connection exception in logs; deny expensive work.
+        logger.warning("Document export cache unavailable")
+        return False
 
 
 def document_html(invoice, *, mode: str = "export") -> str:

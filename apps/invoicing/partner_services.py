@@ -12,7 +12,8 @@ from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.businesses.eligibility import business_is_network_eligible
+from apps.businesses.eligibility import NotOperationalError, business_is_network_eligible, require_operational
+from apps.businesses.entitlements import ISSUE_INVOICES, EntitlementError, require_entitlement
 from apps.businesses.models import Business, BusinessMembership
 from apps.businesses.permissions import (
     CHEQUE_MANAGE,
@@ -65,8 +66,46 @@ def _money(value) -> Decimal:
 def _require(membership: BusinessMembership | None, capability: str, message: str) -> None:
     if membership is None or not membership.has_capability(capability):
         raise InvoiceError(message)
+    _require_operational(Business.objects.get(pk=membership.business_id))
 
 
+def _require_operational(business: Business) -> None:
+    try:
+        require_operational(business)
+    except NotOperationalError as exc:
+        raise InvoiceError(exc.message) from exc
+
+
+def _lock_businesses(*business_ids) -> dict:
+    # Never lock the actor first: reciprocal invoices must take the same parents
+    # in the same order, before any revision or ledger FK writes.
+    return {
+        business_id: Business.objects.select_for_update().get(pk=business_id)
+        for business_id in sorted(set(business_ids) - {None}, key=str)
+    }
+
+
+def _lock_invoice_businesses(
+    invoice: SalesInvoice, membership: BusinessMembership, *, commercial: bool = False,
+    seller_entitlement: bool = False,
+) -> None:
+    locked = _lock_businesses(invoice.seller_business_id, invoice.buyer_business_id)
+    invoice.seller_business = locked[invoice.seller_business_id]
+    if invoice.buyer_business_id:
+        invoice.buyer_business = locked[invoice.buyer_business_id]
+    _require_operational(locked[membership.business_id])
+    if seller_entitlement:
+        try:
+            require_entitlement(invoice.seller_business, ISSUE_INVOICES)
+        except EntitlementError as exc:
+            raise InvoiceError(exc.message) from exc
+    if commercial and not all(
+        business_is_network_eligible(business) for business in (invoice.seller_business, invoice.buyer_business)
+    ):
+        raise InvoiceError("هر دو کسب‌وکار باید برای معامله در شبکه واجد شرایط باشند.")
+
+
+@transaction.atomic
 def resolve_local_counterparty(
     *,
     business: Business,
@@ -83,6 +122,7 @@ def resolve_local_counterparty(
     )
     if membership.business_id != business.id:
         raise InvoiceError("دسترسی نامعتبر است.")
+    _require_operational(_lock_businesses(business.id)[business.id])
     if local_counterparty is not None:
         if local_counterparty.owner_business_id != business.id:
             raise InvoiceError("همکار محلی متعلق به این کسب‌وکار نیست.")
@@ -139,6 +179,7 @@ def _validate_settlement(invoice: SalesInvoice) -> None:
             raise InvoiceError("برای بخش چک، شماره چک و تاریخ سررسید الزامی است.")
 
 
+@transaction.atomic
 def create_partner_draft(
     *,
     business: Business,
@@ -166,6 +207,11 @@ def create_partner_draft(
     payment_terms: str = "",
     submission_id: uuid.UUID | None = None,
 ) -> SalesInvoice:
+    _require_manage(business, membership)
+    locked = _lock_businesses(business.pk, buyer_business.pk if buyer_business is not None else None)
+    business = locked[business.pk]
+    if buyer_business is not None:
+        buyer_business = locked[buyer_business.pk]
     _require_manage(business, membership)
     if (buyer_business is None) == (local_counterparty is None):
         raise InvoiceError("یک همکار ثبت‌شده یا محلی انتخاب کنید.")
@@ -226,14 +272,14 @@ def create_partner_draft(
         created_by=membership.user,
     )
     _assign_totals(invoice, totals)
-    with transaction.atomic():
-        try:
+    try:
+        with transaction.atomic():
             invoice.save()
             _replace_items(invoice, calculated)
-        except IntegrityError:
-            if not submission_id:
-                raise
-            return SalesInvoice.objects.get(seller_business=business, submission_id=submission_id)
+    except IntegrityError:
+        if not submission_id:
+            raise
+        return SalesInvoice.objects.get(seller_business=business, submission_id=submission_id)
     return invoice
 
 
@@ -250,6 +296,11 @@ def update_partner_draft(
             raise InvoiceError("این پیش‌نویس پس از باز شدن صفحه تغییر کرده است. صفحه را تازه‌سازی کنید.")
         buyer_business = header.pop("buyer_business", invoice.buyer_business)
         local_counterparty = header.pop("local_counterparty", invoice.local_counterparty)
+        locked = _lock_businesses(invoice.seller_business_id, buyer_business.pk if buyer_business is not None else None)
+        invoice.seller_business = locked[invoice.seller_business_id]
+        if buyer_business is not None:
+            buyer_business = locked[buyer_business.pk]
+        _require_manage(invoice.seller_business, membership)
         if (buyer_business is None) == (local_counterparty is None):
             raise InvoiceError("یک همکار ثبت‌شده یا محلی انتخاب کنید.")
         if buyer_business is not None and buyer_business.id == invoice.seller_business_id:
@@ -498,13 +549,13 @@ def _create_settlement_events(invoice: SalesInvoice, revision: InvoiceRevision, 
 def finalize_customer_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
     invoice = SalesInvoice.objects.select_for_update(of=("self",)).select_related("seller_business").get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
+    _lock_invoice_businesses(invoice, membership, seller_entitlement=True)
     if invoice.status == SalesInvoice.Status.ISSUED:
         return invoice
     if invoice.status != SalesInvoice.Status.DRAFT or invoice.counterparty_type != "customer":
         raise InvoiceError("فقط پیش‌نویس فاکتور مشتری قابل صدور است.")
     if _money(invoice.paid_amount) != _money(invoice.total_amount):
         raise InvoiceError("صدور فاکتور مشتری فقط پس از دریافت کامل مبلغ امکان‌پذیر است.")
-    Business.objects.select_for_update().get(pk=invoice.seller_business_id)
     invoice.cash_amount = invoice.total_amount
     invoice.credit_amount = Decimal("0")
     invoice.cheque_amount = Decimal("0")
@@ -538,6 +589,7 @@ def send_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembershi
         raise InvoiceError("فقط فروشنده می‌تواند فاکتور را ارسال کند.")
     if invoice.counterparty_type != SalesInvoice.Counterparty.BUSINESS:
         raise InvoiceError("فقط فاکتور همکار ثبت‌شده داخل Sang Esf ارسال می‌شود.")
+    _lock_invoice_businesses(invoice, membership, commercial=True, seller_entitlement=True)
     if invoice.status != SalesInvoice.Status.DRAFT:
         if invoice.status == SalesInvoice.Status.AWAITING_CONFIRMATION:
             return invoice
@@ -577,6 +629,7 @@ def cancel_pending_partner_invoice(
     _require(membership, INVOICE_SEND, "اجازه لغو فاکتور ارسالی را ندارید.")
     if membership.business_id != invoice.seller_business_id:
         raise InvoiceError("فقط فرستنده می‌تواند فاکتور در انتظار را لغو کند.")
+    _lock_invoice_businesses(invoice, membership)
     _require_current_revision(invoice, expected_revision)
     if invoice.status == SalesInvoice.Status.CANCELLED_BY_SENDER:
         return invoice
@@ -619,6 +672,7 @@ def reject_partner_invoice(
     _require(membership, INVOICE_CONFIRM, "اجازه رد یا تأیید فاکتور دریافتی را ندارید.")
     if membership.business_id != invoice.buyer_business_id:
         raise InvoiceError("فقط کسب‌وکار خریدار می‌تواند فاکتور را رد کند.")
+    _lock_invoice_businesses(invoice, membership)
     _require_current_revision(invoice, expected_revision)
     reason = str(reason or "").strip()
     if not reason:
@@ -662,6 +716,7 @@ def confirm_partner_invoice(
     _require(membership, INVOICE_CONFIRM, "اجازه تأیید فاکتور دریافتی را ندارید.")
     if membership.business_id != invoice.buyer_business_id:
         raise InvoiceError("فقط خریدار ثبت‌شده می‌تواند این فاکتور را تأیید کند.")
+    _lock_invoice_businesses(invoice, membership, commercial=True, seller_entitlement=True)
     # Check under the existing invoice lock and before the idempotent return:
     # an old tab must never sign a newer revision, even if it is already final.
     _require_current_revision(invoice, expected_revision)
@@ -686,7 +741,6 @@ def confirm_partner_invoice(
     revision.decided_business = membership.business
     revision.decided_at = timezone.now()
     revision.save()
-    Business.objects.select_for_update().get(pk=invoice.seller_business_id)
     invoice.number = invoice.number or allocate_number(invoice.seller_business)
     invoice.status = SalesInvoice.Status.CONFIRMED
     invoice.confirmed_at = revision.decided_at
@@ -737,6 +791,7 @@ def confirm_local_invoice_offline(
         raise InvoiceError("دسترسی نامعتبر است.")
     if invoice.counterparty_type != SalesInvoice.Counterparty.LOCAL:
         raise InvoiceError("تأیید آفلاین فقط برای همکار محلی است.")
+    _lock_invoice_businesses(invoice, membership, seller_entitlement=True)
     if invoice.status == SalesInvoice.Status.CONFIRMED:
         return invoice
     if invoice.status != SalesInvoice.Status.DRAFT:
@@ -757,7 +812,6 @@ def confirm_local_invoice_offline(
     revision.offline_confirmed_at = confirmed_at
     revision.offline_recorded_by = membership.user
     revision.save()
-    Business.objects.select_for_update().get(pk=invoice.seller_business_id)
     invoice.number = invoice.number or allocate_number(invoice.seller_business)
     invoice.status = SalesInvoice.Status.CONFIRMED
     invoice.offline_confirmation = True
@@ -783,6 +837,8 @@ def confirm_local_invoice_offline(
 def change_cheque_status(
     *, cheque: ChequeReceivable, membership: BusinessMembership, status: str, reason: str = ""
 ) -> ChequeReceivable:
+    invoice_id = ChequeReceivable.objects.values_list("invoice_id", flat=True).get(pk=cheque.pk)
+    invoice = SalesInvoice.objects.select_for_update(of=("self",)).get(pk=invoice_id)
     cheque = (
         ChequeReceivable.objects.select_for_update(of=("self",))
         .select_related("invoice__seller_business", "invoice__buyer_business", "settlement_event__revision")
@@ -791,6 +847,7 @@ def change_cheque_status(
     _require(membership, CHEQUE_MANAGE, "اجازه مدیریت وضعیت چک را ندارید.")
     if membership.business_id != cheque.invoice.seller_business_id:
         raise InvoiceError("فقط فروشنده می‌تواند وضعیت چک دریافتی را تغییر دهد.")
+    _lock_invoice_businesses(invoice, membership)
     allowed = {
         ChequeReceivable.Status.RECEIVED: {
             ChequeReceivable.Status.IN_COLLECTION,
@@ -852,6 +909,9 @@ def propose_counterparty_link(
     _require(membership, COUNTERPARTY_LINK_PROPOSE, "اجازه پیشنهاد اتصال همکار را ندارید.")
     if membership.business_id != local_counterparty.owner_business_id:
         raise InvoiceError("دسترسی نامعتبر است.")
+    locked = _lock_businesses(local_counterparty.owner_business_id, target.pk)
+    _require_operational(locked[membership.business_id])
+    target = locked[target.pk]
     if local_counterparty.linked_business_id:
         raise InvoiceError("این همکار محلی قبلاً به یک کسب‌وکار متصل شده است.")
     if target.id == local_counterparty.owner_business_id or not business_is_network_eligible(target):
@@ -877,6 +937,7 @@ def cancel_counterparty_link(
     _require(membership, COUNTERPARTY_LINK_PROPOSE, "اجازه لغو پیشنهاد اتصال را ندارید.")
     if membership.business_id != proposal.local_counterparty.owner_business_id:
         raise InvoiceError("فقط پیشنهاددهنده می‌تواند اتصال در انتظار را لغو کند.")
+    _require_operational(_lock_businesses(membership.business_id)[membership.business_id])
     if proposal.status != CounterpartyLinkProposal.Status.PENDING:
         return proposal
     proposal.status = CounterpartyLinkProposal.Status.CANCELLED
@@ -898,6 +959,8 @@ def decide_counterparty_link(
     _require(membership, COUNTERPARTY_LINK_APPROVE, "اجازه تصمیم‌گیری درباره اتصال همکار را ندارید.")
     if membership.business_id != proposal.target_business_id:
         raise InvoiceError("فقط کسب‌وکار مقصد می‌تواند انتقال سابقه را تأیید کند.")
+    locked = _lock_businesses(proposal.local_counterparty.owner_business_id, proposal.target_business_id)
+    _require_operational(locked[membership.business_id])
     if proposal.status != CounterpartyLinkProposal.Status.PENDING:
         return proposal
     proposal.decided_by = membership.user
@@ -914,11 +977,10 @@ def decide_counterparty_link(
     local.linked_business = proposal.target_business
     local.save(update_fields=["linked_business", "updated_at"])
     from apps.accounting.models import LedgerEntry
-    from apps.accounting.services import _lock_both, _write_entry
+    from apps.accounting.services import _write_entry
 
-    locked = _lock_both(local.owner_business, proposal.target_business)
-    seller = locked[str(local.owner_business_id)]
-    buyer = locked[str(proposal.target_business_id)]
+    seller = locked[local.owner_business_id]
+    buyer = locked[proposal.target_business_id]
     invoices = SalesInvoice.objects.filter(
         local_counterparty=local,
         status=SalesInvoice.Status.CONFIRMED,

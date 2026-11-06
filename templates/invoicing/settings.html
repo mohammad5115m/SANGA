@@ -71,13 +71,13 @@
   {% endif %}
   <section class="panel stack-md" id="personal-signature">
     <div><h2 class="section-title">امضای شخصی</h2><p class="muted">این فایل خصوصی است و هنگام ارسال یا تأیید فاکتور همکار، یک نسخه ثابت از آن در همان بازبینی نگهداری می‌شود.</p></div>
-    <form method="post" enctype="multipart/form-data" action="{% url 'invoicing:personal_signature' %}" class="stack-sm">
+    {% if business_can_write %}<form method="post" enctype="multipart/form-data" action="{% url 'invoicing:personal_signature' %}" class="stack-sm">
       {% csrf_token %}
       {% if personal_signature and personal_signature.image %}<div class="alert alert-success">امضای شخصی ثبت شده است.</div>{% endif %}
       <label class="field"><span class="field-label">{{ personal_signature_form.image.label }}</span>{{ personal_signature_form.image }}</label>
       <label>{{ personal_signature_form.remove_signature }} {{ personal_signature_form.remove_signature.label }}</label>
       <button class="btn btn-secondary" type="submit">ذخیره امضای شخصی</button>
-    </form>
+    </form>{% endif %}
   </section>
   {% if can_manage_templates %}<section class="panel stack-md">
     <h2 class="section-title">قالب‌های پرکاربرد</h2>
