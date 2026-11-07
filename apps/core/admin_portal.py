@@ -5,8 +5,10 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from django import forms
+from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin.models import ADDITION, LogEntry
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -16,6 +18,7 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 
 from apps.accounts.models import RegistrationRequest, User
 from apps.businesses.entitlements import EntitlementError, require_seat_available
@@ -24,7 +27,7 @@ from apps.businesses.permissions import defaults_for_role
 from apps.businesses.services import BusinessServiceError, create_business_for_owner
 from apps.catalog.models import CustomCatalog
 from apps.core.calendar import format_jalali
-from apps.core.persian import normalize_digits, normalize_phone
+from apps.core.persian import normalize_phone
 from apps.inquiries.models import CustomerFollowUp, CustomerLead, Inquiry
 from apps.inventory.models import InventoryLot, Product
 from apps.invoicing.models import SalesInvoice
@@ -38,7 +41,51 @@ def _valid_mobile(value: str) -> str:
     return phone
 
 
-class BusinessProvisionForm(forms.Form):
+class ProvisionAccountForm(forms.Form):
+    password1 = forms.CharField(
+        label="رمز ورود حساب جدید", required=False, strip=False, max_length=128,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "dir": "ltr"}),
+        help_text="برای شمارهٔ جدید در ورود با رمز الزامی است. برای حساب موجود خالی بگذارید؛ رمز قبلی حفظ می‌شود.",
+    )
+    password2 = forms.CharField(
+        label="تکرار رمز ورود", required=False, strip=False, max_length=128,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password", "dir": "ltr"}),
+    )
+
+    @sensitive_variables("data", "password1", "password2")
+    def clean(self):
+        data = super().clean()
+        phone = data.get(self.account_phone_field)
+        if not phone:
+            return data
+        existing = User.objects.filter(phone=phone).first()
+        password1, password2 = data.get("password1", ""), data.get("password2", "")
+        if existing:
+            if password1 or password2:
+                self.add_error("password1", "برای تغییر رمز حساب موجود از صفحهٔ کاربران استفاده کنید.")
+            return data
+        if settings.AUTH_LOGIN_METHOD == "password" or password1 or password2:
+            if not password1:
+                self.add_error("password1", "برای حساب جدید رمز ورود تعیین کنید.")
+            if password1 != password2:
+                self.add_error("password2", "رمزهای واردشده یکسان نیستند.")
+            elif password1:
+                try:
+                    validate_password(password1, user=User(
+                        phone=phone, full_name=data.get(self.account_name_field, ""),
+                    ))
+                except ValidationError as exc:
+                    self.add_error("password1", exc)
+        return data
+
+
+class BusinessProvisionForm(ProvisionAccountForm):
+    account_phone_field = "owner_phone"
+    account_name_field = "owner_name"
+    field_order = (
+        "name", "owner_phone", "owner_name", "city", "province", "plan", "seat_limit",
+        "verified", "password1", "password2",
+    )
     name = forms.CharField(label="نام کسب‌وکار", max_length=200, min_length=2)
     owner_phone = forms.CharField(
         label="موبایل مالک", max_length=20,
@@ -60,7 +107,10 @@ class BusinessProvisionForm(forms.Form):
         return phone
 
 
-class MemberProvisionForm(forms.Form):
+class MemberProvisionForm(ProvisionAccountForm):
+    account_phone_field = "phone"
+    account_name_field = "full_name"
+    field_order = ("business", "phone", "full_name", "role", "password1", "password2")
     business = forms.ModelChoiceField(label="کسب‌وکار", queryset=Business.objects.none())
     phone = forms.CharField(
         label="موبایل کاربر", max_length=20,
@@ -115,9 +165,36 @@ def _form_context(request: HttpRequest, *, form, title: str, lead: str, submit: 
         "form": form,
         "lead": lead,
         "submit_label": submit,
+        "needs_business": "business" in form.fields and not form.fields["business"].queryset.exists(),
     }
 
 
+@sensitive_variables("data", "password")
+def _provision_account(data, *, phone_field, name_field):
+    """Only set a password on an account created by this transaction."""
+    name = data[name_field].strip()
+    user, created = User.objects.get_or_create(phone=data[phone_field], defaults={"full_name": name})
+    if not created:
+        user = User.objects.select_for_update().get(pk=user.pk)
+        if not user.is_active or user.is_superuser:
+            raise forms.ValidationError("این شماره برای کاربر کسب‌وکار قابل استفاده نیست.")
+        if data.get("password1") or data.get("password2"):
+            raise forms.ValidationError("حساب این شماره موجود است؛ رمز آن از صفحهٔ کاربران تغییر می‌کند.")
+        if name and not user.full_name:
+            user.full_name = name
+            user.save(update_fields=["full_name"])
+    else:
+        password = data.get("password1")
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
+        user.save(update_fields=["password"])
+    return user
+
+
+@sensitive_post_parameters("password1", "password2")
+@sensitive_variables("data", "form")
 def provision_business(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         form = BusinessProvisionForm(request.POST)
@@ -125,13 +202,7 @@ def provision_business(request: HttpRequest) -> HttpResponse:
             data = form.cleaned_data
             try:
                 with transaction.atomic():
-                    owner, _ = User.objects.get_or_create(
-                        phone=data["owner_phone"],
-                        defaults={"full_name": data["owner_name"].strip()},
-                    )
-                    if data["owner_name"].strip() and not owner.full_name:
-                        owner.full_name = data["owner_name"].strip()
-                        owner.save(update_fields=["full_name"])
+                    owner = _provision_account(data, phone_field="owner_phone", name_field="owner_name")
                     business = create_business_for_owner(
                         owner=owner,
                         name=data["name"],
@@ -145,6 +216,8 @@ def provision_business(request: HttpRequest) -> HttpResponse:
                     _log_addition(request, business, "ایجاد کسب‌وکار همراه با مالک از پنل مدیریت")
             except BusinessServiceError as exc:
                 form.add_error(None, exc.message)
+            except forms.ValidationError as exc:
+                form.add_error(None, exc)
             else:
                 messages.success(request, f"کسب‌وکار «{business.name}» و دسترسی مالک آن ساخته شد.")
                 return redirect("admin:businesses_business_change", business.pk)
@@ -163,6 +236,8 @@ def provision_business(request: HttpRequest) -> HttpResponse:
     )
 
 
+@sensitive_post_parameters("password1", "password2")
+@sensitive_variables("data", "form")
 def provision_member(request: HttpRequest) -> HttpResponse:
     initial = {}
     if request.method == "POST":
@@ -173,13 +248,7 @@ def provision_member(request: HttpRequest) -> HttpResponse:
                 with transaction.atomic():
                     business = Business.objects.select_for_update().get(pk=data["business"].pk)
                     require_seat_available(business)
-                    user, _ = User.objects.get_or_create(
-                        phone=data["phone"],
-                        defaults={"full_name": data["full_name"].strip()},
-                    )
-                    if data["full_name"].strip() and not user.full_name:
-                        user.full_name = data["full_name"].strip()
-                        user.save(update_fields=["full_name"])
+                    user = _provision_account(data, phone_field="phone", name_field="full_name")
                     if BusinessMembership.objects.filter(business=business, user=user).exists():
                         raise forms.ValidationError("این شماره قبلاً عضو این کسب‌وکار شده است.")
                     membership = BusinessMembership.objects.create(
@@ -369,6 +438,8 @@ def _search_results(term: str) -> list[dict]:
 
 
 def dashboard_context(request: HttpRequest) -> dict:
+    from .admin_site import admin_search_term
+
     now = timezone.now()
     pending_businesses = Business.objects.filter(
         verification_status=Business.VerificationStatus.PENDING,
@@ -379,7 +450,7 @@ def dashboard_context(request: HttpRequest) -> dict:
         status__in=(CustomerFollowUp.Status.SCHEDULED, CustomerFollowUp.Status.POSTPONED),
         scheduled_for__lt=now,
     )
-    term = normalize_digits((request.GET.get("q") or "").strip()[:80])
+    term = admin_search_term((request.GET.get("q") or "").strip()[:80])
     search_ready = len(term) >= 2
     return {
         "admin_today": format_jalali(timezone.localdate()),
@@ -444,6 +515,9 @@ def dashboard_context(request: HttpRequest) -> dict:
             },
         ],
         "admin_pending_businesses": list(pending_businesses[:5]),
+        "admin_pending_businesses_url": _list_url(
+            "businesses", "business", verification_status__exact=Business.VerificationStatus.PENDING,
+        ),
         "admin_recent_businesses": list(Business.objects.order_by("-created_at")[:5]),
         "admin_activity": list(LogEntry.objects.select_related("content_type").order_by("-action_time")[:8]),
         "admin_search_term": term,

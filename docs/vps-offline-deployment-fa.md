@@ -36,6 +36,9 @@ sudo docker image load -i sanga-images.tar.gz
 
 ## استفاده از تنظیمات فعلی VPS
 
+اگر برنامه هم‌اکنون اجرا می‌شود، بخش «به‌روزرسانی برنامهٔ در حال اجرا» را در
+پایین دنبال کنید. دستورهای این بخش برای راه‌اندازی اولیه هستند.
+
 فایل `.env` و فایل‌های موجود VPS را حفظ کنید. فقط override بسته را اضافه کنید:
 
 ```bash
@@ -80,3 +83,59 @@ curl -i --max-time 20 https://sangesfahan.com/health/
 مسدودبودن دسترسی مستقیم به فایل امضای واقعاً موجود، پشتیبان‌گیری مستقل و
 بازیابی آزمایشی را بررسی کنید. ساخت موفق بسته معادل آماده‌بودن VPS برای تولید
 نیست. بسته روی سرور چیزی نصب یا منتشر نمی‌کند؛ فرمان‌های بالا را مالک اجرا می‌کند.
+
+## به‌روزرسانی برنامهٔ در حال اجرا
+
+این مراحل برای برنامهٔ موجود در `/srv/sanga` است که هر سه فایل Compose را
+استفاده می‌کند. ابتدا بستهٔ جدید را مطابق بخش دریافت، بررسی و بارگذاری کنید.
+محتوای `.env`، فایل VPS، Caddyfile و volumeها را تغییر ندهید. هر مرحله را جدا
+اجرا کنید و در صورت خطا ادامه ندهید. در این مراحل نیازی به ساخت مدیر مجدد نیست.
+
+۱. در زمان کم‌ترافیک، پوشهٔ خصوصی پشتیبان بسازید و تنظیم تصویر قبلی را نگه دارید:
+
+```bash
+cd /srv/sanga
+umask 077
+backup_dir="$HOME/sanga-backups/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$backup_dir"
+cp -p docker-compose.offline.yml "$backup_dir/docker-compose.offline.yml"
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_dir/database.dump"
+```
+
+۲. صحت ساختار پشتیبان دیتابیس را کنترل و از رسانه‌ها نیز نسخه بگیرید. این کنترل
+جای بازیابی آزمایشی در محیط جداگانه را نمی‌گیرد. پشتیبان‌ها خصوصی هستند؛ نسخه‌ای
+از آن‌ها را در محل امن دیگری هم نگه دارید.
+
+```bash
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml exec -T db pg_restore --list < "$backup_dir/database.dump" > "$backup_dir/database-contents.txt"
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml run --rm --no-deps --pull never -T --entrypoint sh media-init -c 'tar -C /data -czf - .' > "$backup_dir/media.tar.gz"
+gzip -t "$backup_dir/media.tar.gz"
+printf 'Backup: %s\n' "$backup_dir"
+```
+
+۳. override جدید را جایگزین و تنظیمات آن را بررسی کنید:
+
+```bash
+cp "$HOME/sanga-offline/docker-compose.offline.yml" /srv/sanga/docker-compose.offline.yml
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml config --quiet
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml config --images
+```
+
+تصویر `web` و `migrate` باید با `Application image` در `RELEASE.txt` جدید یکسان
+باشد. برای اصلاحات مدیریت مورخ ۲۰۲۶/۱۱/۰۸ هیچ migration جدیدی اضافه نشده است.
+
+۴. migration را با تصویر جدید بررسی و فقط برنامه را به‌روزرسانی کنید. دیتابیس،
+Redis و Caddy موجود نیاز به راه‌اندازی مجدد ندارند:
+
+```bash
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml run --rm --no-deps --pull never migrate
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml up -d --no-deps --no-build --pull never web
+sudo docker compose --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.offline.yml ps --all
+curl --fail --show-error --max-time 20 https://sangesfahan.com/health/
+```
+
+سپس `/admin/` را با `Ctrl+F5` باز کنید، ورود و صفحات مدیریت را بررسی کنید. تصویر
+قبلی را تا تأیید نتیجه پاک نکنید. برای بازگشت همین اصلاحات بدون تغییر schema،
+فایل override ذخیره‌شده در پوشهٔ پشتیبان را برگردانید و دستور `up` برای `web`
+را دوباره اجرا کنید. از دستور حذف volume یا بازیابی دیتابیس روی دادهٔ زنده
+استفاده نکنید؛ این کارها بخشی از به‌روزرسانی نیستند.

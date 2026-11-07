@@ -3,6 +3,7 @@
 {% block content %}
 <div class="provision-layout"><div class="provision-intro"><p class="eyebrow">عملیات پلتفرم</p><h1>{{ title }}</h1><p>{{ lead }}</p><a href="{% url 'admin:index' %}">← بازگشت به نمای کلی</a></div>
 <form class="portal-panel provision-form" method="post" novalidate>{% csrf_token %}
+  {% if needs_business %}<div class="provision-notice" role="status">برای افزودن کاربر، ابتدا یک کسب‌وکار فعال بسازید. <a href="{% url 'admin:provision_business' %}">افزودن کسب‌وکار و مالک</a></div>{% endif %}
   {% if form.non_field_errors %}<div class="form-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}
   {% for field in form %}
     <div class="provision-field{% if field.errors %} has-error{% endif %}">
@@ -12,6 +13,6 @@
       {% if field.errors %}<div class="field-errors" id="{{ field.auto_id }}_error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
     </div>
   {% endfor %}
-  <div class="provision-actions"><button type="submit" class="portal-button">{{ submit_label }}</button><a href="{% url 'admin:index' %}">انصراف</a></div>
+  <div class="provision-actions"><button type="submit" class="portal-button"{% if needs_business %} disabled{% endif %}>{{ submit_label }}</button><a href="{% url 'admin:index' %}">انصراف</a></div>
 </form></div>
 {% endblock %}

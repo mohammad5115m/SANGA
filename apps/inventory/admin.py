@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from apps.core.admin import FixedBusinessAdmin, SameBusinessForm
+
 from .models import Application, InventoryLot, LotMedia, Product, VocabularyTerm
 from .taxonomy import clear_cache
 
@@ -7,6 +9,11 @@ from .taxonomy import clear_cache
 class LotMediaInline(admin.TabularInline):
     model = LotMedia
     extra = 0
+
+
+class InventoryLotAdminForm(SameBusinessForm):
+    business_relations = (("business", "pk"), ("product", "business_id"))
+    business_error = "محصول و موجودی باید متعلق به یک کسب‌وکار باشند."
 
 
 @admin.register(Application)
@@ -41,7 +48,7 @@ class VocabularyTermAdmin(admin.ModelAdmin):
 
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
+class ProductAdmin(FixedBusinessAdmin):
     list_display = ("commercial_name", "business", "stone", "is_active")
     list_filter = ("is_active", "stone")
     search_fields = ("commercial_name", "slug", "business__name")
@@ -49,7 +56,8 @@ class ProductAdmin(admin.ModelAdmin):
 
 
 @admin.register(InventoryLot)
-class InventoryLotAdmin(admin.ModelAdmin):
+class InventoryLotAdmin(FixedBusinessAdmin):
+    form = InventoryLotAdminForm
     list_display = (
         "lot_code",
         "business",

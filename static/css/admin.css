@@ -150,6 +150,14 @@ html[data-theme="dark"] .sidebar-home { background: #344e3d; color: #e8f3e8 !imp
 .provision-field small { color: var(--portal-muted); display: block; }
 .field-errors, .form-errors { color: #ab382e; font-size: 11px; }
 .form-errors, .provision-actions { grid-column: 1 / -1; }
+.provision-notice { grid-column: 1 / -1; padding: 12px; background: var(--portal-soft); border: 1px solid var(--portal-line); border-radius: 8px; }
+.provision-notice a { display: inline-block; font-weight: 700; }
+.portal-button:disabled { opacity: .6; cursor: not-allowed; }
+.portal-app-index { max-width: 1100px; margin: 0 auto; }
+.portal-app-index .module { background: var(--portal-surface); }
+.portal-app-index .module table { width: 100%; }
+.portal-app-index .module caption { background: var(--primary); }
+.portal-app-index .module :is(th, td) { padding: 12px; overflow-wrap: anywhere; }
 .provision-actions { display: flex; align-items: center; gap: 18px; border-top: 1px solid var(--portal-line); padding-top: 18px; }
 .provision-actions a { font-size: 11px; }
 
@@ -164,7 +172,15 @@ html[data-theme="dark"] .sidebar-home { background: #344e3d; color: #e8f3e8 !imp
 .admin-date-range input { box-sizing: border-box; }
 .admin-date-range button[type="submit"] { min-height: 44px; cursor: pointer; }
 .admin-date-range .calendar-toggle { flex-basis: 36px; }
-@media (max-width: 1100px) { .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sections-grid, .advanced-model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1100px) {
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sections-grid, .advanced-model-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .provision-layout { grid-template-columns: 1fr; gap: 16px; }
+}
+@media (max-width: 1024px) {
+  #header { flex: 0 0 auto; height: auto; gap: 8px; }
+  #user-tools { justify-content: center; }
+}
 @media (max-width: 767px) {
   #header { flex: 0 0 auto; height: auto; min-height: 0; padding: 10px 14px; gap: 7px; }
   #branding { min-width: 0; }

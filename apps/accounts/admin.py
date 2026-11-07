@@ -1,6 +1,9 @@
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserChangeForm
+
+from apps.core.persian import normalize_phone
 
 from .models import OTPChallenge, RegistrationRequest, User
 from .password_auth import review_registration
@@ -11,6 +14,12 @@ class AccountChangeForm(UserChangeForm):
     class Meta(UserChangeForm.Meta):
         model = User
         fields = "__all__"
+
+    def clean_phone(self):
+        phone = normalize_phone(self.cleaned_data["phone"])
+        if not (phone.startswith("09") and len(phone) == 11):
+            raise forms.ValidationError("شماره موبایل معتبر نیست؛ مانند ۰۹۱۲۳۴۵۶۷۸۹.")
+        return phone
 
 
 @admin.register(User)
@@ -33,6 +42,16 @@ class UserAdmin(DjangoUserAdmin):
         # Users enter through the owner/member provisioning forms so nobody is
         # left with an account that has no business membership.
         return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Accounts and their ownership/audit links are retained; deactivate instead.
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if obj is not None and obj.pk == request.user.pk:
+            return (*fields, "is_active")
+        return fields
 
 
 @admin.register(OTPChallenge)

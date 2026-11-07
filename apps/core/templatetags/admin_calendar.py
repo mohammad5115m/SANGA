@@ -8,6 +8,11 @@ register = template.Library()
 
 
 @register.simple_tag
+def admin_activity_date(value):
+    return format_jalali(value, with_time=True)
+
+
+@register.simple_tag
 def admin_calendar_value(field):
     """Format raw readonly dates; leave existing escaped admin rendering intact."""
     name = field.field.get("name")

@@ -15,6 +15,7 @@ from django.urls import path
 from django.utils import timezone, translation
 
 from .calendar import format_jalali, jalali_parts
+from .persian import normalize_digits, normalize_phone
 from .widgets import DateRangeForm, JalaliDateTimeWidget, JalaliDateWidget
 
 
@@ -41,6 +42,9 @@ class PersianAdminMixin:
             kwargs.update(form_class=forms.DateField, widget=JalaliDateWidget)
         return super().formfield_for_dbfield(db_field, request, **kwargs)
 
+    def get_search_results(self, request, queryset, search_term):
+        return super().get_search_results(request, queryset, admin_search_term(search_term))
+
     def get_list_display(self, request):
         columns = []
         for column in super().get_list_display(request):
@@ -56,6 +60,14 @@ class PersianAdminMixin:
             else:
                 columns.append(column)
         return columns
+
+
+def admin_search_term(value):
+    term = normalize_digits(value).strip()
+    phone = normalize_phone(term)
+    if len(phone) == 11 and phone.startswith("09") and not any(char.isalpha() for char in term):
+        return phone
+    return term
 
 
 class SangaAdminSite(admin.AdminSite):

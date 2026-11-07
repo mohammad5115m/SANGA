@@ -104,6 +104,8 @@ def test_business_and_member_provisioning_respect_seat_limit(client, platform_ow
         "province": "اصفهان",
         "plan": Business.Plan.SELLER,
         "seat_limit": 2,
+        "password1": "Admin-Setup-Test-84!",
+        "password2": "Admin-Setup-Test-84!",
     })
     assert response.status_code == 302
     business = Business.objects.get(name="سنگ آزمایشگاه")
@@ -119,6 +121,7 @@ def test_business_and_member_provisioning_respect_seat_limit(client, platform_ow
     response = client.post(member_url, {
         "business": str(business.pk), "phone": "09129990004",
         "full_name": "کاربر آزمایش", "role": BusinessMembership.Role.STAFF,
+        "password1": "Admin-Setup-Test-84!", "password2": "Admin-Setup-Test-84!",
     })
     assert response.status_code == 302
     assert business.memberships.count() == 2
@@ -130,6 +133,7 @@ def test_business_and_member_provisioning_respect_seat_limit(client, platform_ow
     response = client.post(member_url, {
         "business": str(business.pk), "phone": "09129990005",
         "full_name": "کاربر اضافه", "role": BusinessMembership.Role.VIEWER,
+        "password1": "Admin-Setup-Test-84!", "password2": "Admin-Setup-Test-84!",
     })
     assert response.status_code == 200
     assert business.memberships.count() == 2
