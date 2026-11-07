@@ -225,6 +225,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Production Compose overrides development defaults
         run: |
           cp .env.example .env
@@ -272,6 +274,18 @@ jobs:
           done
           docker logs sanga-smoke
           exit 1
+      - name: Export an offline VPS bundle on delivery branches
+        if: startsWith(github.head_ref, 'codex/vps-offline-')
+        run: bash scripts/export_vps_bundle.sh /tmp/sanga-vps-bundle
+      - name: Upload the checked offline VPS bundle
+        if: startsWith(github.head_ref, 'codex/vps-offline-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanga-vps-linux-amd64
+          path: /tmp/sanga-vps-bundle/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
       - name: Cleanup isolated smoke container
         if: always()
         run: docker rm -f sanga-smoke || true
