@@ -13,7 +13,34 @@ an exception made there is invisible to everything else.
 
 from __future__ import annotations
 
+from django import forms
 from django.contrib import admin
+
+
+class FixedBusinessAdmin(admin.ModelAdmin):
+    """Keep tenant ownership fixed, while retaining ModelForm uniqueness checks."""
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if obj is not None and "business" in form.base_fields:
+            form.base_fields["business"].disabled = True
+        return form
+
+
+class SameBusinessForm(forms.ModelForm):
+    """Reject cross-tenant foreign keys before save hooks or public rendering."""
+
+    business_relations = ()
+    business_error = "رکوردهای انتخاب‌شده باید متعلق به یک کسب‌وکار باشند."
+
+    def clean(self):
+        data = super().clean()
+        values = [(name, data.get(name), attribute) for name, attribute in self.business_relations]
+        if values and all(value is not None for _, value, _ in values):
+            businesses = {getattr(value, attribute) for _, value, attribute in values}
+            if len(businesses) != 1:
+                self.add_error(values[-1][0], self.business_error)
+        return data
 
 
 class NoDeleteAdmin(admin.ModelAdmin):

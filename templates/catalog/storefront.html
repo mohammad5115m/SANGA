@@ -1,6 +1,6 @@
 {% extends "layouts/storefront_shell.html" %}
 
-{% block title %}{{ business.name }} | Sang Esf{% endblock %}
+{% block title %}{{ business.name }} | {% if public_homepage %}ویترین عمومی سنگ اصفهان{% else %}Sang Esf{% endif %}{% endblock %}
 
 {% block content %}
 <section class="stack-lg">
