@@ -547,6 +547,8 @@ def _create_settlement_events(invoice: SalesInvoice, revision: InvoiceRevision, 
 
 @transaction.atomic
 def finalize_customer_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+    from apps.resale.orders import validate_invoice
+
     invoice = SalesInvoice.objects.select_for_update(of=("self",)).select_related("seller_business").get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     _lock_invoice_businesses(invoice, membership, seller_entitlement=True)
@@ -554,6 +556,7 @@ def finalize_customer_invoice(*, invoice: SalesInvoice, membership: BusinessMemb
         return invoice
     if invoice.status != SalesInvoice.Status.DRAFT or invoice.counterparty_type != "customer":
         raise InvoiceError("فقط پیش‌نویس فاکتور مشتری قابل صدور است.")
+    validate_invoice(invoice, sale=True)
     if _money(invoice.paid_amount) != _money(invoice.total_amount):
         raise InvoiceError("صدور فاکتور مشتری فقط پس از دریافت کامل مبلغ امکان‌پذیر است.")
     invoice.cash_amount = invoice.total_amount
@@ -578,6 +581,8 @@ def finalize_customer_invoice(*, invoice: SalesInvoice, membership: BusinessMemb
 
 @transaction.atomic
 def send_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+    from apps.resale.orders import validate_invoice
+
     invoice = (
         SalesInvoice.objects.select_for_update(of=("self",))
         .select_related("seller_business", "buyer_business")
@@ -594,6 +599,7 @@ def send_partner_invoice(*, invoice: SalesInvoice, membership: BusinessMembershi
         if invoice.status == SalesInvoice.Status.AWAITING_CONFIRMATION:
             return invoice
         raise InvoiceError("این فاکتور قابل ارسال نیست.")
+    validate_invoice(invoice, sale=False)
     _validate_settlement(invoice)
     revision = _freeze_revision(invoice, membership)
     invoice.seller_snapshot = seller_snapshot(invoice.seller_business, get_invoice_settings(invoice.seller_business))
@@ -707,6 +713,8 @@ def reject_partner_invoice(
 def confirm_partner_invoice(
     *, invoice: SalesInvoice, membership: BusinessMembership, expected_revision: int,
 ) -> SalesInvoice:
+    from apps.resale.orders import validate_invoice
+
     invoice = (
         SalesInvoice.objects.select_for_update(of=("self",))
         .select_related("seller_business", "buyer_business")
@@ -724,6 +732,7 @@ def confirm_partner_invoice(
         return invoice
     if invoice.status != SalesInvoice.Status.AWAITING_CONFIRMATION:
         raise InvoiceError("فاکتور در انتظار تأیید نیست.")
+    validate_invoice(invoice, sale=False)
     _validate_settlement(invoice)
     revision = InvoiceRevision.objects.select_for_update().get(
         invoice=invoice, revision_number=invoice.current_revision_number, state=InvoiceRevision.State.SENT
@@ -780,6 +789,8 @@ def confirm_local_invoice_offline(
     signature,
     attested: bool,
 ) -> SalesInvoice:
+    from apps.resale.orders import validate_invoice
+
     invoice = (
         SalesInvoice.objects.select_for_update(of=("self",))
         .select_related("seller_business", "local_counterparty")
@@ -796,6 +807,7 @@ def confirm_local_invoice_offline(
         return invoice
     if invoice.status != SalesInvoice.Status.DRAFT:
         raise InvoiceError("این فاکتور قابل تأیید آفلاین نیست.")
+    validate_invoice(invoice, sale=False)
     if not attested:
         raise InvoiceError("ثبت دریافت تأیید خارج از Sang Esf باید صریحاً گواهی شود.")
     signer_name = str(signer_name or "").strip()

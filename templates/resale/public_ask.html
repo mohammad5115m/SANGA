@@ -1,0 +1,20 @@
+{% extends "layouts/storefront_shell.html" %}
+{% load money %}
+{% block title %}{{ title }} · {{ business.name }} | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div><a class="back-link" href="{% url 'resale:public_store' business.storefront_token %}">بازگشت به ویترین همین فروشنده</a>
+  <h1 class="page-title">{{ title }}</h1><p class="page-lead">{{ card.name }}</p></div>
+  <div class="panel stack-sm">
+    <div class="kv"><span>قیمت هر متر مربع</span><strong>{% if card.amount %}{{ card.amount|rial }} ریال{% else %}استعلام قیمت{% endif %}</strong></div>
+    <p class="muted">درخواست برای {{ business.name }} ارسال می‌شود. خرید یا رزرو قطعی انجام نمی‌شود.</p>
+  </div>
+  <form method="post" class="panel stack-md" hx-boost="false" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-error" role="alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% for field in form.visible_fields %}{% include "components/form_field.html" with field=field %}{% endfor %}
+    <button class="btn btn-primary" type="submit">ثبت درخواست</button>
+  </form>
+</section>
+{% endblock %}

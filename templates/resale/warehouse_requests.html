@@ -1,0 +1,23 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+{% block title %}درخواست‌های خرید همکاران | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar"><div><h1 class="page-title">درخواست‌های خرید همکاران</h1><p class="page-lead">درخواست خرید کالا و متراژ همکار را بررسی کنید.</p></div><a class="btn btn-ghost" href="{% url 'resale:warehouse' %}">بازگشت به انبار</a></div>
+  {% for row in page.object_list %}
+    <article class="panel stack-sm">
+      <h2 class="section-title">{{ row.inquiry__items__product_name }}</h2>
+      <div class="kv"><span>همکار خریدار</span><strong>{{ row.inquiry__business__name }}</strong></div>
+      <div class="kv"><span>متراژ</span><strong>{{ row.quantity|sqm }} متر مربع</strong></div>
+      <div class="kv"><span>نرخ همکاری</span><strong>{{ row.wholesale_amount|rial }} ریال در متر مربع</strong></div>
+      <div class="kv"><span>مهلت نرخ</span><strong>{{ row.quote_until|jdatetime }}</strong></div>
+      {% if row.wholesale_invoice_id %}
+        <a class="btn btn-secondary" href="{% url 'invoicing:detail' row.wholesale_invoice_id %}">مشاهدهٔ فاکتور همکاری</a>
+      {% else %}
+        <form method="post" action="{% url 'resale:wholesale_invoice' row.pk %}">{% csrf_token %}<button class="btn btn-primary" type="submit">ساخت پیش‌نویس فاکتور همکاری</button></form>
+      {% endif %}
+    </article>
+  {% empty %}<div class="empty-state">درخواست خریدی ثبت نشده است.</div>{% endfor %}
+  {% include "_pager.html" %}
+</section>
+{% endblock %}

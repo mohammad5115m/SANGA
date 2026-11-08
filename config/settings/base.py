@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "apps.pricing",
     "apps.inventory",
     "apps.catalog",
+    "apps.resale",
     "apps.inquiries",
     "apps.marketplace",
     "apps.notifications",

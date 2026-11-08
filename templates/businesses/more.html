@@ -71,6 +71,13 @@
         <div class="muted">ویترین و کاتالوگ‌های مشتری</div>
       </a>
     {% endif %}
+
+    {% if 'prices.view' in capabilities %}
+      <a class="hub-tile" href="{% url 'resale:index' %}">
+        <div class="hub-title">فروش از انبار</div>
+        <div class="muted">قیمت همکاری، عرضه به مشتری و مدیریت انبار</div>
+      </a>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

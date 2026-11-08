@@ -1,0 +1,32 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+{% block title %}{{ title }} | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar"><div><h1 class="page-title">{{ title }}</h1><p class="page-lead">{{ lead }}</p></div><a class="btn btn-ghost" href="{{ back_url }}">بازگشت</a></div>
+  {% if show_terms %}
+    <section class="panel stack-sm">
+      {% if terms %}
+        <div class="kv"><span>قیمت خرید همکاری</span><strong>{{ terms.wholesale|rial }} ریال در متر مربع</strong></div>
+        <div class="kv"><span>قیمت مصرف‌کنندهٔ انبار و کف فروش</span><strong>{{ terms.floor|rial }} ریال در متر مربع</strong></div>
+      {% else %}<p>قیمت معتبر انبار موجود نیست. پس از تأیید انبار دوباره بررسی کنید.</p>{% endif %}
+    </section>
+  {% endif %}
+  {% if purchase %}
+    <section class="panel stack-sm">
+      <div class="kv"><span>متراژ</span><strong>{{ purchase.quantity|sqm }} متر مربع</strong></div>
+      <div class="kv"><span>خرید از انبار (هر متر مربع)</span><strong>{{ purchase.wholesale|rial }} ریال</strong></div>
+      <div class="kv"><span>فروش به مشتری (هر متر مربع)</span><strong>{{ purchase.retail|rial }} ریال</strong></div>
+      <div class="kv"><span>سود ناخالص کالا (کل)</span><strong>{{ purchase.gross_profit|rial }} ریال</strong></div>
+      <div class="kv"><span>مهلت نرخ</span><strong>{{ purchase.expires|jdatetime }}</strong></div>
+    </section>
+  {% endif %}
+  <form method="post" class="panel stack-md" novalidate>
+    {% csrf_token %}
+    {% if form.errors %}<div class="alert alert-error" role="alert">{{ form.errors }}</div>{% endif %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% for field in form.visible_fields %}{% include "components/form_field.html" with field=field %}{% endfor %}
+    <button type="submit" class="btn btn-primary">{{ submit_label|default:"ذخیره" }}</button>
+  </form>
+</section>
+{% endblock %}

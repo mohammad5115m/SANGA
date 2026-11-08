@@ -1,0 +1,30 @@
+{% extends "layouts/storefront_shell.html" %}
+{% load money %}
+{% block title %}ویترین {{ business.name }} | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <header class="storefront-hero">
+    <div class="storefront-eyebrow">ویترین اختصاصی {{ business.name }}</div>
+    <h1 class="page-title">محصولات {{ business.name }}</h1>
+    <p class="page-lead">محصول را پیدا کنید و درخواست خرید را برای همین فروشنده بفرستید.</p>
+  </header>
+  <form method="get" class="panel stack-sm" role="search">
+    <label for="resale-search">نام یا نوع سنگ</label>
+    <div class="btn-row"><input id="resale-search" class="field-input" type="search" name="q" value="{{ term }}" maxlength="100"><button type="submit" class="btn btn-primary">جست‌وجو</button></div>
+  </form>
+  <div class="catalog-grid">
+    {% for card in cards %}
+      <article class="product-card panel stack-sm">
+        {% if card.image_url %}<div class="product-card-media"><img src="{{ card.image_url }}" loading="lazy" decoding="async" alt="{{ card.name }}"></div>{% endif %}
+        <h2 class="section-title">{{ card.name }}</h2>
+        <div class="muted">{{ card.stone }}</div>
+        {% if card.is_special %}<span class="badge">فروش ویژه</span>{% endif %}
+        <div class="kv"><span>قیمت هر متر مربع</span><strong>{% if card.amount %}{{ card.amount|rial }} ریال{% else %}استعلام قیمت{% endif %}</strong></div>
+        <p class="muted">{{ card.stock }}</p>
+        <a class="btn btn-primary" href="{% url 'resale:ask' business.storefront_token card.id %}">درخواست خرید</a>
+      </article>
+    {% empty %}<div class="empty-state">محصولی برای نمایش پیدا نشد.</div>{% endfor %}
+  </div>
+  {% include "_pager.html" %}
+</section>
+{% endblock %}

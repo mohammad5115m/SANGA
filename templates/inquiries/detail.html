@@ -1,4 +1,5 @@
 {% extends "layouts/app_shell.html" %}
+{% load money %}
 
 {% block title %}درخواست خرید {{ inquiry.name }} | Sang Esf{% endblock %}
 
@@ -51,6 +52,29 @@
       {% endfor %}
     </div>
   </section>
+
+  {% if inquiry.source == "other" and inquiry.resale_request %}
+    {% with order=inquiry.resale_request %}
+    <section class="panel stack-sm">
+      <h2 class="section-title">فروش از انبار</h2>
+      {% if order.displayed_amount %}
+        <div class="kv"><span>قیمت دیده‌شده هنگام درخواست (هر متر مربع)</span><strong>{{ order.displayed_amount|rial }} ریال</strong></div>
+      {% endif %}
+      {% if order.wholesale_invoice_id and 'invoice.view' in capabilities %}
+        <a class="btn btn-secondary" href="{% url 'invoicing:detail' order.wholesale_invoice_id %}">مشاهدهٔ فاکتور خرید همکاری</a>
+      {% endif %}
+      {% if order.retail_invoice_id and 'invoice.view' in capabilities %}
+        <a class="btn btn-secondary" href="{% url 'invoicing:detail' order.retail_invoice_id %}">مشاهدهٔ فاکتور مشتری</a>
+      {% elif 'invoice.create' in capabilities and order.wholesale_invoice.status == "confirmed" %}
+        <form method="post" action="{% url 'resale:retail_invoice' order.pk %}">{% csrf_token %}<button class="btn btn-primary" type="submit">ساخت پیش‌نویس فاکتور مشتری</button></form>
+      {% elif 'invoice.create' in capabilities and 'prices.view' in capabilities %}
+        {% if order.can_request_purchase %}
+          <a class="btn btn-primary" href="{% url 'resale:purchase' order.pk %}">{% if order.requested_at %}بررسی یا تأیید دوبارهٔ نرخ خرید{% else %}بررسی نرخ و درخواست خرید از انبار{% endif %}</a>
+        {% endif %}
+      {% endif %}
+    </section>
+    {% endwith %}
+  {% endif %}
 
   {% if can_manage %}
     <form method="post" action="{% url 'inquiries:set_status' inquiry.id %}" class="panel stack-md">

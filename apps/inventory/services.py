@@ -25,7 +25,7 @@ from apps.businesses.permissions import (
     INVENTORY_QUANTITY,
     PRICES_EDIT,
 )
-from apps.pricing.services import set_lot_price
+from apps.pricing.services import set_lot_price, set_lot_prices
 
 from .media_validation import MediaValidationError, verify_image, verify_video
 from .models import Application, InventoryLot, LotMedia, Product, VocabularyTerm
@@ -265,10 +265,7 @@ def create_draft_item(
     if lot is None:
         raise InventoryError("ساخت کد یکتا ممکن نشد؛ دوباره تلاش کنید.")
 
-    if b2b_price is not None:
-        _set_price(lot=lot, membership=membership, tier_code="b2b", spec=b2b_price)
-    if b2c_price is not None:
-        _set_price(lot=lot, membership=membership, tier_code="b2c", spec=b2c_price)
+    _set_item_prices(lot=lot, membership=membership, b2b=b2b_price, b2c=b2c_price)
 
     logger.info("Draft item created business=%s item=%s", business.id, lot.id)
     return lot
@@ -455,28 +452,19 @@ def update_item(
 
     lot.save()
 
-    if b2b_price is not None:
-        _set_price(lot=lot, membership=membership, tier_code="b2b", spec=b2b_price)
-    if b2c_price is not None:
-        _set_price(lot=lot, membership=membership, tier_code="b2c", spec=b2c_price)
+    _set_item_prices(lot=lot, membership=membership, b2b=b2b_price, b2c=b2c_price)
 
     return lot
 
 
-def _set_price(*, lot: InventoryLot, membership: BusinessMembership, tier_code: str, spec: dict) -> None:
+def _set_item_prices(*, lot: InventoryLot, membership: BusinessMembership, b2b, b2c) -> None:
+    specs = {code: spec for code, spec in (("b2b", b2b), ("b2c", b2c)) if spec is not None}
+    if not specs:
+        return
     if not membership.has_capability(PRICES_EDIT):
         raise InventoryError("اجازه تغییر قیمت را ندارید.")
     try:
-        set_lot_price(
-            lot=lot,
-            tier_code=tier_code,
-            amount=spec.get("amount"),
-            mode=spec.get("mode"),
-            currency=spec.get("currency") or "IRR",
-            valid_for_days=spec.get("valid_for_days"),
-            special_amount=spec.get("special_amount"),
-            special_until=spec.get("special_until"),
-        )
+        set_lot_prices(lot=lot, specs=specs)
     except ValueError as exc:
         raise InventoryError(str(exc)) from exc
 
