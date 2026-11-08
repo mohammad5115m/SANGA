@@ -1,14 +1,21 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block extra_head %}<meta name="robots" content="noindex,nofollow,noarchive">{% block storefront_extra_head %}{% endblock %}{% endblock %}
+{% block extra_head %}{% if not public_homepage or request.resolver_match.url_name != "home" %}<meta name="robots" content="noindex,nofollow,noarchive">{% endif %}{% block storefront_extra_head %}{% endblock %}{% endblock %}
 
 {% block body_class %}storefront-body{% endblock %}
 
 {% block shell %}
 <div class="storefront-shell">
   <header class="storefront-top">
-    {% if business %}
+    {% if public_homepage %}
+      <a class="brand-lockup storefront-brand sanga-brand" href="{% url 'core:home' %}">
+        <div>
+          <img class="sanga-logo" src="{% static 'icons/logo.svg' %}?v=5" alt="سنگ اصفهان" width="285" height="78">
+          <div class="brand-sub">ویترین عمومی سنگ اصفهان</div>
+        </div>
+      </a>
+    {% elif business %}
       <a class="brand-lockup storefront-brand" href="{% url 'catalog:storefront' business.storefront_token %}">
         {% if business.logo %}
           <img class="business-logo" src="{{ business.logo.url }}" alt="نشان {{ business.name }}" decoding="async">
@@ -28,7 +35,10 @@
         </div>
       </span>
     {% endif %}
-    <div class="storefront-actions">{% block storefront_actions %}{% endblock %}</div>
+    <div class="storefront-actions">
+      {% if public_homepage %}<a class="btn btn-secondary" href="{% url 'accounts:login' %}" hx-boost="false">ورود به پنل</a>{% endif %}
+      {% block storefront_actions %}{% endblock %}
+    </div>
   </header>
   <main class="storefront-main" id="main-content" tabindex="-1">
     {% block content %}{% endblock %}

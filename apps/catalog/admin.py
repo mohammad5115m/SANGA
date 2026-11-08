@@ -1,13 +1,40 @@
 from django.contrib import admin
 
-from apps.core.admin import FixedBusinessAdmin, SameBusinessForm
+from apps.businesses.eligibility import business_can_sell, can_sell_q
+from apps.businesses.models import Business
+from apps.core.admin import FixedBusinessAdmin, NoDeleteAdmin, SameBusinessForm
 
 from .models import (
     CustomCatalog,
     CustomCatalogItem,
+    PublicHomepage,
     StorefrontCollection,
     StorefrontCollectionItem,
 )
+
+
+@admin.register(PublicHomepage)
+class PublicHomepageAdmin(NoDeleteAdmin):
+    fields = ("business", "public_status")
+    readonly_fields = ("public_status",)
+    list_display = ("__str__", "business", "public_status")
+    list_select_related = ("business",)
+
+    def has_add_permission(self, request):
+        return False  # Migration provisions the singleton without a seller.
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "business":
+            kwargs["queryset"] = Business.objects.filter(can_sell_q())
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    @admin.display(description="وضعیت نمایش عمومی")
+    def public_status(self, obj):
+        if obj is None or obj.business_id is None:
+            return "هنوز ویترینی انتخاب نشده است."
+        if not business_can_sell(obj.business):
+            return f"ویترین «{obj.business}» فعلاً واجد شرایط نمایش نیست."
+        return "ویترین انتخاب‌شده در صفحهٔ اصلی فعال است."
 
 
 class CatalogItemAdminForm(SameBusinessForm):

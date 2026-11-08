@@ -7,7 +7,7 @@
 <div class="portal-dashboard">
   <section class="portal-hero" aria-labelledby="portal-title">
     <div><p class="eyebrow">مدیریت پلتفرم · {{ admin_today }}</p><h1 id="portal-title">نمای کلی سنگ اصفهان</h1><p>فعالیت‌ها، پرونده‌های نیازمند رسیدگی و مسیرهای مدیریت در یک جا.</p></div>
-    <div class="hero-actions"><a class="portal-button portal-button-light" href="{% url 'admin:provision_business' %}">+ کسب‌وکار جدید</a><a class="portal-button portal-button-outline" href="{% url 'admin:provision_member' %}">+ کاربر جدید</a></div>
+    <div class="hero-actions"><a class="portal-button portal-button-light" href="{% url 'admin:provision_business' %}">+ کسب‌وکار جدید</a><a class="portal-button portal-button-outline" href="{% url 'admin:provision_member' %}">+ کاربر جدید</a><a class="portal-button portal-button-outline" href="{% url 'admin:catalog_publichomepage_change' 1 %}">انتخاب ویترین صفحهٔ اصلی</a></div>
   </section>
 
   <form class="portal-search" method="get" role="search" aria-label="جست‌وجوی پلتفرم">

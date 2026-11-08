@@ -5,7 +5,7 @@ import logging
 from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.cache import cache_control
 from django.views.decorators.http import require_GET
@@ -13,12 +13,6 @@ from django.views.decorators.http import require_GET
 from .calendar import calendar_month, jalali_parts
 
 logger = logging.getLogger(__name__)
-
-
-def home(request: HttpRequest) -> HttpResponse:
-    if request.user.is_authenticated:
-        return redirect("businesses:dashboard")
-    return redirect("accounts:login")
 
 
 def health(request: HttpRequest) -> JsonResponse:

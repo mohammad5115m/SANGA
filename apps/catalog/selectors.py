@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.db.models import Count, Prefetch, Q, QuerySet, Window
 
-from apps.businesses.eligibility import business_can_sell
+from apps.businesses.eligibility import business_can_sell, can_sell_q
 from apps.businesses.models import Business
 from apps.inventory.filters import ItemFilterSpec
 from apps.inventory.models import InventoryLot
@@ -10,10 +10,11 @@ from apps.inventory.policy import eligible_items, get_eligible_item
 from apps.pricing.models import LotPrice
 from apps.pricing.queries import live_special_until_subquery
 
-from .models import CustomCatalog, StorefrontCollection, StorefrontCollectionItem
+from .models import CustomCatalog, PublicHomepage, StorefrontCollection, StorefrontCollectionItem
 
 __all__ = [
     "public_catalog_lots",
+    "public_home_business",
     "get_public_lot",
     "get_public_item_by_token",
     "filter_public_lots",
@@ -26,6 +27,11 @@ __all__ = [
     "active_special_lots",
     "storefront_collection_sections",
 ]
+
+
+def public_home_business() -> Business | None:
+    """Fail closed; never pick or enumerate sellers if the selection is unavailable."""
+    return Business.objects.filter(public_homepages__pk=PublicHomepage.KEY).filter(can_sell_q()).first()
 
 
 def public_catalog_lots(business: Business) -> QuerySet[InventoryLot]:

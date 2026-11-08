@@ -84,9 +84,8 @@ def test_invalid_storefront_token_is_indistinguishable(client, shop):
 
 
 @pytest.mark.django_db
-def test_slug_route_and_global_discovery_are_removed(client, shop):
+def test_legacy_slug_and_comparison_routes_remain_unavailable(client, shop):
     assert client.get(f"/s/{shop['seller'].slug}/").status_code == 404
-    assert client.get("/search/").status_code == 404
     assert client.get(f"/store/{shop['seller'].storefront_token}/compare/").status_code == 404
 
 

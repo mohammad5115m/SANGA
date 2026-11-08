@@ -11,6 +11,30 @@ def generate_share_token() -> str:
     return secrets.token_urlsafe(16)
 
 
+class PublicHomepage(models.Model):
+    """The one seller intentionally published at the platform's main address."""
+
+    KEY = 1
+    id = models.PositiveSmallIntegerField(primary_key=True, default=KEY, editable=False)
+    business = models.ForeignKey(
+        "businesses.Business",
+        verbose_name="ویترین منتخب",
+        on_delete=models.SET_NULL,
+        related_name="public_homepages",
+        null=True,
+        blank=True,
+        help_text="فقط ویترین همین فروشنده در صفحهٔ اصلی نمایش داده می‌شود. خالی یعنی بدون ویترین منتخب.",
+    )
+
+    class Meta:
+        verbose_name = "ویترین صفحهٔ اصلی"
+        verbose_name_plural = "ویترین صفحهٔ اصلی"
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name="catalog_one_public_homepage")]
+
+    def __str__(self) -> str:
+        return "ویترین صفحهٔ اصلی"
+
+
 class CustomCatalog(models.Model):
     """A shareable, **live** selection of products.
 

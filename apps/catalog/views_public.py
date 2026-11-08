@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import render
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_http_methods, require_safe
 
 from apps.businesses.eligibility import public_business_by_storefront_token_or_none
 from apps.core.pagination import paginate
@@ -19,6 +20,7 @@ from .selectors import (
     get_public_lot,
     get_shareable_catalog,
     public_catalog_lots,
+    public_home_business,
     related_public_lots,
     storefront_collection_sections,
 )
@@ -39,7 +41,19 @@ def _business_or_404(token: str):
 
 @require_http_methods(["GET"])
 def storefront(request: HttpRequest, storefront_token: str) -> HttpResponse:
-    business = _business_or_404(storefront_token)
+    return _render_storefront(request, _business_or_404(storefront_token))
+
+
+@never_cache
+@require_safe
+def public_home(request: HttpRequest) -> HttpResponse:
+    business = public_home_business()
+    if business is None:
+        return render(request, "catalog/public_home_empty.html", {"public_homepage": True})
+    return _render_storefront(request, business, public_homepage=True)
+
+
+def _render_storefront(request: HttpRequest, business, *, public_homepage: bool = False) -> HttpResponse:
     form = ItemFilterForm(request.GET or None)
     form.fields["q"].label = "جست‌وجوی ساده"
     form.fields["q"].widget.attrs["placeholder"] = "مثلاً تراورتن عباس‌آباد یا نمای بیرونی"
@@ -68,6 +82,7 @@ def storefront(request: HttpRequest, storefront_token: str) -> HttpResponse:
         "catalog/storefront.html",
         {
             "business": business,
+            "public_homepage": public_homepage,
             "filter_form": form,
             "cards": cards,
             "special_cards": special_cards,
