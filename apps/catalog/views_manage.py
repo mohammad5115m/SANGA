@@ -9,6 +9,7 @@ from apps.businesses.decorators import business_login_required, require_capabili
 from apps.businesses.permissions import CATALOG_MANAGE
 from apps.inventory.catalog_selection import MAX_CATALOG_ITEMS, get_selection, resolve_selection
 from apps.inventory.policy import owned_items
+from apps.resale.selectors import offer_queryset
 
 from .forms import CustomCatalogForm, StorefrontCollectionForm
 from .models import CustomCatalog, StorefrontCollection, StorefrontCollectionItem
@@ -37,6 +38,8 @@ def catalog_list(request: HttpRequest) -> HttpResponse:
         "items", "items__lot", "items__lot__product"
     )
     special_lots = list(active_special_lots(request.business))
+    has_products = owned_items(request.business).exists()
+    has_resale_offers = not has_products and offer_queryset().filter(grant__retailer=request.business).exists()
     return render(
         request,
         "catalog/manage_list.html",
@@ -48,7 +51,8 @@ def catalog_list(request: HttpRequest) -> HttpResponse:
             ),
             "special_count": special_lots[0]._special_total if special_lots else 0,
             "special_cards": [public_lot_card(lot) for lot in special_lots],
-            "has_products": owned_items(request.business).exists(),
+            "has_products": has_products,
+            "has_resale_offers": has_resale_offers,
         },
     )
 

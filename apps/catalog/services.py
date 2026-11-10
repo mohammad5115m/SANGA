@@ -53,7 +53,16 @@ def b2c_price_context(lot: InventoryLot) -> dict:
     """
     prices = resolve_visible_prices(lot, "b2c_public")
     b2c = prices.get("b2c")
-    if b2c is None or b2c.amount is None:
+    if b2c is None:
+        return customer_price_context(None)
+    return customer_price_context(
+        b2c.amount, currency=b2c.currency, is_special=b2c.is_special, special_until=b2c.special_until,
+        regular_amount=b2c.regular_amount if b2c.is_special else None,
+    )
+
+
+def customer_price_context(amount, *, currency="IRR", is_special=False, special_until=None, regular_amount=None):
+    if amount is None:
         return {
             "has_price": False,
             "amount": None,
@@ -65,10 +74,9 @@ def b2c_price_context(lot: InventoryLot) -> dict:
             "discount_percent": None,
             "remaining_label": "",
         }
-    regular_amount = b2c.regular_amount if b2c.is_special else None
     discount_percent = None
-    if regular_amount and b2c.amount:
-        raw_discount = ((regular_amount - b2c.amount) / regular_amount) * Decimal("100")
+    if regular_amount and amount:
+        raw_discount = ((regular_amount - amount) / regular_amount) * Decimal("100")
         # A non-zero payable price must never be advertised as «100% off».
         discount_percent = min(
             99,
@@ -76,15 +84,15 @@ def b2c_price_context(lot: InventoryLot) -> dict:
         )
     return {
         "has_price": True,
-        "amount": b2c.amount,
-        "currency": b2c.currency,
-        "label": format_rial(b2c.amount),
-        "is_special": b2c.is_special,
-        "special_until": b2c.special_until,
+        "amount": amount,
+        "currency": currency,
+        "label": format_rial(amount),
+        "is_special": is_special,
+        "special_until": special_until,
         "regular_amount": regular_amount,
         "regular_label": format_rial(regular_amount) if regular_amount else "",
         "discount_percent": discount_percent,
-        "remaining_label": _promotion_remaining(b2c.special_until),
+        "remaining_label": _promotion_remaining(special_until),
     }
 
 
@@ -102,7 +110,7 @@ def _promotion_remaining(ends_at) -> str:
     return f"{minutes} دقیقه تا پایان پیشنهاد"
 
 
-def public_lot_card(lot: InventoryLot) -> dict:
+def public_lot_card(lot: InventoryLot, *, price=None) -> dict:
     primary = next(
         (m for m in lot.media.all() if m.kind == "image" and m.is_primary), None
     ) or next((m for m in lot.media.all() if m.kind == "image"), None)
@@ -114,7 +122,7 @@ def public_lot_card(lot: InventoryLot) -> dict:
     return {
         "lot": lot,
         "product": lot.product,
-        "price": b2c_price_context(lot),
+        "price": price if price is not None else b2c_price_context(lot),
         "stock": stock_view(lot),
         "primary_media": primary,
         "applications": list(lot.product.applications.all())[:2],

@@ -1,0 +1,36 @@
+{% extends "layouts/app_shell.html" %}
+{% load money %}
+{% block title %}عرضهٔ محصولات انبار | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div><h1 class="page-title">عرضه‌های فعال انبار</h1><p class="page-lead">قیمت محصولات عرضه‌شده در ویترین را ویرایش کنید یا عرضه را متوقف کنید.</p></div>
+    {% if can_edit %}<a class="btn btn-secondary" href="{% url 'resale:warehouse' %}">مدیریت انبار من</a>{% endif %}
+  </div>
+  <section class="panel stack-sm">
+    <h2 class="section-title">لینک ویترین برای مشتریان شما</h2>
+    <div class="secure-link" dir="ltr">{{ public_link }}</div>
+    {% include "catalog/_share_actions.html" with share_url=public_link %}
+    <a class="btn btn-secondary" href="{{ public_link }}" target="_blank" rel="noopener">پیش‌نمایش ویترین مشتری</a>
+  </section>
+  <div><a class="btn btn-secondary" href="{% url 'marketplace:home' %}">انتخاب محصول برای عرضه از بازار</a></div>
+  <div class="catalog-grid">
+  {% for row in rows %}
+    <article class="panel stack-sm">
+      <h2 class="section-title">{{ row.rule.lot.product.commercial_name }}</h2>
+      <div class="muted">{{ row.rule.lot.business.name }} · {{ row.rule.lot.lot_code }}</div>
+      {% if row.terms %}
+        <div class="kv"><span>خرید از انبار</span><strong>{{ row.terms.wholesale|rial }} ریال</strong></div>
+        <div class="kv"><span>قیمت مصرف‌کنندهٔ انبار</span><strong>{{ row.terms.floor|rial }} ریال</strong></div>
+      {% else %}<p class="muted">قیمت‌های انبار نیازمند تأیید است.</p>{% endif %}
+      <div class="kv"><span>قیمت نمایشی شما</span><strong>{% if row.price.amount %}{{ row.price.amount|rial }} ریال{% else %}استعلام قیمت{% endif %}</strong></div>
+      {% if can_edit %}
+        <a class="btn btn-primary" href="{% url 'resale:offer_edit' row.rule.pk %}">ویرایش قیمت</a>
+        <form method="post" action="{% url 'resale:offer_stop' row.offer.pk %}">{% csrf_token %}<button class="btn btn-ghost" type="submit">توقف عرضه</button></form>
+      {% endif %}
+    </article>
+  {% empty %}<div class="empty-state">عرضهٔ فعالی ندارید. محصولات همکاران را در بازار ببینید و محصول مجاز را برای عرضه انتخاب کنید.</div>{% endfor %}
+  </div>
+  {% include "_pager.html" %}
+</section>
+{% endblock %}

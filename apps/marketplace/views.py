@@ -7,13 +7,18 @@ from django.db import models
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from apps.businesses.decorators import business_login_required
+from apps.businesses.permissions import PRICES_EDIT
+from apps.catalog.services import b2c_price_context
 from apps.core.pagination import paginate
 from apps.inventory.filters import effective_price_bounds
 from apps.inventory.forms import MarketplaceItemFilterForm
 from apps.inventory.selectors import lots_for_business
+from apps.resale.models import ResaleOffer
+from apps.resale.selectors import retailer_rules
 
 from .models import PartnerInquiry
 from .selectors import (
@@ -33,6 +38,22 @@ def _partner_share_url(request: HttpRequest, lot) -> str:
     )
 
 
+def _resale_choices(request, lots):
+    if not lots or not request.membership or not request.membership.has_capability(PRICES_EDIT):
+        return {}
+    active_offers = ResaleOffer.objects.filter(
+        rule_id=models.OuterRef("pk"), grant__retailer=request.business, grant__is_active=True, is_active=True,
+    )
+    rules = retailer_rules(request.business).filter(lot_id__in=[lot.pk for lot in lots]).annotate(
+        has_offer=models.Exists(active_offers),
+    )
+    return {
+        lot_id: {"url": reverse("resale:offer_edit", args=[rule_id]), "is_active": has_offer}
+        for lot_id, rule_id, has_offer in rules.values_list("lot_id", "pk", "has_offer")
+    }
+
+
+@never_cache
 @business_login_required
 @require_GET
 def marketplace_home(request: HttpRequest) -> HttpResponse:
@@ -47,10 +68,13 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
         base, spec=spec, audience="colleague"
     )
     page = paginate(request, qs)
+    resale_choices = _resale_choices(request, page.object_list)
     cards = []
     for lot in page.object_list:
         card = marketplace_lot_card(lot, request.business)
         card["share_url"] = _partner_share_url(request, lot)
+        card["retail_price"] = b2c_price_context(lot)
+        card["resale_choice"] = resale_choices.get(lot.pk)
         cards.append(card)
     return render(
         request,
@@ -64,7 +88,9 @@ def marketplace_home(request: HttpRequest) -> HttpResponse:
     )
 
 
+@never_cache
 @business_login_required
+@require_GET
 def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
     if not request.business:
         return redirect("businesses:no_business")
@@ -86,6 +112,8 @@ def marketplace_lot_detail(request: HttpRequest, lot_id) -> HttpResponse:
             "product": lot.product,
             "supplier": lot.business,
             "price": b2b_price_context(lot, request.business),
+            "retail_price": b2c_price_context(lot),
+            "resale_choice": _resale_choices(request, [lot]).get(lot.pk),
             "stock": stock_view(lot),
             "media_items": lot.media.all(),
             "share_url": _partner_share_url(request, lot),

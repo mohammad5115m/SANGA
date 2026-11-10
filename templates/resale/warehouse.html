@@ -1,0 +1,40 @@
+{% extends "layouts/app_shell.html" %}
+{% block title %}مدیریت فروش از انبار | Sang Esf{% endblock %}
+{% block content %}
+<section class="stack-lg">
+  <div class="toolbar">
+    <div><h1 class="page-title">مدیریت فروش از انبار</h1><p class="page-lead">قیمت انبار، حداقل سود و همکاران مجاز را تنظیم کنید.</p></div>
+    <a class="btn btn-secondary" href="{% url 'resale:index' %}">عرضهٔ محصولات همکاران</a>
+  </div>
+  {% if program %}
+    <div class="btn-row"><a class="btn btn-primary" href="{% url 'resale:grant' %}">اجازهٔ عرضه به همکار</a><a class="btn btn-secondary" href="{% url 'resale:warehouse_requests' %}">درخواست‌های خرید همکاران</a></div>
+    <section class="panel stack-md">
+      <h2 class="section-title">همکاران مجاز</h2>
+      {% for grant in grants %}
+        <div class="list-item"><strong>{{ grant.retailer.name }}</strong>
+          {% if grant.is_active %}
+            <form method="post" action="{% url 'resale:revoke' grant.pk %}">{% csrf_token %}<button class="btn btn-ghost btn-sm" type="submit">لغو اجازه</button></form>
+          {% else %}<span class="muted">اجازه لغو شده</span>{% endif %}
+        </div>
+      {% empty %}<p class="muted">به هیچ همکاری اجازهٔ عرضه نداده‌اید.</p>{% endfor %}
+    </section>
+    <section class="panel stack-md">
+      <h2 class="section-title">محصولات انبار</h2>
+      <p class="muted">فقط محصولات منتشرشده و موجود در فهرست همکار مجاز ظاهر می‌شوند.</p>
+      {% for lot in page.object_list %}
+        <div class="list-item">
+          <div><strong>{{ lot.product.commercial_name }}</strong><div class="muted">{{ lot.lot_code }} · {% if lot.resale_rule %}قیمت همکاری قابل تنظیم است{% else %}حداقل سود تعیین نشده{% endif %}</div></div>
+          <a class="btn btn-secondary btn-sm" href="{% url 'resale:warehouse_price' lot.pk %}">قیمت و حداقل سود</a>
+        </div>
+      {% empty %}<p class="muted">ابتدا در «موجودی من» محصول ثبت کنید.</p>{% endfor %}
+      {% include "_pager.html" %}
+    </section>
+  {% else %}
+    <section class="panel stack-md">
+      <h2 class="section-title">فروش از انبار هنوز فعال نیست</h2>
+      <p>پس از فعال‌سازی، فروش ویژهٔ مصرف‌کننده بدون تخفیف هم‌زمان همکاری مجاز نیست. فعال‌سازی به هیچ همکاری اجازهٔ عرضه نمی‌دهد تا خودتان انتخاب کنید.</p>
+      <form method="post" action="{% url 'resale:enable' %}">{% csrf_token %}<button class="btn btn-primary" type="submit">فعال‌سازی فروش از انبار</button></form>
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

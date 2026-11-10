@@ -164,7 +164,29 @@ def _quantize_amount(value) -> Decimal:
     return amount
 
 
+def lock_price_lot(lot):
+    """Serialize price edits with each other and with warehouse opt-in."""
+    from apps.businesses.models import Business
+    from apps.inventory.models import InventoryLot
+
+    lot = InventoryLot.objects.select_for_update().get(pk=lot.pk)
+    Business.objects.select_for_update(no_key=True).get(pk=lot.business_id)
+    return lot
+
+
 @transaction.atomic
+def set_lot_prices(*, lot, specs: dict) -> dict[str, LotPrice]:
+    from apps.resale.pricing import validate_saved_prices
+
+    if not specs:
+        return {}
+    lot = lock_price_lot(lot)
+    at = timezone.now()
+    result = {code: _save_lot_price(lot=lot, tier_code=code, at=at, **spec) for code, spec in specs.items()}
+    validate_saved_prices(lot, at=at)
+    return result
+
+
 def set_lot_price(
     *,
     lot,
@@ -181,6 +203,16 @@ def set_lot_price(
     Passing ``amount=None`` (or ``mode='inquiry'``) stores an inquiry-only price
     rather than a zero, so «استعلام قیمت» and «رایگان» stay distinguishable.
     """
+    return set_lot_prices(lot=lot, specs={tier_code: {
+        "amount": amount, "currency": currency, "mode": mode, "valid_for_days": valid_for_days,
+        "special_amount": special_amount, "special_until": special_until,
+    }})[tier_code]
+
+
+def _save_lot_price(
+    *, lot, tier_code, at, amount=None, currency="IRR", mode=None, valid_for_days=None,
+    special_amount=None, special_until=None,
+):
     ensure_default_tiers()
     if tier_code not in {"b2b", "b2c"}:
         raise ValueError("سطح قیمت نامعتبر است.")
@@ -210,7 +242,7 @@ def set_lot_price(
         if special_amount is not None:
             if special_amount >= amount:
                 raise ValueError("قیمت فروش ویژه باید کمتر از قیمت عادی باشد.")
-            if special_until <= timezone.now():
+            if special_until <= at:
                 raise ValueError("زمان پایان فروش ویژه باید در آینده باشد.")
 
     if valid_for_days is not None and not 1 <= int(valid_for_days) <= 365:
@@ -223,7 +255,7 @@ def set_lot_price(
         "special_amount": special_amount,
         "special_until": special_until,
         # Setting a price is itself a confirmation of it.
-        "price_confirmed_at": timezone.now(),
+        "price_confirmed_at": at,
     }
     if valid_for_days is not None:
         defaults["price_valid_for_days"] = int(valid_for_days)
@@ -243,9 +275,21 @@ def confirm_lot_price(*, lot, tier_code: str, membership) -> LotPrice | None:
     if membership.business_id != lot.business_id:
         raise PricingError("این محصول متعلق به کسب‌وکار شما نیست.")
 
-    price = lot.prices.select_related("tier").filter(tier__code=tier_code).first()
-    if price is None:
+    from apps.resale.models import ResaleRule
+    from apps.resale.pricing import ResaleError, validate_saved_prices
+
+    lot = lock_price_lot(lot)
+    rows = {row.tier.code: row for row in lot.prices.select_related("tier")}
+    if tier_code not in rows:
         return None
-    price.price_confirmed_at = timezone.now()
-    price.save(update_fields=["price_confirmed_at", "updated_at"])
-    return price
+    at = timezone.now()
+    paired = tier_code in {"b2b", "b2c"} and ResaleRule.objects.filter(lot_id=lot.pk).exists()
+    for code in (("b2b", "b2c") if paired else (tier_code,)):
+        if code in rows:
+            rows[code].price_confirmed_at = at
+            rows[code].save(update_fields=["price_confirmed_at", "updated_at"])
+    try:
+        validate_saved_prices(lot, at=at)
+    except ResaleError as exc:
+        raise PricingError(str(exc)) from exc
+    return rows[tier_code]

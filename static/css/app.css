@@ -2265,6 +2265,9 @@ input[type="number"], input[type="tel"], input[type="date"] {
 .product-card-detail-action {
   justify-content: space-between;
 }
+.product-card-resale-action {
+  grid-column: 1 / -1;
+}
 .share-actions-compact {
   flex-wrap: nowrap;
 }

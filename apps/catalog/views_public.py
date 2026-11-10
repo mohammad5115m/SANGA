@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from django.db.models import Case, Q, Value, When
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_safe
 
@@ -9,7 +11,11 @@ from apps.businesses.eligibility import public_business_by_storefront_token_or_n
 from apps.core.pagination import paginate
 from apps.inventory.filters import effective_price_bounds
 from apps.inventory.forms import ItemFilterForm
-from apps.inventory.models import Application
+from apps.inventory.models import Application, InventoryLot
+from apps.inventory.policy import eligible_items
+from apps.pricing.queries import AMOUNT_FIELD, effective_amount_subquery
+from apps.resale.pricing import current_terms, offer_price
+from apps.resale.selectors import offer_queryset
 
 from . import cart
 from .selectors import (
@@ -24,7 +30,7 @@ from .selectors import (
     related_public_lots,
     storefront_collection_sections,
 )
-from .services import b2c_price_context, public_lot_card, record_catalog_view
+from .services import b2c_price_context, customer_price_context, public_lot_card, record_catalog_view
 
 
 def _business_or_404(token: str):
@@ -59,14 +65,42 @@ def _render_storefront(request: HttpRequest, business, *, public_homepage: bool 
     form.fields["q"].widget.attrs["placeholder"] = "مثلاً تراورتن عباس‌آباد یا نمای بیرونی"
     spec = form.to_spec()
     base = public_catalog_lots(business)
-    qs = filter_public_lots(base, spec=spec)
     minimum, maximum = effective_price_bounds(base, spec=spec, audience="public")
+    offers = offer_queryset().filter(grant__retailer=business)
+    matching_lots = spec.apply_non_price(InventoryLot.objects.all()).order_by().values("pk")
+    at = timezone.now()
+    resale = {
+        offer.rule.lot_id: (offer, offer_price(offer, current_terms(offer.rule, at=at), at=at))
+        for offer in offers.filter(rule__lot_id__in=matching_lots)
+    }
+    price_expression = None
+    if resale:
+        base = eligible_items(audience="public").filter(Q(business=business) | Q(pk__in=resale))
+        resale_amounts = {lot_id: price.amount for lot_id, (_, price) in resale.items() if price.amount is not None}
+        # The same validated offer price drives the card, price filter and sort.
+        # A source lot's warehouse price must never stand in for the offer.
+        price_expression = Case(
+            When(business=business, then=effective_amount_subquery("b2c")),
+            *(When(pk=lot_id, then=Value(amount)) for lot_id, amount in resale_amounts.items()),
+            output_field=AMOUNT_FIELD,
+        )
+        bounds = [amount for amount in (minimum, maximum, *resale_amounts.values()) if amount is not None]
+        minimum, maximum = min(bounds, default=None), max(bounds, default=None)
+    qs = filter_public_lots(base, spec=spec, price_expression=price_expression)
     page = paginate(request, qs)
-    has_public_products = bool(page.total) or base.exists()
-    cards = [public_lot_card(lot) for lot in page.object_list]
+    has_public_products = bool(page.total) or base.exists() or offers.exists()
     selected = set(cart.selected_ids(request, business, catalog=None))
-    for card in cards:
-        card["is_selected"] = str(card["lot"].id) in selected
+    cards = []
+    for lot in page.object_list:
+        if lot.pk in resale:
+            offer, price = resale[lot.pk]
+            customer_price = customer_price_context(
+                price.amount, is_special=price.special, special_until=price.expires_at if price.special else None,
+                regular_amount=offer.amount if price.special else None,
+            )
+            cards.append({**public_lot_card(lot, price=customer_price), "offer_id": offer.pk})
+        else:
+            cards.append({**public_lot_card(lot), "is_selected": str(lot.pk) in selected})
     special_cards = [public_lot_card(lot) for lot in active_special_lots(business)]
     for card in special_cards:
         card["is_selected"] = str(card["lot"].id) in selected

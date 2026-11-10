@@ -631,6 +631,8 @@ def update_draft_invoice(
 
 @transaction.atomic
 def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+    from apps.resale.orders import refuse_detached_copy
+
     invoice = SalesInvoice.objects.select_for_update().select_related("seller_business").get(pk=invoice.pk)
     _require_manage(invoice.seller_business, membership)
     if invoice.counterparty_type == SalesInvoice.Counterparty.CUSTOMER:
@@ -641,6 +643,7 @@ def issue_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> S
         return invoice
     if invoice.status == SalesInvoice.Status.CANCELLED:
         raise InvoiceError("فاکتور باطل‌شده قابل صدور نیست.")
+    refuse_detached_copy(invoice)
     if invoice.previous_balance_included and invoice.previous_balance_currency != invoice.currency:
         raise InvoiceError("مانده با ارز متفاوت را نمی‌توان در مبلغ قابل پرداخت جمع کرد.")
     stored_lines = [
@@ -756,7 +759,10 @@ def create_replacement_invoice(*, invoice: SalesInvoice, membership: BusinessMem
 
 @transaction.atomic
 def duplicate_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) -> SalesInvoice:
+    from apps.resale.orders import refuse_detached_copy
+
     _require_manage(invoice.seller_business, membership)
+    refuse_detached_copy(invoice)
     if invoice.counterparty_type == SalesInvoice.Counterparty.BUSINESS:
         raise InvoiceError("توافق همکار را از صفحه همان توافق دوباره ثبت کنید؛ فاکتور همکار قابل تکثیر دستی نیست.")
     lines = [
@@ -820,7 +826,10 @@ def duplicate_invoice(*, invoice: SalesInvoice, membership: BusinessMembership) 
 
 
 def save_as_template(*, invoice: SalesInvoice, name: str, membership: BusinessMembership) -> InvoiceTemplate:
+    from apps.resale.orders import refuse_detached_copy
+
     _require_manage(invoice.seller_business, membership)
+    refuse_detached_copy(invoice)
     if invoice.counterparty_type == SalesInvoice.Counterparty.BUSINESS:
         raise InvoiceError("فاکتور همکار فقط از توافق دوطرفه ساخته می‌شود و قالب دستی ندارد.")
     name = (name or "").strip()

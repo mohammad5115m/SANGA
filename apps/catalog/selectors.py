@@ -52,8 +52,10 @@ def get_public_item_by_token(token: str) -> InventoryLot | None:
     return get_eligible_item(audience="public", public_token=token)
 
 
-def filter_public_lots(qs: QuerySet[InventoryLot], *, spec: ItemFilterSpec) -> QuerySet[InventoryLot]:
-    return spec.apply(qs, audience="public")
+def filter_public_lots(
+    qs: QuerySet[InventoryLot], *, spec: ItemFilterSpec, price_expression=None,
+) -> QuerySet[InventoryLot]:
+    return spec.apply(qs, audience="public", price_expression=price_expression)
 
 
 def related_public_lots(lot: InventoryLot, *, limit: int = 4) -> list[InventoryLot]:

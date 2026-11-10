@@ -142,30 +142,23 @@ class ItemFilterSpec:
             )
         return qs
 
-    def apply(self, qs: QuerySet[InventoryLot], *, audience: Audience = "public") -> QuerySet[InventoryLot]:
+    def apply(
+        self, qs: QuerySet[InventoryLot], *, audience: Audience = "public", price_expression=None,
+    ) -> QuerySet[InventoryLot]:
         qs = self.apply_non_price(qs)
-        qs = self._apply_price(qs, audience=audience)
-        return self._apply_sort(qs, audience=audience)
-
-    def _apply_price(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
-        if self.price_min is None and self.price_max is None:
-            return qs
-        tier = self._price_tier(audience)
-        qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
+        if self.price_min is not None or self.price_max is not None or self.sort in ("price_asc", "price_desc"):
+            if price_expression is None:
+                price_expression = effective_amount_subquery(self._price_tier(audience))
+            qs = qs.alias(_effective_price=price_expression)
         if self.price_min is not None:
             qs = qs.filter(_effective_price__gte=self.price_min)
         if self.price_max is not None:
             qs = qs.filter(_effective_price__lte=self.price_max)
-        return qs
-
-    def _apply_sort(self, qs: QuerySet[InventoryLot], *, audience: Audience) -> QuerySet[InventoryLot]:
         if self.sort == "confirmed":
             return qs.order_by("-stock_confirmed_at", "-updated_at", "-pk")
-        if self.sort in ("price_asc", "price_desc"):
-            tier = self._price_tier(audience)
-            qs = qs.annotate(_effective_price=effective_amount_subquery(tier))
-            if self.sort == "price_asc":
-                return qs.order_by(F("_effective_price").asc(nulls_last=True), "-updated_at", "-pk")
+        if self.sort == "price_asc":
+            return qs.order_by(F("_effective_price").asc(nulls_last=True), "-updated_at", "-pk")
+        if self.sort == "price_desc":
             return qs.order_by(F("_effective_price").desc(nulls_last=True), "-updated_at", "-pk")
         return qs.order_by("-updated_at", "-pk")
 

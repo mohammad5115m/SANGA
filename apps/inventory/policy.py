@@ -31,12 +31,12 @@ from .models import InventoryLot
 # narrower question of which price tier may be rendered.
 Audience = Literal["owner", "colleague", "public"]
 
-#: Price tier each audience is allowed to have loaded at all. Restricting the
+#: Price tiers each audience is allowed to have loaded at all. Restricting the
 #: prefetch means a B2B row is never even fetched on a public page, so a
 #: template bug cannot leak what was never in memory.
 _AUDIENCE_TIER: dict[Audience, tuple[str, ...]] = {
     "owner": ("b2b", "b2c"),
-    "colleague": ("b2b",),
+    "colleague": ("b2b", "b2c"),
     "public": ("b2c",),
 }
 
