@@ -6,6 +6,7 @@
   <div class="toolbar"><div><h1 class="page-title">{{ title }}</h1><p class="page-lead">{{ lead }}</p></div><a class="btn btn-ghost" href="{{ back_url }}">بازگشت</a></div>
   {% if show_terms %}
     <section class="panel stack-sm">
+      <a class="back-link" href="{{ product_url }}">مشاهده عکس‌ها و مشخصات در بازار</a>
       {% if terms %}
         <div class="kv"><span>قیمت خرید همکاری</span><strong>{{ terms.wholesale|rial }} ریال در متر مربع</strong></div>
         <div class="kv"><span>قیمت مصرف‌کنندهٔ انبار و کف فروش</span><strong>{{ terms.floor|rial }} ریال در متر مربع</strong></div>

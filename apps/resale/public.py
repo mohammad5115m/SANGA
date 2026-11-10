@@ -58,7 +58,7 @@ def _offers(retailer):
 @require_safe
 def public_store(request, token):
     retailer = _retailer(token)
-    offers = _offers(retailer)
+    offers = _offers(retailer).prefetch_related("rule__lot__media")
     term = normalize_persian_text(request.GET.get("q", "")[:100]).strip()
     if term:
         for word in term.split()[:8]:
@@ -84,7 +84,7 @@ def _persist(request, retailer, token, data, form, *, verified):
         return None
     request.session.pop(PENDING, None)
     messages.success(request, "درخواست شما برای همین فروشنده ثبت شد. این درخواست به معنی خرید قطعی نیست.")
-    return redirect("resale:public_store", token=token)
+    return redirect("catalog:storefront", storefront_token=token)
 
 
 @sensitive_post_parameters("name", "phone", "message")
@@ -92,7 +92,7 @@ def _persist(request, retailer, token, data, form, *, verified):
 @require_http_methods(["GET", "POST"])
 def ask(request, token, offer_id):
     retailer = _retailer(token)
-    offer = get_object_or_404(_offers(retailer), pk=offer_id)
+    offer = get_object_or_404(_offers(retailer).prefetch_related("rule__lot__media"), pk=offer_id)
     form = ResaleInquiryForm(request.POST if request.method == "POST" else None,
                              initial={"submission_id": uuid.uuid4()})
     if request.method == "POST" and form.is_valid():
@@ -130,7 +130,7 @@ def ask(request, token, offer_id):
 @require_http_methods(["GET", "POST"])
 def verify(request, token, offer_id):
     retailer = _retailer(token)
-    offer = get_object_or_404(_offers(retailer), pk=offer_id)
+    offer = get_object_or_404(_offers(retailer).prefetch_related("rule__lot__media"), pk=offer_id)
     data = request.session.get(PENDING, {})
     if (
         not settings.CUSTOMER_OTP_ENABLED or data.get("retailer_id") != str(retailer.pk)

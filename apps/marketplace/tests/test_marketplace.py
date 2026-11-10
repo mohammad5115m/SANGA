@@ -122,7 +122,8 @@ def test_expired_b2b_price_stays_discoverable_as_inquiry(network, client):
     body = client.get(reverse("marketplace:home")).content.decode("utf-8")
     assert "تراورتن عباس‌آباد" in body
     assert "استعلام قیمت" in body
-    assert "1600000" not in body.replace(",", "")
+    assert "1,000,000" not in body
+    assert "1,600,000" in body
 
 
 @pytest.mark.django_db
@@ -164,11 +165,11 @@ def test_colleague_can_find_a_published_item_without_a_numbered_price(network, c
 
 
 @pytest.mark.django_db
-def test_marketplace_page_shows_b2b_and_never_b2c(network, client):
+def test_marketplace_page_shows_b2b_and_consumer_prices_separately(network, client):
     _login_owner(client, network["buyer"])
     body = client.get(reverse("marketplace:home")).content.decode("utf-8")
-    assert "1000000" in body.replace(",", "")
-    assert "1600000" not in body.replace(",", "")
+    assert "قیمت همکار" in body and "1,000,000" in body
+    assert "قیمت مصرف‌کننده" in body and "1,600,000" in body
     assert "استعلام‌های همکاران" not in body
     assert "ارسال استعلام" not in body
     assert "کپی لینک" in body
@@ -212,10 +213,10 @@ def test_colleague_special_price_card_shows_original_and_discount(network, clien
 
 
 @pytest.mark.django_db
-def test_marketplace_prefetch_loads_only_the_b2b_tier(network):
+def test_marketplace_prefetch_loads_both_visible_price_tiers(network):
     item = marketplace_lots_for(network["buyer"]).first()
     loaded = {price.tier.code for price in item.prices.all()}
-    assert loaded == {"b2b"}
+    assert loaded == {"b2b", "b2c"}
 
 
 @pytest.mark.django_db

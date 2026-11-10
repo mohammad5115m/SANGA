@@ -7,22 +7,34 @@ from django import forms
 from django.utils import timezone
 
 from apps.catalog.forms import CustomerIdentityForm
+from apps.core.formatting import format_decimal
 from apps.core.persian import normalize_digits
 
 from .models import ResaleRule
 
 
 class LocalDecimalField(forms.DecimalField):
+    def prepare_value(self, value):
+        if isinstance(value, Decimal):
+            return format_decimal(value)
+        return super().prepare_value(value)
+
     def to_python(self, value):
         if isinstance(value, str):
-            value = normalize_digits(value).replace("٫", ".")
-        return super().to_python(value)
+            value = normalize_digits(value)
+        value = super().to_python(value)
+        if self.decimal_places == 0 and value is not None and value == value.to_integral_value():
+            # Drop fractional zeroes from prices formatted by older releases.
+            value = value.to_integral_value()
+        return value
 
 
 def amount_field(label, *, required=True, places=0, digits=14, minimum=1):
     return LocalDecimalField(
         label=label, required=required, max_digits=digits, decimal_places=places, min_value=Decimal(str(minimum)),
-        widget=forms.TextInput(attrs={"class": "field-input", "dir": "ltr", "inputmode": "decimal"}),
+        widget=forms.TextInput(attrs={
+            "class": "field-input", "dir": "ltr", "inputmode": "decimal" if places else "numeric",
+        }),
     )
 
 

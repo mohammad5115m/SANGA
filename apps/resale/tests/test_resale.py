@@ -171,6 +171,87 @@ def test_retailer_can_match_floor_without_sale_and_specials_expire(pair, program
     assert offer_price(low, current_terms(program, at=after), at=after).amount is None
 
 
+def test_marketplace_shows_retail_to_all_colleagues_and_offer_actions_only_with_grant(client, pair, program):
+    _, retailer, other, lot = pair
+    offer_url = reverse("resale:offer_edit", args=[program.pk])
+    market_urls = [reverse("marketplace:home"), reverse("marketplace:lot_detail", args=[lot.pk])]
+    client.force_login(owner_membership(other).user)
+    for url in market_urls:
+        response = client.get(url)
+        assert "1,000,000" in response.content.decode()
+        assert offer_url not in response.content.decode()
+
+    client.force_login(owner_membership(retailer).user)
+    for url in market_urls:
+        assert offer_url in client.get(url).content.decode()
+    assert not client.get(reverse("resale:index")).context["rows"]
+
+
+def test_existing_offer_round_trips_whole_rial_without_changing_the_amount(client, pair, program):
+    _, retailer, _, lot = pair
+    set_lot_prices(lot=lot, specs=specs(
+        w_special="700000", r_special="900000", end=timezone.now() + timedelta(days=1),
+    ))
+    offer = set_offer(
+        rule=program, retailer=retailer, membership=owner_membership(retailer), amount="1100000",
+        special_amount="950000", special_until=timezone.now() + timedelta(hours=4),
+    )
+    special_until = offer.special_until
+    client.force_login(owner_membership(retailer).user)
+    url = reverse("resale:offer_edit", args=[program.pk])
+    form = client.get(url).context["form"]
+    assert form["amount"].value() == "1100000"
+    assert form["special_amount"].value() == "950000"
+    response = client.post(url, {"amount": "۱٬۱۰۰٬۰۰۰٫۰۰", "special_amount": "950,000.00"})
+    assert response.status_code == 302
+    offer.refresh_from_db()
+    assert (offer.amount, offer.special_amount) == (Decimal("1100000"), Decimal("950000"))
+    assert offer.special_until == special_until
+    invalid = client.post(url, {"amount": "1100000.01", "special_amount": "950000"})
+    assert invalid.context["form"].errors.as_data()["amount"][0].code == "max_decimal_places"
+    below_floor = client.post(url, {"amount": "899999", "special_amount": ""})
+    assert "کمتر" in str(below_floor.context["form"].non_field_errors())
+
+
+def test_combined_storefront_filters_by_customer_price_and_stop_preserves_requests(client, pair, offer, settings):
+    settings.CUSTOMER_OTP_ENABLED = False
+    warehouse, retailer, other, lot = pair
+    own = make_item(
+        retailer, product=make_product(retailer, commercial_name="مرمریت فروشندهٔ منتخب"),
+        b2b="600000", b2c="900000",
+    )
+    store_url = reverse("catalog:storefront", args=[retailer.storefront_token])
+    legacy_url = reverse("resale:public_store", args=[retailer.storefront_token])
+    ask_url = reverse("resale:ask", args=[retailer.storefront_token, offer.pk])
+    response = client.get(store_url, {"sort": "price_asc"})
+    assert [card["lot"].pk for card in response.context["cards"]] == [own.pk, lot.pk]
+    html = response.content.decode()
+    for expected in (ask_url, "900,000", "1,100,000"):
+        assert expected in html
+    for secret in ("600,000", "800,000", "1,000,000", warehouse.name):
+        assert secret not in html
+    assert store_url in client.get(legacy_url).content.decode()
+    filtered = client.get(store_url, {"q": lot.lot_code, "price_min": "1050000"})
+    assert [card["lot"].pk for card in filtered.context["cards"]] == [lot.pk]
+    assert not client.get(store_url, {"q": lot.lot_code, "price_max": "1050000"}).context["cards"]
+    assert client.post(ask_url, {
+        "name": "مشتری نمونه", "phone": "09120009574", "quantity": "۲٫۵", "submission_id": str(uuid4()),
+    }).url == store_url
+
+    stop_url = reverse("resale:offer_stop", args=[offer.pk])
+    client.force_login(owner_membership(other).user)
+    assert client.post(stop_url).status_code == 404
+    client.force_login(owner_membership(retailer).user)
+    index = reverse("resale:index")
+    assert stop_url in client.get(index).content.decode()
+    assert client.get(stop_url).status_code == 405
+    assert client.post(stop_url).url == index
+    assert not client.get(index).context["rows"]
+    assert ResaleRequest.objects.filter(offer=offer, inquiry__business=retailer).count() == 1
+    assert client.get(ask_url).status_code == 404
+    assert [card["lot"].pk for card in client.get(store_url).context["cards"]] == [own.pk]
+
+
 def test_private_prices_are_only_in_authorized_workspace(client, pair, program, offer):
     warehouse, retailer, other, _ = pair
     endpoint = reverse("resale:public_store", args=[retailer.storefront_token])
@@ -196,7 +277,7 @@ def test_private_prices_are_only_in_authorized_workspace(client, pair, program, 
     assert client.get(reverse("resale:offer_edit", args=[program.pk])).status_code == 404
 
 
-@pytest.mark.parametrize("state", ["revoked", "withdrawn", "expired", "browse"])
+@pytest.mark.parametrize("state", ["revoked", "withdrawn", "out_of_stock", "expired", "browse"])
 def test_ineligible_offer_disappears_from_public_routes(client, pair, offer, state):
     warehouse, retailer, _, lot = pair
     if state == "revoked":
@@ -204,11 +285,16 @@ def test_ineligible_offer_disappears_from_public_routes(client, pair, offer, sta
     elif state == "withdrawn":
         lot.is_visible = False
         lot.save(update_fields=["is_visible"])
+    elif state == "out_of_stock":
+        lot.availability_status = lot.Availability.UNAVAILABLE
+        lot.available_sqm = 0
+        lot.save(update_fields=["availability_status", "available_sqm"])
     elif state == "expired":
         Business.objects.filter(pk=warehouse.pk).update(active_until=timezone.localdate() - timedelta(days=1))
     else:
         Business.objects.filter(pk=warehouse.pk).update(plan=Business.Plan.BROWSE)
     assert not client.get(reverse("resale:public_store", args=[retailer.storefront_token])).context["cards"]
+    assert not client.get(reverse("catalog:storefront", args=[retailer.storefront_token])).context["cards"]
     assert client.get(reverse("resale:ask", args=[retailer.storefront_token, offer.pk])).status_code == 404
 
 

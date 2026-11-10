@@ -213,7 +213,8 @@ def test_resolving_a_catalog_does_not_load_every_membership(stocked, django_asse
 @pytest.mark.django_db
 def test_query_count_does_not_grow_with_the_number_of_products(client, stocked, django_assert_max_num_queries):
     """The point of paging: page one costs the same however much matched."""
-    with django_assert_max_num_queries(12):
+    # One additional bulk query looks for the seller's active resale offers.
+    with django_assert_max_num_queries(13):
         client.get(_storefront(stocked))
 
     for index in range(ROWS, ROWS * 3):
@@ -224,7 +225,7 @@ def test_query_count_does_not_grow_with_the_number_of_products(client, stocked, 
             b2c="1500000",
         )
 
-    with django_assert_max_num_queries(12):
+    with django_assert_max_num_queries(13):
         response = client.get(_storefront(stocked))
     assert response.context["page"].total == ROWS * 3
     assert len(_cards(response)) == CARD_PAGE_SIZE

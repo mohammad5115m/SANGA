@@ -7,6 +7,7 @@
     <div class="storefront-eyebrow">ویترین اختصاصی {{ business.name }}</div>
     <h1 class="page-title">محصولات {{ business.name }}</h1>
     <p class="page-lead">محصول را پیدا کنید و درخواست خرید را برای همین فروشنده بفرستید.</p>
+    <a class="btn btn-secondary" href="{% url 'catalog:storefront' business.storefront_token %}">مشاهده همه محصولات ویترین</a>
   </header>
   <form method="get" class="panel stack-sm" role="search">
     <label for="resale-search">نام یا نوع سنگ</label>

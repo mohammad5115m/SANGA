@@ -39,6 +39,14 @@
         {% endif %}
       </div>
 
+      <div class="detail-price-card">
+        <span>قیمت مصرف‌کننده / متر مربع</span>
+        <strong class="catalog-price catalog-price-lg" dir="ltr">{{ retail_price.label }}</strong>
+        {% if retail_price.is_special and retail_price.special_until %}
+          <span class="badge badge-special">فروش ویژه تا {{ retail_price.special_until|jdate }}</span>
+        {% endif %}
+      </div>
+
       <div class="detail-stock-card">
         <div>
           <span class="stock-pill{% if stock.is_inquiry %} is-inquiry{% else %} is-fresh{% endif %}">
@@ -53,6 +61,9 @@
       </div>
 
       <div class="detail-primary-actions">
+        {% if resale_choice %}
+          <a class="btn btn-primary" href="{{ resale_choice.url }}">{% if resale_choice.is_active %}ویرایش عرضه{% else %}تعیین قیمت و عرضه در ویترین{% endif %}</a>
+        {% endif %}
         {% with product=product %}
           {% include "catalog/_share_actions.html" %}
         {% endwith %}

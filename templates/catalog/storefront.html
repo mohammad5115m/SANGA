@@ -79,8 +79,13 @@
 
   <div class="catalog-grid">
     {% for card in cards %}
-      {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
-      {% include "inventory/_product_card.html" with show_select=True %}
+      {% if card.offer_id %}
+        {% url 'resale:ask' business.storefront_token card.offer_id as card_url %}
+        {% include "inventory/_product_card.html" %}
+      {% else %}
+        {% url 'catalog:lot_detail' business.storefront_token card.lot.id as card_url %}
+        {% include "inventory/_product_card.html" with show_select=True %}
+      {% endif %}
     {% empty %}
       <div class="empty-state product-empty-state">
         <span class="empty-state-icon" aria-hidden="true">⌕</span>

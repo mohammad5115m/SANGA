@@ -3,17 +3,17 @@
 {% block content %}
 <section class="stack-lg">
   <div class="toolbar"><div><h1 class="page-title">کانال‌های فروش</h1><p class="page-lead">ویترین عمومی و کاتالوگ‌های مشتری را جدا و شفاف مدیریت کنید.</p></div><a class="btn btn-primary" href="{{ storefront_url }}" target="_blank" rel="noopener">پیش‌نمایش ویترین</a></div>
-  {% if not has_products %}
+  {% if not has_products and not has_resale_offers %}
     <div class="panel stack-md" role="status">
       <h2 class="section-title">ویترین شما آماده شروع است</h2>
-      <p class="muted">ابتدا یک محصول ثبت و منتشر کنید. سپس همین‌جا ویترین را ببینید و محصولات دلخواه را از «موجودی من» به کاتالوگ مشتری اضافه کنید.</p>
+      <p class="muted">یک محصول شخصی ثبت و منتشر کنید یا از بازار، محصول همکاری را که مجوز عرضه‌اش را دارید به ویترین اضافه کنید.</p>
       {% if can_add_products %}<a class="btn btn-primary" href="{% url 'inventory:quick_add_start' %}">ثبت اولین محصول</a>{% endif %}
     </div>
   {% endif %}
   <nav class="surface-switcher" aria-label="بخش‌های کانال فروش"><a class="surface-switcher-item is-active" href="#storefront-management"><span>ویترین فروشگاه</span></a><a class="surface-switcher-item" href="#customer-catalogs"><span>کاتالوگ‌های مشتری</span></a></nav>
   <div id="storefront-management" class="section-anchor" tabindex="-1"></div>
   <section class="panel stack-md storefront-link-panel" aria-labelledby="share-storefront-heading">
-    <div><h2 class="section-title" id="share-storefront-heading">لینک اشتراک ویترین</h2><p class="muted">هرکس این لینک را داشته باشد بدون ورود می‌تواند محصولات منتشرشده فروشگاه را با قیمت مشتری ببیند.</p></div>
+    <div><h2 class="section-title" id="share-storefront-heading">لینک اشتراک ویترین</h2><p class="muted">هرکس این لینک را داشته باشد می‌تواند محصولات منتشرشدهٔ شما و عرضه‌های فعال همکاران را با قیمت مشتری ببیند.</p></div>
     <div class="secure-link" dir="ltr">{{ storefront_url }}</div>
     {% with share_url=storefront_url product=current_business %}{% include "catalog/_share_actions.html" %}{% endwith %}
     <details class="danger-disclosure"><summary>باطل‌کردن لینک قبلی</summary><p class="muted">با ساخت لینک تازه، لینک قبلی فوراً دیگر کار نمی‌کند.</p><form method="post" action="{% url 'catalog_manage:storefront_token_regenerate' %}">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit">ساخت لینک تازه و ابطال قبلی</button></form></details>

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from django import forms
 from django.contrib import messages
-from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -10,63 +9,39 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
 from apps.businesses.decorators import require_capability
-from apps.businesses.eligibility import business_can_sell, can_sell_q
+from apps.businesses.eligibility import can_sell_q
 from apps.businesses.models import Business
 from apps.businesses.permissions import INVOICE_CREATE, PRICES_EDIT, PRICES_VIEW
 from apps.core.pagination import paginate
 from apps.inventory.models import InventoryLot
 from apps.invoicing.services import InvoiceError
-from apps.pricing.models import LotPrice
 
 from .forms import OfferForm, PurchaseForm, WarehousePriceForm
 from .models import ResaleGrant, ResaleOffer, ResaleRequest, WholesaleProgram
 from .orders import active_quote, make_retail_invoice, make_wholesale_invoice, request_purchase
 from .pricing import ResaleError, current_terms, offer_price, price_rows, special_end
-from .selectors import available_rules, offer_queryset
+from .selectors import offer_queryset, resale_prices_prefetch, retailer_rules
 from .services import configure_lot, enable_program, set_grant, set_offer, unpublish_offer
-
-
-def _retailer_rules(business):
-    if not business_can_sell(business):
-        return available_rules().none()
-    return (
-        available_rules()
-        .filter(lot__business__wholesale_program__grants__retailer=business,
-                lot__business__wholesale_program__grants__is_active=True)
-        .exclude(lot__business=business)
-        .select_related("lot__product__stone", "lot__business")
-        .prefetch_related(Prefetch(
-            "lot__prices", queryset=LotPrice.objects.select_related("tier").filter(tier__code__in=("b2b", "b2c")),
-            to_attr="resale_prices",
-        ))
-        .order_by("lot__lot_code")
-    )
 
 
 @never_cache
 @require_capability(PRICES_VIEW)
 @require_safe
 def index(request):
-    page = paginate(request, _retailer_rules(request.business))
-    saved = {
-        o.rule_id: o for o in ResaleOffer.objects.filter(
-            rule_id__in=[rule.pk for rule in page.object_list], grant__retailer=request.business,
-            grant__is_active=True,
-        )
-    }
+    page = paginate(request, offer_queryset().filter(grant__retailer=request.business))
     rows = []
-    for rule in page.object_list:
-        terms = current_terms(rule)
-        offer = saved.get(rule.pk)
+    at = timezone.now()
+    for offer in page.object_list:
+        terms = current_terms(offer.rule, at=at)
         rows.append({
-            "rule": rule, "terms": terms, "offer": offer,
-            "price": offer_price(offer, terms) if offer and offer.is_active else None,
+            "rule": offer.rule, "terms": terms, "offer": offer,
+            "price": offer_price(offer, terms, at=at),
         })
     return render(request, "resale/index.html", {
         "rows": rows, "page": page,
         "can_edit": request.membership.has_capability(PRICES_EDIT),
         "public_link": request.build_absolute_uri(
-            reverse("resale:public_store", args=[request.business.storefront_token]),
+            reverse("catalog:storefront", args=[request.business.storefront_token]),
         ),
     })
 
@@ -124,7 +99,7 @@ def grant(request):
             return redirect("resale:warehouse")
     return render(request, "resale/form.html", {
         "title": "اجازهٔ عرضه به همکار", "form": form, "back_url": reverse("resale:warehouse"),
-        "lead": "همکار مجاز هر دو قیمت انبار را در پنل خودش می‌بیند و قیمت مشتری خودش را تعیین می‌کند.",
+        "lead": "همکار مجاز می‌تواند از بازار، محصول انبار را انتخاب کند و با قیمت خودش در ویترین عرضه کند.",
     })
 
 
@@ -189,29 +164,39 @@ def warehouse_price(request, lot_id):
 @require_capability(PRICES_EDIT)
 @require_http_methods(["GET", "POST"])
 def offer_edit(request, rule_id):
-    rule = get_object_or_404(_retailer_rules(request.business), pk=rule_id)
+    rule = get_object_or_404(
+        retailer_rules(request.business).select_related("lot__product__stone").prefetch_related(
+            resale_prices_prefetch("lot__prices"),
+        ), pk=rule_id,
+    )
     offer = ResaleOffer.objects.filter(rule=rule, grant__retailer=request.business, grant__is_active=True).first()
-    terms = current_terms(rule)
+    at = timezone.now()
+    terms = current_terms(rule, at=at)
     initial = {
         "amount": offer.amount if offer else (terms.floor if terms else None),
-        "special_amount": offer.special_amount if offer and offer.special_until and offer.special_until > timezone.now()
+        "special_amount": offer.special_amount if offer and offer.special_until and offer.special_until > at
         and terms and terms.wholesale_special_until else None,
     }
     form = OfferForm(request.POST if request.method == "POST" else None, initial=initial)
     if request.method == "POST" and form.is_valid():
         try:
             special = form.cleaned_data["special_amount"]
+            special_until = terms.expires_at if special is not None and terms else None
+            if special_until and special == initial["special_amount"]:
+                special_until = min(special_until, offer.special_until)
             set_offer(rule=rule, retailer=request.business, membership=request.membership,
                       amount=form.cleaned_data["amount"], special_amount=special,
-                      special_until=terms.expires_at if special is not None and terms else None)
+                      special_until=special_until)
         except ValueError as exc:
             form.add_error(None, str(exc))
         else:
-            messages.success(request, "محصول با قیمت شما در لینک اختصاصی عرضه شد.")
+            messages.success(request, "محصول با قیمت شما در ویترین عرضه شد.")
             return redirect("resale:index")
     return render(request, "resale/form.html", {
         "title": f"قیمت فروش شما · {rule.lot.product.commercial_name}", "form": form,
         "terms": terms, "show_terms": True, "back_url": reverse("resale:index"),
+        "product_url": reverse("marketplace:lot_detail", args=[rule.lot_id]),
+        "submit_label": "ذخیرهٔ قیمت عرضه" if offer and offer.is_active else "ذخیره و عرضه در ویترین",
         "lead": "قیمت ویژهٔ شما فقط تا پایان اعتبار تخفیف همکاری انبار نمایش داده می‌شود.",
     })
 
